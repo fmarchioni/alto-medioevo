@@ -79,7 +79,7 @@ export function fieraPanel(g: Game, st: FieraState): string {
     const join = QUOTE.map((t, i) => {
       if (i <= tier) return '';
       const fee = t.fee - (tier >= 0 ? QUOTE[tier].fee : 0);
-      return `<button data-act="ext" data-op="joinFair" data-tier="${i}" ${p.scudi - fee >= -p.credito ? '' : 'disabled'}>${tier < 0 ? 'Prendete' : 'Passate a'} ${t.name}: ${t.n} contratti (${n(fee)} scudi)</button>`;
+      return `<button data-act="ext" data-op="joinFair" data-tier="${i}" ${p.scudi - fee >= -p.credito ? '' : 'disabled'}>${tier < 0 ? 'Prendete' : 'Passate a'} ${t.name}: ${t.n === 1 ? '1 contratto' : `${t.n} contratti`} (${n(fee)} scudi${t.n > 1 ? `, ${n(t.fee / t.n)} a contratto` : ''})</button>`;
     }).join('');
     const vis = visibleTo(f, me);
     const rows = vis.map(k => {

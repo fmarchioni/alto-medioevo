@@ -445,7 +445,9 @@ function botFair(c: BotCtx): void {
   const out = yearlyOutput(p, cant);
   const cap = out.vino + out.manufatti + (cant.vino + cant.manufatti) / 2;
   if (f.quote[me] < 0) {
-    const want = level === 'facile' ? (rnd() < 0.5 && cap >= 30 && p.scudi >= QUOTE[0].fee ? 0 : -1) : bestQuota(g, level);
+    // il facile prende a caso un banco o una bottega
+    const cheap = rnd() < 0.5 ? 0 : 1;
+    const want = level === 'facile' ? (rnd() < 0.5 && cap >= 30 && p.scudi >= QUOTE[cheap].fee ? cheap : -1) : bestQuota(g, level);
     if (want < 0 || !joinFair(g, want).ok) return;
     log.push(`entra alla fiera con ${QUOTE[want].name} (${QUOTE[want].fee} scudi)`);
   }

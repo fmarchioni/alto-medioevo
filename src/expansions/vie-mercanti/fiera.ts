@@ -4,8 +4,9 @@
  * - Ogni due anni (902, 904, …) i mercanti delle piazze (Venezia, Genova,
  *   Pisa, Amalfi, Messina, Costantinopoli) cercano vino e manufatti. I
  *   contratti sono uguali per tutti; chi investe di più alla fiera ne vede di
- *   più: 1.000 scudi i primi 3, 5.000 i primi 6, 10.000 tutti e 10, compresi
- *   i grandi contratti e quello speciale.
+ *   più, e ogni contratto gli costa meno: 300 scudi il primo, 850 i primi 3,
+ *   1.600 i primi 6, 2.500 tutti e 10, compresi i grandi contratti e quello
+ *   speciale. Chi investe di più vede anche i contratti più ricchi.
  * - Gara al ribasso, a buste chiuse: ogni signore offre un prezzo l'unità.
  *   Conta per il 90% la convenienza del prezzo e per il 10% il prestigio
  *   mercantile. Al prezzo base l'offerta è sempre accettata; sopra il prezzo
@@ -28,11 +29,12 @@ export const FIERA_OGNI = 2;
 export const isFairYear = (q: number) => q >= FIERA_DAL && (q - FIERA_DAL) % FIERA_OGNI === 0;
 export const nextFair = (q: number) => (q < FIERA_DAL ? FIERA_DAL : q + ((FIERA_OGNI - ((q - FIERA_DAL) % FIERA_OGNI)) % FIERA_OGNI));
 
-/** Quote d'ingresso alla fiera: quanto costa e quanti contratti si vedono. */
+/** Quote d'ingresso alla fiera: quanto costa e quanti contratti si vedono (più si spende, meno costa ogni contratto). */
 export const QUOTE = [
-  { fee: 1000, n: 3, name: 'un banco' },
-  { fee: 5000, n: 6, name: 'una loggia' },
-  { fee: 10000, n: 10, name: 'un palazzo' },
+  { fee: 300, n: 1, name: 'un banco' },
+  { fee: 850, n: 3, name: 'una bottega' },
+  { fee: 1600, n: 6, name: 'una loggia' },
+  { fee: 2500, n: 10, name: 'un palazzo' },
 ] as const;
 
 /** Le tre fasce di contratti: quantità, prezzo base l'unità e anni per spedire. */
@@ -41,7 +43,7 @@ export const FASCE = [
   { n: 3, qty: [240, 600], base: [39, 48], tempo: 1 },
   { n: 3, qty: [600, 1300], base: [46, 55], tempo: 2 },
 ] as const;
-/** Il contratto speciale (l'ultimo, solo per chi investe 10.000 scudi). */
+/** Il contratto speciale (l'ultimo, solo per chi prende un palazzo alla fiera). */
 export const SPECIALE = { qty: [1200, 2200], base: [62, 74], tempo: 2 } as const;
 /** I manufatti si pagano più del vino. */
 export const PREZZO_MERCE: Record<Merce, number> = { vino: 1, manufatti: 1.15 };
