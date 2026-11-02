@@ -4,7 +4,7 @@
  * - Ogni due anni (902, 904, …) i mercanti delle piazze (Venezia, Genova,
  *   Pisa, Amalfi, Messina, Costantinopoli) cercano vino e manufatti. I
  *   contratti sono uguali per tutti; chi investe di più alla fiera ne vede di
- *   più: 300 scudi il primo, 850 i primi 3, 2.000 i primi 6, 5.000 tutti
+ *   più: 300 scudi il primo, 850 i primi 3, 3.000 i primi 6, 10.000 tutti
  *   e 10. Le quote alte mostrano i contratti più ricchi: quelli della loggia
  *   pagano molto di più l'unità, i grandi e lo speciale del palazzo ancora di più.
  * - Gara al ribasso, a buste chiuse: ogni signore offre un prezzo l'unità.
@@ -33,8 +33,8 @@ export const nextFair = (q: number) => (q < FIERA_DAL ? FIERA_DAL : q + ((FIERA_
 export const QUOTE = [
   { fee: 300, n: 1, name: 'un banco' },
   { fee: 850, n: 3, name: 'una bottega' },
-  { fee: 2000, n: 6, name: 'una loggia' },
-  { fee: 5000, n: 10, name: 'un palazzo' },
+  { fee: 3000, n: 6, name: 'una loggia' },
+  { fee: 10000, n: 10, name: 'un palazzo' },
 ] as const;
 
 /** Le tre fasce di contratti: quantità, prezzo base l'unità e anni per spedire. */
