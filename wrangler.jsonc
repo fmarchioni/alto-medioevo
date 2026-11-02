@@ -1,0 +1,9 @@
+{
+  // Worker Cloudflare che serve il gioco come sito statico.
+  // Build: npm run build -> dist/
+  "name": "alto-medioevo",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}

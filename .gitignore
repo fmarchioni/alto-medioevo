@@ -1,0 +1,11 @@
+# Lista bianca: su GitHub va solo cio' che serve a compilare il gioco
+# (npm run build -> dist/, pubblicato dal worker Cloudflare).
+/*
+!/.gitignore
+!/index.html
+!/package.json
+!/package-lock.json
+!/tsconfig.json
+!/wrangler.jsonc
+!/src/
+!/public/
