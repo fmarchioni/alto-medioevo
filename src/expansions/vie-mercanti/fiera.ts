@@ -4,9 +4,9 @@
  * - Ogni due anni (902, 904, …) i mercanti delle piazze (Venezia, Genova,
  *   Pisa, Amalfi, Messina, Costantinopoli) cercano vino e manufatti. I
  *   contratti sono uguali per tutti; chi investe di più alla fiera ne vede di
- *   più, e ogni contratto gli costa meno: 300 scudi il primo, 850 i primi 3,
- *   1.600 i primi 6, 2.500 tutti e 10, compresi i grandi contratti e quello
- *   speciale. Chi investe di più vede anche i contratti più ricchi.
+ *   più: 300 scudi il primo, 850 i primi 3, 2.000 i primi 6, 5.000 tutti
+ *   e 10. Le quote alte mostrano i contratti più ricchi: quelli della loggia
+ *   pagano molto di più l'unità, i grandi e lo speciale del palazzo ancora di più.
  * - Gara al ribasso, a buste chiuse: ogni signore offre un prezzo l'unità.
  *   Conta per il 90% la convenienza del prezzo e per il 10% il prestigio
  *   mercantile. Al prezzo base l'offerta è sempre accettata; sopra il prezzo
@@ -29,22 +29,22 @@ export const FIERA_OGNI = 2;
 export const isFairYear = (q: number) => q >= FIERA_DAL && (q - FIERA_DAL) % FIERA_OGNI === 0;
 export const nextFair = (q: number) => (q < FIERA_DAL ? FIERA_DAL : q + ((FIERA_OGNI - ((q - FIERA_DAL) % FIERA_OGNI)) % FIERA_OGNI));
 
-/** Quote d'ingresso alla fiera: quanto costa e quanti contratti si vedono (più si spende, meno costa ogni contratto). */
+/** Quote d'ingresso alla fiera: quanto costa e quanti contratti si vedono (le quote alte mostrano i contratti più ricchi). */
 export const QUOTE = [
   { fee: 300, n: 1, name: 'un banco' },
   { fee: 850, n: 3, name: 'una bottega' },
-  { fee: 1600, n: 6, name: 'una loggia' },
-  { fee: 2500, n: 10, name: 'un palazzo' },
+  { fee: 2000, n: 6, name: 'una loggia' },
+  { fee: 5000, n: 10, name: 'un palazzo' },
 ] as const;
 
 /** Le tre fasce di contratti: quantità, prezzo base l'unità e anni per spedire. */
 export const FASCE = [
   { n: 3, qty: [80, 240], base: [32, 41], tempo: 1 },
-  { n: 3, qty: [240, 600], base: [39, 48], tempo: 1 },
-  { n: 3, qty: [600, 1300], base: [46, 55], tempo: 2 },
+  { n: 3, qty: [240, 600], base: [50, 60], tempo: 1 },
+  { n: 3, qty: [600, 1300], base: [68, 80], tempo: 2 },
 ] as const;
 /** Il contratto speciale (l'ultimo, solo per chi prende un palazzo alla fiera). */
-export const SPECIALE = { qty: [1200, 2200], base: [62, 74], tempo: 2 } as const;
+export const SPECIALE = { qty: [1200, 2200], base: [95, 110], tempo: 2 } as const;
 /** I manufatti si pagano più del vino. */
 export const PREZZO_MERCE: Record<Merce, number> = { vino: 1, manufatti: 1.15 };
 
@@ -157,6 +157,13 @@ export function makeFair(rnd: () => number, q: number, nextId: () => number, pla
   FASCE.forEach((f, i) => { for (let k = 0; k < f.n; k++) add(i as 0 | 1 | 2, f); });
   add(2, SPECIALE, true);
   return { q, contratti, quote: Array.from({ length: players }, () => -1), offerte: [] };
+}
+
+/** Valore medio (al prezzo base) dei contratti che una quota fa vedere: si conosce prima di pagare. */
+export function quotaValue(tier: number): number {
+  const mid = (r: readonly [number, number]) => (r[0] + r[1]) / 2;
+  const all = [...FASCE.flatMap(x => Array.from({ length: x.n }, () => x)), SPECIALE];
+  return Math.round(all.slice(0, QUOTE[tier].n).reduce((a, x) => a + mid(x.qty) * mid(x.base), 0));
 }
 
 export const fairOpen = (st: FieraState, q: number) => (st.fiera?.q === q ? st.fiera : null);

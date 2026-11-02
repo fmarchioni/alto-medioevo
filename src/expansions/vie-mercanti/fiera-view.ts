@@ -6,7 +6,7 @@ import type { Game } from '../../domain/turn';
 import type { GameState, Player } from '../../domain/types';
 import { FEUDI } from '../../domain/rank';
 import {
-  bidOf, fairOpen, FIERA_OGNI, impegniOf, nextFair, OFFERTA_MAX, PAGA_RITARDO, PENALE, PESO_PREZZO, PESO_PRESTIGIO, PRESTIGIO_FIERA, QUOTE, SOPRA_BASE,
+  bidOf, fairOpen, quotaValue, FIERA_OGNI, impegniOf, nextFair, OFFERTA_MAX, PAGA_RITARDO, PENALE, PESO_PREZZO, PESO_PRESTIGIO, PRESTIGIO_FIERA, QUOTE, SOPRA_BASE,
   visibleTo, type Contratto, type FieraDispatch, type FieraState,
 } from './fiera';
 import { PIAZZE, travelYears } from './geografia';
@@ -79,7 +79,7 @@ export function fieraPanel(g: Game, st: FieraState): string {
     const join = QUOTE.map((t, i) => {
       if (i <= tier) return '';
       const fee = t.fee - (tier >= 0 ? QUOTE[tier].fee : 0);
-      return `<button data-act="ext" data-op="joinFair" data-tier="${i}" ${p.scudi - fee >= -p.credito ? '' : 'disabled'}>${tier < 0 ? 'Prendete' : 'Passate a'} ${t.name}: ${t.n === 1 ? '1 contratto' : `${t.n} contratti`} (${n(fee)} scudi${t.n > 1 ? `, ${n(t.fee / t.n)} a contratto` : ''})</button>`;
+      return `<button data-act="ext" data-op="joinFair" data-tier="${i}" ${p.scudi - fee >= -p.credito ? '' : 'disabled'}>${tier < 0 ? 'Prendete' : 'Passate a'} ${t.name}: ${t.n === 1 ? '1 contratto' : `${t.n} contratti`} (${n(fee)} scudi, contratti per circa ${n(quotaValue(i))} scudi)</button>`;
     }).join('');
     const vis = visibleTo(f, me);
     const rows = vis.map(k => {
