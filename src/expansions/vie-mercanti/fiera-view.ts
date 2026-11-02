@@ -51,6 +51,9 @@ export function fairDispatchText(d: FieraDispatch, st: GameState): string {
           : d.ritardo ? ` La carovana è arrivata con un anno di ritardo: i mercanti pagano un decimo in meno.` : '';
       return `La carovana è arrivata a ${piazzaName(d.c)}: ${committente(d.c)} pagano <b>${n(d.gain)} scudi</b> per ${qtyOf(d.c.good, arrived)}.${road}${d.prestigio ? ` Prestigio mercantile ${signed(d.prestigio)}.` : ''}`;
     }
+    case 'vinoScoperto': return `A ${piazzaName(d.c)} un mercante ha assaggiato il vostro vino e lo ha trovato annacquato! ${committente(d.c)} non pagano nulla e vi chiedono una multa di <b>${n(d.multa)} scudi</b>. Prestigio mercantile ${signed(d.prestigio)}, e alle fiere non vi vogliono fino al ${yearOf(d.fino)}.`;
+    case 'consoleScoperto': return `Si è saputo che avevate comprato il console per il contratto di ${contractLine(d.c)}! Niente contratto, prestigio mercantile ${signed(d.prestigio)}, e alle fiere non vi vogliono fino al ${yearOf(d.fino)}.`;
+    case 'consoleFatto': return `Il console ha fatto il suo lavoro: il contratto di ${contractLine(d.c)} è vostro al prezzo base.`;
     case 'fieraMancata': return `Non avete consegnato ${qtyOf(d.c.good, d.manca)} promessi a ${committente(d.c)}: pagate una penale di <b>${n(d.penale)} scudi</b>. Prestigio mercantile ${signed(d.prestigio)}.`;
   }
 }
@@ -64,6 +67,9 @@ export function fairDispatchHead(d: FieraDispatch): { from: string; title: strin
     case 'fieraSpedita': return { from: 'dalla strada', title: 'Carovana partita' };
     case 'fieraPagata': return { from: `da ${piazzaName(d.c)}`, title: 'Contratto pagato' };
     case 'fieraMancata': return { from: 'dalla fiera', title: 'Penale' };
+    case 'vinoScoperto': return { from: `da ${piazzaName(d.c)}`, title: 'Vino annacquato!' };
+    case 'consoleScoperto': return { from: 'dalla fiera', title: 'Il console ha parlato' };
+    case 'consoleFatto': return { from: 'dalla fiera', title: 'Il console comprato' };
   }
 }
 

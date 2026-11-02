@@ -57,6 +57,10 @@ export interface ExpansionView {
   eventPanel?(g: Game): string | null;
   /** carta del mazzo dell'espansione appena pescata: dove va e come si gioca (assente: testo generico) */
   cardNote?(g: Game, eventId: number): string;
+  /** schermata dell'arresto deciso dall'espansione all'inizio del turno (HTML, senza pulsante) */
+  arrestText?(g: Game): string;
+  /** riquadro delle imprese dell'espansione, nella colonna a sinistra (al posto di quelle del gioco base) */
+  imprese?(g: Game): string;
   /** riga sotto l'etichetta dell'espansione, nella colonna a sinistra */
   aside?(g: Game): string;
   /** seconda riga della barra delle risorse in alto: icona (SVG), valore, etichetta; low: in rosso */

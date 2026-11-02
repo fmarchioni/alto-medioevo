@@ -461,6 +461,11 @@ export function playBotTurn(g: Game): BotTurnReport {
     g.continueAfterImpresa();
     if (me.arrestato !== undefined) return { log: ['un complice parla: arrestato'] };
   }
+  // arrestato all'inizio del turno per una carta di un'espansione
+  if (g.state.phase.kind === 'arresto') {
+    g.continueAfterArrest();
+    return { log: ['arrestato'] };
+  }
   if (g.state.phase.kind === 'fatto') fatto(g, level, decisionRng(g));
   if (g.state.phase.kind !== 'commercio') throw new Error('il turno del computer deve iniziare dalla delibera');
   const rng = decisionRng(g);

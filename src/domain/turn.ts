@@ -176,6 +176,12 @@ export class Game {
     }
     this.rules?.onTurnStart?.(this);
     this.state.spoiledThisYear = false;
+    // un'espansione può arrestare il signore all'inizio del turno (arrestCurrent)
+    if (this.player.arrestato === st.q) {
+      this.state.phase = { kind: 'arresto' };
+      this.sync();
+      return;
+    }
     this.state.phase = { kind: 'commercio' };
     // un complice che parla viene prima di tutto; poi il fatto del reame, se tocca a questo signore, prima della Delibera
     if (!this.impresaAtTurnStart()) this.applyFattiToTurn();
@@ -213,6 +219,17 @@ export class Game {
       this.state.phase = { kind: 'impresa', id: i.id, esito: 'arresto', amount, dopo: 'inizio' };
     }
     return true;
+  }
+
+  /** Un'espansione arresta il signore di turno (all'inizio del suo turno): esce dalla partita. */
+  arrestCurrent(): void {
+    this.arrest();
+  }
+
+  /** Dopo l'arresto deciso da un'espansione: il turno passa al signore seguente. */
+  continueAfterArrest(): void {
+    this.expect('arresto');
+    this.advance();
   }
 
   private arrest(): void {
@@ -422,8 +439,8 @@ export class Game {
   continueAfterFeeding(): void {
     this.expect('esitoNutrimento');
     const p = this.player;
-    // un'impresa temeraria arriva solo a chi non ne ha già una in serbo o in corso
-    const impresa = !!this.state.options.imprese && !p.impresa;
+    // un'impresa temeraria arriva solo a chi non ne ha già una in serbo o in corso; con un'espansione ci sono solo le sue
+    const impresa = !!this.state.options.imprese && !this.rules && !p.impresa;
     const riot = p.umore === undefined ? 0 : riotSlots(umoreOf(p)), attack = p.patti ? attackSlots(p) : -1;
     const ev = this.state.options.mazzo
       ? drawEvent(this.rng, { q: this.state.q, riot, attack, impresa, extra: this.rules?.deck?.(this) })

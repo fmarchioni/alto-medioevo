@@ -205,7 +205,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     // signori del computer: giocano in silenzio finché tocca a loro; il racconto è nel libro delle cronache
     if (g && !ui.realmReview && !ui.interlude && ui.chronicleYear === null && !ui.tutorial) {
       const q0 = g.state.q;
-      while ((g.state.phase.kind === 'commercio' || g.state.phase.kind === 'fatto' || g.state.phase.kind === 'impresa') && g.player.bot && g.state.q === q0) playBotTurn(g);
+      while ((g.state.phase.kind === 'commercio' || g.state.phase.kind === 'fatto' || g.state.phase.kind === 'impresa' || g.state.phase.kind === 'arresto') && g.player.bot && g.state.q === q0) playBotTurn(g);
     }
     // fine dell'anno (tutti i signori hanno giocato): cala il sipario
     if (g && !ui.realmReview && ui.chronicleYear === null) {
@@ -521,6 +521,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'afterFatto': return act(() => g!.continueAfterFatto());
       case 'impresa': return act(() => g!.useImpresa());
       case 'afterImpresa': return act(() => g!.continueAfterImpresa());
+      case 'afterArrest': return act(() => g!.continueAfterArrest());
       case 'rHelp':
         ui.rendite.help = btn.dataset.kind as RateKind;
         return render();
@@ -857,6 +858,10 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     case 'impresa':
       body = renderImpresa(ph.id, ph.esito, ph.amount, p);
       break;
+    case 'arresto':
+      body = `<h2>Arrestato!</h2>${exp?.view.arrestText?.(g) ?? '<p class="big">Le guardie vi hanno arrestato: per voi la partita è finita.</p>'}
+        <div class="btns"><button data-act="afterArrest" class="primary">Lasciate il feudo</button></div>`;
+      break;
     case 'rendite':
       body = `<h2>Rendite</h2>${renderRendite(g, rendite, rateBadgesFor(g))}`;
       break;
@@ -889,7 +894,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     <button data-act="new" class="ghost">Nuova partita</button></header>
   ${resourceBar(g, exp)}${pactsStrip(g.player)}${effettiStrip(g.player)}
   <div class="layout">
-    <aside class="card">${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${impreseAside(g)}</aside>
+    <aside class="card">${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${exp ? `${exp.view.imprese?.(g) ?? ''}${g.player.impresa ? impreseAside(g) : ''}` : impreseAside(g)}</aside>
     <section class="card phase castle">${battlements}${message ? `<p class="msg">${esc(message)}</p>` : ''}${body}</section>
   </div>
   <details class="card log"><summary>Cronache</summary><ol>${st.log.slice(-30).reverse().map(l => `<li>${esc(l)}</li>`).join('')}</ol></details>`;

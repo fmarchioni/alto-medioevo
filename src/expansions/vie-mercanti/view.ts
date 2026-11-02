@@ -10,7 +10,7 @@ import { dispatchScrolls } from '../../ui/scrolls';
 import { pick, speechBox, type Speaker } from '../../ui/speaker';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
 import {
-  banquet, bid, buyLot, cantinaOf, feast, fulfilRequest, joinFair, prestigeOf, shipContract, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
+  banquet, bid, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
 } from './rules';
 import {
   ACRI_GRANO_MIN, caravansFrom, caravansTo, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
@@ -21,6 +21,8 @@ import { MERCATI_MAX, MERCATI_PER_PUNTO, PRESTIGIO, prestigeName } from './prest
 import { fairOpen, impegniOf, QUOTE, type FieraDispatch } from './fiera';
 import { consumiChronicle, festaTitoloText, festeCardSub, festePanel, palaceLine, requestNote } from './consumi-view';
 import { BANCHETTI, RICHIESTE, type Banchetto, type RichiestaId } from './consumi';
+import { impresaCardNote, impresaChronicle, impresaDispatchHead, impresaDispatchText, impreseAside, smuggleArrestText } from './imprese-view';
+import type { ImpresaDispatch } from './imprese';
 import { contractLine, fairCardSub, fairChronicle, fairDispatchHead, fairDispatchText, fairNews, fieraPanel } from './fiera-view';
 
 const n = (v: number) => Math.floor(v).toLocaleString('it-IT');
@@ -118,11 +120,13 @@ function seizedList(s: { acri: number; mercati: number; opifici: number; palazzo
   return list(parts);
 }
 
-const isFair = (d: Dispatch): d is FieraDispatch => d.k.startsWith('fiera');
+const isFair = (d: Dispatch): d is FieraDispatch => d.k.startsWith('fiera') || d.k === 'vinoScoperto' || d.k.startsWith('console');
+const isImpresa = (d: Dispatch): d is ImpresaDispatch => d.k.startsWith('contrabbando') || d.k === 'fallitoArrivo';
 
 function dispatchText(d: Dispatch, st: GameState): string {
   const P = (i: number) => who(st.players[i]);
   if (isFair(d)) return fairDispatchText(d, st);
+  if (isImpresa(d)) return impresaDispatchText(d);
   switch (d.k) {
     case 'festaTitolo': return festaTitoloText(d.rango);
     case 'lotSold': return `${P(d.buyer)} ha comprato al fondaco ${qtyOf(d.good, d.qty)}: la carovana parte ora e incasserete <b>${n(d.gain)} scudi</b> al suo arrivo, nell'anno ${yearOf(d.arrive)}.`;
@@ -149,6 +153,7 @@ function dispatchText(d: Dispatch, st: GameState): string {
 /** Mittente e titolo di ogni dispaccio, in testa alla pergamena. */
 function dispatchHead(d: Dispatch): { from: string; title: string } {
   if (isFair(d)) return fairDispatchHead(d);
+  if (isImpresa(d)) return impresaDispatchHead(d);
   switch (d.k) {
     case 'festaTitolo': return { from: 'dalla corte', title: 'Un titolo da celebrare' };
     case 'lotSold': return { from: 'dal fondaco', title: 'Merce venduta' };
@@ -164,6 +169,9 @@ function dispatchHead(d: Dispatch): { from: string; title: string } {
     case 'seizedFrom': return { from: 'dal banco', title: 'Beni pignorati' };
   }
 }
+
+/** Le imprese si giocano dalla colonna a sinistra: la risposta compare in un avviso. */
+const fromAside = (title: string, say: string): ExtActionResult => ({ say, notice: { title, body: say } });
 
 function reaction(r: ActionResult, ok: string, p: Player): string {
   if (!r.ok) return `${pick(['Ahimè', 'Non si può', 'Piano'])}, ${h(p)}: ${r.reason}.`;
@@ -294,6 +302,7 @@ export const view: ExpansionView = {
     'Banco: prestate denaro agli altri signori o prendetelo in prestito; chi non rende subisce il pignoramento.',
     'Fiera: ogni due anni i mercanti forestieri offrono grandi contratti; vince chi chiede meno, e a parità di prezzo chi ha più prestigio mercantile.',
     'Prestigio mercantile: sale con le consegne puntuali e i prestiti resi, scende con ritardi, penali e pignoramenti.',
+    "Imprese: il vino annacquato, il contrabbando del Corno d'Oro, il console comprato e il mercante fallito. Grandi guadagni, e grandi rischi.",
     'Feste: il vino si consuma in banchetti e nozze, i manufatti arredano il palazzo e le cattedrali; danno prestigio, che conta nella ricchezza.',
   ],
 
@@ -318,9 +327,13 @@ export const view: ExpansionView = {
     return `<p class="exp-aside">Specialità di ${FEUDI[p.feudo]}: ${specialitaText(p.feudo)}.<br>Zona: ${ZONA_NOME[ZONA_FEUDO[p.feudo]]}.<br>Prestigio mercantile: <b>${n(v)}</b> su 100 (${prestigeName(v)}).${palaceLine(g, ms(g))}</p>`;
   },
 
+  imprese: g => impreseAside(g, ms(g)),
+
+  arrestText: g => smuggleArrestText(ms(g), g) ?? '<p class="big">Le guardie vi hanno arrestato: per voi la partita è finita.</p>',
+
   cardNote(g, eventId) {
     void g;
-    return requestNote(eventId) ?? '';
+    return requestNote(eventId) ?? impresaCardNote(eventId) ?? '';
   },
 
   resourceBar(g) {
@@ -419,6 +432,22 @@ export const view: ExpansionView = {
         const id = data.req as RichiestaId, r = fulfilRequest(g, id);
         return { say: reaction(r, `Dono fatto, ${h(p)}: ${n(RICHIESTE[id]?.prestigio ?? 0)} di prestigio.`, p) };
       }
+      case 'water': {
+        const r = playWater(g);
+        return fromAside('Il vino annacquato', reaction(r, `Fatto, ${h(p)}: ${n(r.added ?? 0)} botti in più. Ora pregate che i mercanti non abbiano il palato fino.`, p));
+      }
+      case 'smuggle': {
+        const qty = field('smuggle-qty');
+        return fromAside("Il contrabbando del Corno d'Oro", reaction(playSmuggle(g, qty), `La nave salpa a luna nuova con ${n(qty)} manufatti, ${h(p)}. Arriverà fra due anni. Non ne parlate con nessuno.`, p));
+      }
+      case 'console': {
+        const id = field('console-k'), k = st.fiera?.contratti.find(x => x.id === id);
+        return fromAside('Il console comprato', reaction(playConsole(g, id), k ? `Il console ha intascato l'oro: ${contractLine(k)} sarà vostro al prezzo base. Se nessuno parla.` : '', p));
+      }
+      case 'bankrupt': {
+        const r = playBankrupt(g);
+        return fromAside('Il mercante fallito', reaction(r, `Comprato tutto per ${n(r.cost ?? 0)} scudi: la merce arriverà da Pisa nel ${900 + (r.arrive ?? 0)}. Speriamo non sia tutta marcia.`, p));
+      }
       case 'plant':
         return { say: reaction(plant(g), `Le barbatelle sono a dimora, ${h(p)}: ora avete ${cantinaOf(g).vigneti} ${cantinaOf(g).vigneti === 1 ? 'vigneto' : 'vigneti'}. La prima vendemmia, l'anno prossimo.`, p) };
       case 'postLoan': {
@@ -439,6 +468,11 @@ export const view: ExpansionView = {
   cost(g, op, data, field) {
     const st = ms(g);
     if (op === 'plant') return VIGNETO_COST;
+    if (op === 'console') return 2000;
+    if (op === 'bankrupt') {
+      const c = (st.imprese?.[g.state.current] ?? []).find(x => x.id === 'fallito');
+      return c ? ((c.vino ?? 0) + (c.manufatti ?? 0)) * 5 : 0;
+    }
     if (op === 'joinFair') {
       const f = fairOpen(st, g.state.q), had = f?.quote[g.state.current] ?? -1, t = QUOTE[Number(data.tier)];
       return t ? t.fee - (had >= 0 ? QUOTE[had].fee : 0) : 0;
@@ -452,7 +486,7 @@ export const view: ExpansionView = {
 
   chronicle(f, players) {
     const d = f.data, P = (i: number) => who(players[i]);
-    const fair = fairChronicle(f.kind, d) ?? consumiChronicle(f.kind, d);
+    const fair = fairChronicle(f.kind, d) ?? consumiChronicle(f.kind, d) ?? impresaChronicle(f.kind, d);
     if (fair) return fair;
     switch (f.kind) {
       case 'vineyard': return d.n === 1 ? 'Piantò il suo primo vigneto.' : `Piantò nuove vigne: i vigneti del feudo divennero ${d.n}.`;

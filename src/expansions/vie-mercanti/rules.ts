@@ -14,6 +14,8 @@
  *
  * - Fiera biennale dei mercanti forestieri (fiera.ts): contratti a gara al
  *   ribasso, consegne con le carovane alle piazze.
+ * - Imprese dell'espansione (imprese.ts): vino annacquato, contrabbando,
+ *   console comprato, mercante fallito. Le imprese del gioco base non escono.
  * - Consumi di prestigio (consumi.ts): banchetti, feste per i titoli, arredi
  *   del palazzo e richieste speciali dal mazzo degli imprevisti.
  * Il sensale e i pignoramenti degli usurai sono ora nel gioco base.
@@ -35,7 +37,7 @@ import { late, type EventoViaggio } from './carovane';
 import { addPrestige, marketPrestige, PRESTIGIO } from './prestigio';
 import { Mulberry32 } from '../../domain/rng';
 import {
-  arrivals, bidOf, committed, FASCE, SPECIALE, deadlines, fairOpen, isFairYear, joinFair as joinFairOf, makeFair, placeBid, promised, QUOTE, resolveFair, ship,
+  arrivals, bidOf, bribeConsole, committed, CONSOLE_COSTO, FASCE, SPECIALE, deadlines, fairOpen, isFairYear, joinFair as joinFairOf, makeFair, placeBid, promised, QUOTE, resolveFair, ship,
   impegniOf, visibleTo, type FairCtx, type FieraDispatch, type FieraState,
 } from './fiera';
 import { travelYears } from './geografia';
@@ -43,6 +45,10 @@ import {
   BANCHETTI, BANCHETTI_ID, banchettoFatto, drawRequest, expireRequests, festaDi, festaOf, FESTA_PRESTIGIO_MERCANTILE, fulfil, holdBanquet, holdFeast, offerFeast,
   palaceNeeds, RICHIESTA_EVENT, RICHIESTA_PESO, RICHIESTE, RICHIESTE_ID, richiestaOfEvent, richiesteOf, type Banchetto, type ConsumiState, type RichiestaId,
 } from './consumi';
+import {
+  buyBankrupt, cardOf as impresaCard, CONTRABBANDO_MAX, CONTRABBANDO_MIN, drawImpresa, expireImprese, IMPRESA_MERC_EVENT, IMPRESA_PESO, impresaMercOfEvent, impreseOf,
+  IMPRESE_MERC, settleImprese, smuggle, waterWine, discard, type ImpresaDispatch, type ImpreseState,
+} from './imprese';
 
 export const ID = 'vie-mercanti';
 
@@ -73,10 +79,11 @@ export type Dispatch =
   /** prestigio mercantile perduto per un pignoramento */
   | { k: 'disonore'; prestigio: number }
   | FieraDispatch
+  | ImpresaDispatch
   /** si può celebrare il nuovo titolo */
   | { k: 'festaTitolo'; rango: number };
 
-export interface MercantiState extends FieraState, ConsumiState {
+export interface MercantiState extends FieraState, ConsumiState, ImpreseState {
   /** anno (q) dell'ultimo pignoramento degli usurai già punito nel prestigio */
   disonore?: number[];
   /** stato del generatore dell'espansione (viaggi delle carovane) */
@@ -316,6 +323,39 @@ export function fulfilRequest(g: Game, id: RichiestaId): ActionResult & { presti
   return r;
 }
 
+// ---------------------------------------------------------------- imprese
+
+export function playWater(g: Game): ActionResult & { added?: number } {
+  const r = waterWine(g, ms(g));
+  if (r.ok) note(g, g.state.current, 'wineWatered', { added: r.added! });
+  return r;
+}
+
+export function playSmuggle(g: Game, qty: number): ActionResult {
+  const r = smuggle(g, ms(g), qty);
+  if (r.ok) note(g, g.state.current, 'smuggleOut', { qty });
+  return r;
+}
+
+/** Il console comprato: si gioca nell'anno della fiera, su un contratto che si vede. */
+export function playConsole(g: Game, contract: number): ActionResult {
+  const st = ms(g);
+  if (!impresaCard(g, st, 'console')) return { ok: false, reason: 'non avete la carta' };
+  const r = bribeConsole(fairCtx(g), contract);
+  if (r.ok) {
+    discard(g, st, 'console');
+    note(g, g.state.current, 'consoleBought', { cost: CONSOLE_COSTO });
+  }
+  return r;
+}
+
+export function playBankrupt(g: Game): ActionResult & { cost?: number; arrive?: number } {
+  const card = impresaCard(g, ms(g), 'fallito');
+  const r = buyBankrupt(g, ms(g));
+  if (r.ok && card) note(g, g.state.current, 'bankruptBuy', { vino: card.vino ?? 0, manufatti: card.manufatti ?? 0, cost: r.cost!, arrive: 900 + r.arrive! });
+  return r;
+}
+
 // ---------------------------------------------------------------- signori del computer
 
 const round50 = (v: number) => Math.floor(v / 50) * 50;
@@ -466,6 +506,43 @@ function botFair(c: BotCtx): void {
   }
 }
 
+/**
+ * Imprese: il mercante fallito conviene sempre (merce a poco); il vino
+ * annacquato il difficile lo usa solo vicino al trono, per i banchetti; il
+ * contrabbando, che può portare all'arresto, il difficile non lo tenta mai e
+ * il medio solo nei debiti o all'ultimo anno della carta.
+ */
+function botImprese(c: BotCtx): void {
+  const { g, level, rnd, log } = c;
+  const st = ms(g), p = g.player, cant = cantinaOf(g), q = g.state.q;
+  for (const card of [...impreseOf(st, g.state.current)]) {
+    const last = q >= card.dal + 5;
+    if (card.id === 'fallito') {
+      const cost = ((card.vino ?? 0) + (card.manufatti ?? 0)) * 5;
+      if ((level !== 'facile' || rnd() < 0.5) && p.scudi - cost >= (level === 'difficile' ? 1000 : 2000) && playBankrupt(g).ok) log.push(`compra il fondaco del mercante fallito per ${cost} scudi`);
+    } else if (card.id === 'annacquato') {
+      const go = level === 'difficile' ? nearThrone(g) : level === 'medio' ? rnd() < 0.4 || last : rnd() < 0.3;
+      if (go && cant.vino >= 200 && playWater(g).ok) log.push('annacqua il vino');
+    } else if (card.id === 'contrabbando') {
+      const free = cant.manufatti - committed(st, g.state.current, 'manufatti');
+      const go = level === 'facile' ? rnd() < 0.3 : level === 'medio' && (p.scudi < 0 || last) && rnd() < 0.5;
+      const qty = Math.min(CONTRABBANDO_MAX, free);
+      if (go && qty >= CONTRABBANDO_MIN && playSmuggle(g, qty).ok) log.push(`imbarca ${qty} manufatti di contrabbando per Costantinopoli`);
+    }
+  }
+}
+
+/** Il console comprato, dopo le offerte: sul contratto più ricco fra quelli offerti. */
+function botConsole(c: BotCtx): void {
+  const { g, level, rnd, log } = c;
+  const st = ms(g), me = g.state.current, f = fairOpen(st, g.state.q);
+  if (!f || !impresaCard(g, st, 'console') || g.player.scudi < CONSOLE_COSTO + 1000) return;
+  if (level === 'medio' && rnd() < 0.5) return;
+  const mine = f.offerte.filter(o => o.player === me).map(o => f.contratti.find(k => k.id === o.contract)!).sort((a, b) => b.qty * b.base - a.qty * a.base);
+  const k = level === 'facile' ? visibleTo(f, me)[Math.floor(rnd() * visibleTo(f, me).length)] : mine[0];
+  if (k && playConsole(g, k.id).ok) log.push('compra il console della fiera');
+}
+
 /** Spedisce i contratti appena la merce c'è (si incassa prima). */
 function botShip(c: BotCtx): void {
   const { g, log } = c;
@@ -554,6 +631,10 @@ export const rules: ExpansionRules = {
     const st = ms(g), me = g.state.current, p = g.player;
     // le carovane arrivate alle piazze si fanno pagare; la fiera è aperta
     arrivals(fairCtx(g));
+    // imprese: merce del mercante fallito e nave del contrabbando (che può costare l'arresto); carte scadute
+    const arrested = settleImprese(g, st, roll(st), d => changePrestige(g, me, d), d => send(st, me, d), (kind, data) => note(g, me, kind, data));
+    for (const id of expireImprese(g, st, me)) note(g, me, 'impresaLost', { card: IMPRESE_MERC.indexOf(id) });
+    if (arrested) g.arrestCurrent();
     if (isFairYear(g.state.q) && st.fiera) send(st, me, { k: 'fieraAperta', q: g.state.q, n: st.fiera.contratti.length });
     st.inbox = st.mail.filter(m => m.to === me).map(m => m.d);
     st.mail = st.mail.filter(m => m.to !== me);
@@ -599,16 +680,23 @@ export const rules: ExpansionRules = {
   },
 
   // mazzo dell'espansione: le richieste che il signore non ha già in mano
+  // mazzo dell'espansione: richieste e imprese che il signore non ha già in mano (una carta doppia non esce: niente imprevisto)
   deck(g) {
-    const hand = richiesteOf(ms(g), g.state.current);
-    return RICHIESTE_ID.filter(id => !hand.some(r => r.id === id)).map(id => ({ id: RICHIESTA_EVENT[id], w: RICHIESTA_PESO }));
+    const st = ms(g), me = g.state.current, hand = richiesteOf(st, me), imp = impreseOf(st, me);
+    return [
+      ...RICHIESTE_ID.filter(id => !hand.some(r => r.id === id)).map(id => ({ id: RICHIESTA_EVENT[id], w: RICHIESTA_PESO })),
+      ...IMPRESE_MERC.filter(id => !imp.some(c => c.id === id)).map(id => ({ id: IMPRESA_MERC_EVENT[id], w: IMPRESA_PESO })),
+    ];
   },
 
   onCard(g, id) {
-    const req = richiestaOfEvent(id), me = g.state.current;
-    if (!req) return;
-    drawRequest(g, ms(g), me, req);
-    note(g, me, 'requestDrawn', { req: RICHIESTE_ID.indexOf(req) });
+    const st = ms(g), me = g.state.current;
+    const req = richiestaOfEvent(id), imp = impresaMercOfEvent(id);
+    if (req) {
+      drawRequest(g, st, me, req);
+      note(g, me, 'requestDrawn', { req: RICHIESTE_ID.indexOf(req) });
+    }
+    if (imp && drawImpresa(g, st, me, imp, roll(st))) note(g, me, 'impresaDrawn', { card: IMPRESE_MERC.indexOf(imp) });
   },
 
   // ogni piano di palazzo chiede manufatti: quelli che mancano si comprano dagli artigiani
@@ -632,6 +720,7 @@ export const rules: ExpansionRules = {
   },
 
   botBeforeTrade(c) {
+    botImprese(c);
     botBorrow(c);
     botShip(c);
     botRescue(c);
@@ -642,6 +731,7 @@ export const rules: ExpansionRules = {
   botBeforeInvest(c) {
     if (fairOpen(ms(c.g), c.g.state.q)) {
       botFair(c);
+      botConsole(c);
       botSell(c, true);
     }
     botPlant(c);

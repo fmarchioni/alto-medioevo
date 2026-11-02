@@ -229,6 +229,8 @@ export type Phase =
   /** esito di un'impresa temeraria; poi si torna alla fase `dopo` ('inizio': all'inizio del turno) */
   | { kind: 'impresa'; id: ImpresaId; esito: EsitoImpresa; amount: number; dopo: 'inizio' | 'commercio' | 'investimenti' }
   | { kind: 'commercio' }
+  /** il signore è stato arrestato all'inizio del turno per una carta di un'espansione: lascia il posto al seguente */
+  | { kind: 'arresto' }
   | { kind: 'esitoNutrimento' }
   | { kind: 'evento'; eventId: number; awaitingChoice: boolean; outcome?: EventOutcome; faction?: FactionId; nemici?: number }
   | { kind: 'rendite'; preview: RenditePreview }

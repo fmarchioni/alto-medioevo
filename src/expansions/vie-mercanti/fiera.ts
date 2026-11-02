@@ -69,7 +69,19 @@ export const PRESTIGIO_FIERA = {
   parziale: -6,
   /** nulla consegnato */
   mancato: -15,
+  /** vino annacquato scoperto */
+  annacquato: -30,
+  /** console comprato, e si è saputo */
+  console: -40,
 } as const;
+
+/** Vino annacquato: probabilità che un mercante se ne accorga a ogni consegna, e multa (multiplo del valore). */
+export const ANNACQUATO_SCOPERTO = 1 / 3;
+export const ANNACQUATO_MULTA = 2;
+/** Console comprato: quanto costa, probabilità che si sappia, fiere da cui si è esclusi. */
+export const CONSOLE_COSTO = 2000;
+export const CONSOLE_SCANDALO = 0.25;
+export const CONSOLE_ESCLUSO = 2;
 
 export interface Contratto {
   id: number;
@@ -98,6 +110,8 @@ export interface Fiera {
   quote: number[];
   /** offerte a buste chiuse */
   offerte: Offerta[];
+  /** consoli comprati: il signore vince quel contratto al prezzo base, se non si scopre */
+  console?: { player: number; contract: number }[];
 }
 
 /** Un contratto vinto: la merce da spedire, poi la carovana verso la piazza. */
@@ -110,14 +124,24 @@ export interface Impegno {
   /** ultimo anno (q) per spedire */
   entro: number;
   /** la carovana partita */
-  spedito?: { q: number; qty: number; arrive: number; previsti: number; perse: number; evento?: EventoViaggio };
+  spedito?: { q: number; qty: number; arrive: number; previsti: number; perse: number; evento?: EventoViaggio; annacquato?: boolean };
 }
 
 export interface FieraState extends MerciState {
   prestigio: number[];
   fiera?: Fiera;
   impegni: Impegno[];
+  /** vino annacquato: ultimo anno (q) in cui le spedizioni di vino del signore sono a rischio */
+  annacqua?: number[];
+  /** escluso dalle fiere fino all'anno (q) compreso */
+  esclusi?: number[];
 }
+
+/** Il signore è escluso dalla fiera dell'anno q. */
+export const excluded = (st: FieraState, i: number, q: number) => (st.esclusi?.[i] ?? -1) >= q;
+const exclude = (st: FieraState, players: number, i: number, until: number) => {
+  (st.esclusi ??= Array.from({ length: players }, () => -1))[i] = Math.max(st.esclusi[i] ?? -1, until);
+};
 
 /** Notizie della fiera per un signore. */
 export type FieraDispatch =
@@ -127,7 +151,12 @@ export type FieraDispatch =
   | { k: 'fieraRifiutata'; c: Contratto; price: number }
   | { k: 'fieraSpedita'; c: Contratto; qty: number; arrive: number }
   | { k: 'fieraPagata'; c: Contratto; qty: number; perse: number; gain: number; ritardo: boolean; evento?: EventoViaggio; prestigio: number }
-  | { k: 'fieraMancata'; c: Contratto; manca: number; penale: number; prestigio: number };
+  | { k: 'fieraMancata'; c: Contratto; manca: number; penale: number; prestigio: number }
+  /** il vino annacquato è stato scoperto alla consegna */
+  | { k: 'vinoScoperto'; c: Contratto; multa: number; prestigio: number; fino: number }
+  /** il console comprato: si è saputo, o ha fatto il suo lavoro */
+  | { k: 'consoleScoperto'; c: Contratto; prestigio: number; fino: number }
+  | { k: 'consoleFatto'; c: Contratto };
 
 /** Ciò che la fiera chiede alle regole dell'espansione. */
 export interface FairCtx {
@@ -186,6 +215,7 @@ export function joinFair(c: FairCtx, tier: number): ActionResult & { fee?: numbe
   if (no) return no;
   const f = fairOpen(st, g.state.q);
   if (!f) return { ok: false, reason: `la prossima fiera si tiene nel ${900 + nextFair(g.state.q)}` };
+  if (excluded(st, me, f.q)) return { ok: false, reason: `i mercanti forestieri non vi vogliono alla fiera fino al ${900 + st.esclusi![me]}` };
   if (!Number.isInteger(tier) || tier < 0 || tier >= QUOTE.length) return { ok: false, reason: 'quota non valida' };
   const had = f.quote[me] ?? -1;
   if (tier <= had) return { ok: false, reason: 'avete già questa quota' };
@@ -214,6 +244,22 @@ export function placeBid(c: FairCtx, contract: number, price: number): ActionRes
   return { ok: true };
 }
 
+/** Compra il console per un contratto visibile: lo si vince al prezzo base, a meno che si sappia. */
+export function bribeConsole(c: FairCtx, contract: number): ActionResult {
+  const { g, st } = c, me = g.state.current, p = g.player;
+  const no = fairPhase(g);
+  if (no) return no;
+  const f = fairOpen(st, g.state.q);
+  if (!f) return { ok: false, reason: 'si compra il console nell\'anno della fiera' };
+  const k = visibleTo(f, me).find(x => x.id === contract);
+  if (!k) return { ok: false, reason: 'scegliete un contratto che vedete alla fiera' };
+  if (f.console?.some(x => x.contract === contract)) return { ok: false, reason: 'per quel contratto il console è già stato comprato da altri' };
+  if (p.scudi - CONSOLE_COSTO < -p.credito) return { ok: false, reason: 'tesoro e credito insufficienti' };
+  p.scudi -= CONSOLE_COSTO;
+  (f.console ??= []).push({ player: me, contract });
+  return { ok: true };
+}
+
 /** Punteggio di un'offerta: 90% convenienza del prezzo (rispetto all'offerta più bassa), 10% prestigio. */
 export const bidScore = (price: number, minPrice: number, prestigio: number) => PESO_PREZZO * (minPrice / price) + PESO_PRESTIGIO * (prestigio / 100);
 /** Probabilità che i mercanti accettino un prezzo sopra il base. */
@@ -228,13 +274,30 @@ export function resolveFair(c: FairCtx, nextId: () => number): Impegno[] {
   if (!f || f.q !== g.state.q) return [];
   const ps = g.state.players, out: Impegno[] = [];
   for (const k of f.contratti) {
-    const bids = f.offerte.filter(o => o.contract === k.id && ps[o.player].caduto === undefined);
+    let bids = f.offerte.filter(o => o.contract === k.id && ps[o.player].caduto === undefined);
+    // il console comprato: si sa (escluso dalla gara e dalle fiere seguenti), o il contratto è suo al prezzo base
+    let fixed: Offerta | null = null;
+    const bribe = f.console?.find(x => x.contract === k.id && ps[x.player].caduto === undefined);
+    if (bribe) {
+      if (rnd() < CONSOLE_SCANDALO) {
+        const fino = f.q + CONSOLE_ESCLUSO * FIERA_OGNI;
+        exclude(st, ps.length, bribe.player, fino);
+        c.tell(bribe.player, { k: 'consoleScoperto', c: k, prestigio: c.prestige(bribe.player, PRESTIGIO_FIERA.console), fino });
+        c.note(bribe.player, 'consoleCaught', { fino: 900 + fino });
+        bids = bids.filter(b => b.player !== bribe.player);
+      } else {
+        fixed = { player: bribe.player, contract: k.id, price: k.base };
+        bids = [fixed, ...bids.filter(b => b.player !== bribe.player)];
+        c.tell(bribe.player, { k: 'consoleFatto', c: k });
+      }
+    }
     if (!bids.length) continue;
     const min = Math.min(...bids.map(b => b.price));
     const ranked = bids.map(b => ({ b, s: bidScore(b.price, min, st.prestigio[b.player] ?? 0), t: rnd() })).sort((a, b) => b.s - a.s || a.t - b.t);
-    let win: Offerta | null = null;
+    let win: Offerta | null = fixed;
     const refused = new Set<Offerta>();
     for (const { b } of ranked) {
+      if (win) break;
       if (rnd() < acceptAbove(b.price, k.base)) { win = b; break; }
       refused.add(b);
       c.tell(b.player, { k: 'fieraRifiutata', c: k, price: b.price });
@@ -281,7 +344,8 @@ export function ship(c: FairCtx, id: number, qty: number, auto = false): ActionR
   cant[imp.c.good] -= qty;
   const previsti = travelYears(g.player.feudo, { piazza: imp.c.piazza });
   const v = rollJourney(rnd, previsti, qty);
-  imp.spedito = { q: g.state.q, qty, arrive: g.state.q + v.anni, previsti, perse: v.perse, ...(v.evento ? { evento: v.evento } : {}) };
+  const watered = imp.c.good === 'vino' && (st.annacqua?.[me] ?? -1) >= g.state.q;
+  imp.spedito = { q: g.state.q, qty, arrive: g.state.q + v.anni, previsti, perse: v.perse, ...(v.evento ? { evento: v.evento } : {}), ...(watered ? { annacquato: true } : {}) };
   if (auto) c.tell(me, { k: 'fieraSpedita', c: imp.c, qty, arrive: imp.spedito.arrive });
   c.note(me, 'fairShip', { good: MERCI.indexOf(imp.c.good), qty, piazza: PIAZZE.findIndex(x => x.id === imp.c.piazza), arrive: 900 + imp.spedito.arrive });
   if (qty < imp.c.qty) shortfall(c, imp, imp.c.qty - qty, PRESTIGIO_FIERA.parziale);
@@ -325,6 +389,17 @@ export function arrivals(c: FairCtx): void {
   const { g, st } = c, me = g.state.current, p = g.player;
   for (const imp of impegniOf(st, me).filter(x => x.spedito && x.spedito.arrive <= g.state.q)) {
     const s = imp.spedito!;
+    st.impegni = st.impegni.filter(x => x !== imp);
+    // vino annacquato: un mercante assaggia; niente pagamento, multa, prestigio perduto e fuori dalla fiera seguente
+    if (s.annacquato && c.rnd() < ANNACQUATO_SCOPERTO) {
+      const multa = INT((s.qty - s.perse) * imp.price * ANNACQUATO_MULTA);
+      p.scudi -= multa;
+      const fino = nextFair(g.state.q);
+      exclude(st, g.state.players.length, me, fino);
+      c.tell(me, { k: 'vinoScoperto', c: imp.c, multa, prestigio: c.prestige(me, PRESTIGIO_FIERA.annacquato), fino });
+      c.note(me, 'wineCaught', { multa, fino: 900 + fino });
+      continue;
+    }
     const arrived = s.qty - s.perse, ritardo = late(s);
     const gain = INT(arrived * imp.price * (ritardo ? PAGA_RITARDO : 1));
     p.scudi += gain;
@@ -333,6 +408,5 @@ export function arrivals(c: FairCtx): void {
     const prestigio = delta ? c.prestige(me, delta) : 0;
     c.tell(me, { k: 'fieraPagata', c: imp.c, qty: s.qty, perse: s.perse, gain, ritardo, ...(s.evento ? { evento: s.evento } : {}), prestigio });
     c.note(me, 'fairPaid', { good: MERCI.indexOf(imp.c.good), qty: arrived, gain, piazza: PIAZZE.findIndex(x => x.id === imp.c.piazza) });
-    st.impegni = st.impegni.filter(x => x !== imp);
   }
 }
