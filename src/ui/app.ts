@@ -722,7 +722,7 @@ function renderExpansions(selected: string | null): string {
 }
 
 /** Umore e fiducia in una parola: ottimo, buono, normale, infelice, rabbia. */
-const SERVI_WORD: Record<Livello, string> = { ottimo: 'festanti', buono: 'contenti', normale: 'tranquilli', infelice: 'infelici', rabbia: 'furiosi' };
+const SERVI_WORD: Record<Livello, string> = { ottimo: 'festanti', buono: 'contenti', normale: 'mormorano', infelice: 'scontenti', rabbia: 'furiosi' };
 const MERCANTI_WORD: Record<Livello, string> = { ottimo: 'prosperi', buono: 'fiduciosi', normale: 'cauti', infelice: 'diffidenti', rabbia: 'in fuga' };
 
 /** Una scena di fine anno (una battaglia), a tutto schermo prima del riepilogo. */
