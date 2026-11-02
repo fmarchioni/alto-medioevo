@@ -6,7 +6,7 @@ import type { Game } from '../../domain/turn';
 import type { GameState, Player } from '../../domain/types';
 import { FEUDI } from '../../domain/rank';
 import {
-  bidOf, fairOpen, quotaValue, FIERA_OGNI, impegniOf, nextFair, OFFERTA_MAX, PAGA_RITARDO, PENALE, PESO_PREZZO, PESO_PRESTIGIO, PRESTIGIO_FIERA, QUOTE, SOPRA_BASE,
+  bidOf, fairOpen, quotaValue, FIERA_OGNI, impegniOf, nextFair, OFFERTA_MAX, PAGA_RITARDO, PENALE, PESO_PREZZO, PESO_PRESTIGIO, QUOTE,
   visibleTo, type Contratto, type FieraDispatch, type FieraState,
 } from './fiera';
 import { PIAZZE, travelYears } from './geografia';
@@ -98,7 +98,8 @@ export function fieraPanel(g: Game, st: FieraState): string {
     fair = `<p>Fiera del <b>${yearOf(f.q)}</b>. ${tier < 0 ? "Per vedere i contratti pagate la quota d'ingresso." : `Avete ${QUOTE[tier].name}.`}${hidden && tier >= 0 ? ` Altri ${hidden} contratti, i più ricchi, li vede solo chi investe di più.` : ''}</p>
       ${join ? `<div class="btns">${join}</div>` : ''}
       ${vis.length ? `<table class="ext-table"><thead><tr><th>Contratto</th><th>Piazza</th><th>Spedire entro</th><th>Prezzo base l'unità</th><th>La vostra offerta</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
-      <p class="hint">Le buste si aprono alla fine dell'anno. Conta per il ${Math.round(PESO_PREZZO * 100)}% il prezzo (vince chi chiede meno) e per il ${Math.round(PESO_PRESTIGIO * 100)}% il prestigio mercantile. Al prezzo base l'offerta è sempre accettata; sopra il base i mercanti accettano di rado (${Math.round(SOPRA_BASE * 100)}% appena sopra, mai oltre ${Math.round((OFFERTA_MAX - 1) * 100)}% in più).</p>`;
+      <p class="hint">Le buste si aprono alla fine dell'anno. Conta per il ${Math.round(PESO_PREZZO * 100)}% il prezzo (vince chi chiede meno) e per il ${Math.round(PESO_PRESTIGIO * 100)}% il prestigio mercantile.</p>
+      <p class="hint">Se prendi una loggia o un palazzo avrai accesso ad affari di alto livello.</p>`;
   }
   const mine = impegniOf(st, me);
   const going = mine.map(x => {
@@ -111,7 +112,7 @@ export function fieraPanel(g: Game, st: FieraState): string {
   }).join('');
   return `${fair}
     ${going ? `<h3>Contratti in corso</h3><ul class="ext-ledger">${going}</ul>` : ''}
-    <p class="hint">La fiera si tiene ogni ${anni(FIERA_OGNI)}. Chi vince spedisce la merce con una carovana: si incassa all'arrivo. Alla scadenza la carovana parte da sola con quello che c'è in magazzino; la merce che manca costa una penale del ${Math.round(PENALE * 100)}% del suo prezzo. Chi arriva in ritardo è pagato il ${Math.round((1 - PAGA_RITARDO) * 100)}% in meno, e la merce perduta per strada non si paga. Consegna intera e puntuale: prestigio da ${signed(PRESTIGIO_FIERA.consegna[0])} a ${signed(PRESTIGIO_FIERA.consegna[3])}; consegna parziale ${signed(PRESTIGIO_FIERA.parziale)}, nessuna consegna ${signed(PRESTIGIO_FIERA.mancato)}. Se la merce non basta, compratela al fondaco: arriva in tempo se il viaggio è breve.</p>`;
+    <p class="hint">La fiera si tiene ogni ${FIERA_OGNI} anni. Chi vince spedisce la merce con una carovana: si incassa all'arrivo. Alla scadenza la carovana parte da sola con quello che c'è in magazzino; la merce che manca costa una penale del ${Math.round(PENALE * 100)}% del suo prezzo. Chi arriva in ritardo è pagato il ${Math.round((1 - PAGA_RITARDO) * 100)}% in meno, e la merce perduta per strada non si paga. Consegna intera e puntuale fa salire il prestigio. Consegne parziali o mancate fanno diminuire il prestigio.<br>Se la merce non basta, compratela al fondaco a buon cuore degli offerenti.</p>`;
 }
 
 /** Sottotitolo della tessera della fiera. */
