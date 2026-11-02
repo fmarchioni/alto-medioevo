@@ -339,8 +339,8 @@ function taxes(c: Ctx, level: BotLevel): void {
     const best = bestRates(p, sc);
     const gain = previewRates(p, sc, best).totale - previewRates(p, sc, cur).totale;
     const changes = KINDS.filter(k => best[k] !== cur[k]).length;
-    // ogni ritocco fa marcire in media un quinto del grano (in modalità classica)
-    const spoilCost = g.state.options.spoilOncePerYear ? 0 : changes * 0.2 * (p.grano * sc.prezzo) / 1000;
+    // ogni ritocco fa marcire in media un quinto del grano (senza la riforma delle gabelle e senza spoilOncePerYear)
+    const spoilCost = g.state.options.spoilOncePerYear || p.fiducia !== undefined ? 0 : changes * 0.2 * (p.grano * sc.prezzo) / 1000;
     if (gain > spoilCost) target = best;
   }
   // svista: si fa convincere dagli esattori ad alzare il bevere, e il popolo si scontenta

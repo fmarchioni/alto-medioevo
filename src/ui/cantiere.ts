@@ -192,7 +192,8 @@ function bulkLandButton(p: Player): string {
 }
 
 /** war: dopo il cantiere viene il menu Guerra dell'espansione */
-export function renderCantiere(g: Game, ui: CantiereUi, war = false): string {
+/** extra: altre carte grandi accanto alle costruzioni (es. "Fra signori", accanto al palazzo) */
+export function renderCantiere(g: Game, ui: CantiereUi, war = false, extra = ''): string {
   const p = g.player, sc = g.state.scalars;
   const ka = wealthIndex(p);
   const goal = nextGoal(p, victoryRule(g.state.options));
@@ -219,7 +220,7 @@ export function renderCantiere(g: Game, ui: CantiereUi, war = false): string {
       <div class="goal-label">Ricchezza <b>${n(ka)}</b> · prossimo traguardo: <b>${goal.label}</b> ${ka > goal.target ? '(ricchezza raggiunta)' : `oltre ${n(goal.target)}`}${goal.floors ? `, con il palazzo completo (mancano <b>${goal.floors}</b> ${goal.floors === 1 ? 'piano' : 'piani'})` : ''}</div>
       <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
     </div>
-    <div class="build-cards">${cards}</div>
+    <div class="build-cards">${cards}${extra}</div>
     <p>Tesoro: <b>${n(p.scudi)}</b> scudi · credito degli usurai fino a <b>${n(-p.credito)}</b></p>
     ${usury}${g.state.options.pignoramenti ? foreclosureWarning(p, sc) : ''}
     <div class="btns"><button data-act="karta">Karta: guarda lo reame</button>${war ? '<button data-act="warMenu" class="primary">Proximus: guerra</button>' : '<button data-act="next" class="primary">Proximus: fine dell\'anno</button>'}</div>`;

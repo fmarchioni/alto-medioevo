@@ -57,6 +57,8 @@ export interface ExpansionView {
   dispatches(g: Game, animate: boolean): string;
   /** riquadro dopo l'esito di un imprevisto: finché non è null sostituisce il pulsante Prosegui */
   eventPanel?(g: Game): string | null;
+  /** avviso a comparsa all'arrivo nei dispendimenti (una volta per turno), es. merce da spedire; null: nessuno */
+  reminder?(g: Game): { title: string; body: string } | null;
   /** carta del mazzo dell'espansione appena pescata: dove va e come si gioca (assente: testo generico) */
   cardNote?(g: Game, eventId: number): string;
   /** schermata dell'arresto deciso dall'espansione all'inizio del turno (HTML, senza pulsante) */

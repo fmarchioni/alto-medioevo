@@ -23,7 +23,7 @@ import { bottino, cartaInMano, COMPLICE_CHANCE, IMPRESA_SUCCESSO, impresaOfEvent
 import { DEBITO_ARRESTO, endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
 import type { Rng } from './rng';
 import type { ActionResult, BotLevel, ChronicleFact, GameState, Gender, Options, Player, Strategia } from './types';
-import { CLASSIC_OPTIONS } from './types';
+import { GAME_OPTIONS } from './types';
 
 export interface NewPlayer {
   name: string;
@@ -71,7 +71,7 @@ export class Game {
     public readonly rules: ExpansionRules | null = null,
   ) {}
 
-  static create(players: NewPlayer[], rng: Rng, options: Options = CLASSIC_OPTIONS, rules: ExpansionRules | null = null): Game {
+  static create(players: NewPlayer[], rng: Rng, options: Options = GAME_OPTIONS, rules: ExpansionRules | null = null): Game {
     if (players.length < 1 || players.length > MAX_PLAYERS) throw new Error(`da 1 a ${MAX_PLAYERS} giocatori`);
     // con le fazioni le città si assegnano a sorte (generatore proprio: la sequenza RND non cambia)
     const feudi = players.map((_, i) => i);

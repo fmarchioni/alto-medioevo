@@ -4,10 +4,11 @@
  * Si aggiunge agli imprevisti del listato, che restano, tranne il ciambellano
  * infedele: qui diventa un fatto con una scelta.
  *
- * Quanti fatti per anno dipende da quanto il signore "teme la sorte":
- * - poco: un anno su due, un fatto;
+ * Quanti fatti per anno dipende da quanto il signore "teme la sorte": chi la
+ * sfida ne vede di più.
+ * - poco: due fatti l'anno (a signori diversi);
  * - normale: un fatto l'anno;
- * - molto: due fatti l'anno (a signori diversi).
+ * - molto: un anno su due, un fatto.
  * Chi ha avuto un fatto l'anno prima ha un terzo della probabilità di riaverlo.
  * La sorte dei fatti ha un generatore proprio salvato nella partita: la
  * sequenza RND del motore non cambia.
@@ -105,7 +106,7 @@ export function rollTargets(st: GameState, f: FattiState): void {
   const r = new Mulberry32(f.rng);
   f.last = f.q === st.q - 1 ? f.targets : [];
   const n = st.players.length;
-  const count = f.sorte === 'poco' ? (r.next() < 0.5 ? 1 : 0) : f.sorte === 'normale' ? 1 : 2;
+  const count = f.sorte === 'molto' ? (r.next() < 0.5 ? 1 : 0) : f.sorte === 'normale' ? 1 : 2;
   const pool = [...Array(n).keys()];
   const targets: number[] = [];
   for (let k = 0; k < Math.min(count, n); k++) {

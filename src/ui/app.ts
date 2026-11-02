@@ -14,7 +14,7 @@ import { COSTS, type InvestmentKind } from '../domain/investments';
 import { DEBITO_ARRESTO, FEUDI, rankOf, titleName, wealthIndex } from '../domain/rank';
 import { C64Rnd, Mulberry32, ORIGINAL_SEED, type Rng } from '../domain/rng';
 import { Game, MAX_PLAYERS, type NewPlayer } from '../domain/turn';
-import { BALANCED_OPTIONS, CLASSIC_OPTIONS, type BotLevel, type Gender, type Player } from '../domain/types';
+import { GAME_OPTIONS, type BotLevel, type Gender, type Player } from '../domain/types';
 import { playBotTurn } from '../domain/bots';
 import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
@@ -38,7 +38,7 @@ import { ANSELMO } from './advisor';
 import { speechBox } from './speaker';
 import { comicText, effectBadges, outcomeText, renderEventComic, renderOutcomeComic, type ComicText } from './comics';
 import { changedKinds, currentRates, KINDS, presets, previewRates, renderRendite, spoilsFor, treasurerGreeting, treasurerReaction, updateLive, type RenditeUi } from './rendite';
-import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderSignoriCard, renderTrade, type TradeUi } from './trade';
+import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderSignoriBuildCard, renderTrade, type TradeUi } from './trade';
 
 /** Pagina "Fra signori": le carte dell'espansione per gli affari con gli altri signori. */
 const signoriPage = (cards: ExtCard[], back: string) => `<h2>Fra signori</h2>${renderExtCards(cards, '')}
@@ -52,7 +52,7 @@ interface UiState {
   slot: string | null;
   rngKind: RngKind;
   message: string;
-  setup: { count: number; mode: 'classica' | 'bilanciata'; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; expansion: string | null };
+  setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; expansion: string | null };
   /** pannelli dell'espansione nella Delibera */
   ext: ExtUi;
   trade: TradeUi;
@@ -83,6 +83,8 @@ interface UiState {
   confirm: DebtConfirm | null;
   /** turno per cui si è già cercato un pignoramento da annunciare */
   seizedKey?: string;
+  /** turno in cui l'espansione ha già mostrato il suo avviso nei dispendimenti */
+  reminderKey?: string;
 }
 
 /** Testi delle vignette, scelti una volta per evento così restano fissi ai ridisegni. */
@@ -155,7 +157,7 @@ function rateBadgesFor(g: Game): RateBadges {
 export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   const startRng: RngKind = opts.rngKind ?? 'mulberry';
   const ui: UiState = {
-    game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, mode: 'classica', sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], expansion: null },
+    game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], expansion: null },
     ext: { key: '', panel: null, say: '' },
     trade: { key: '', mode: 'menu', advisor: '', qty: 0 },
     rendite: { key: '', draft: { bevere: 0, macina: 0, commerzio: 0 }, advisor: '' },
@@ -244,6 +246,12 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       const end = g.state.chronicle?.find(e => e.year === g.year - 1 && e.player === g.state.current && e.fact.t === 'yearEnd')?.fact;
       if (end?.t === 'yearEnd' && end.seized && !ui.notice) ui.notice = seizedNotice(end.seized, g.player);
     }
+    // dispendimenti: l'ultima occasione per qualcosa che l'espansione ricorda (es. la merce da spedire)
+    if (onTurn && g.state.phase.kind === 'investimenti' && ui.reminderKey !== turnKey(g)) {
+      ui.reminderKey = turnKey(g);
+      const r = exp?.view.reminder?.(g) ?? null;
+      if (r && !ui.notice) ui.notice = r;
+    }
     const decision = onTurn ? exp?.view.decision?.(g) ?? null : null;
     const modal = !g || ui.tutorial ? '' : ui.confirm ? renderConfirm(ui.confirm) : ui.notice ? renderNotice(ui.notice) : decision ? renderDecision(decision) : '';
     root.innerHTML = c64ify(page + deed + overlay + modal);
@@ -296,7 +304,6 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     if (ui.game) return;
     const t = e.target as HTMLInputElement;
     rememberSetup(t);
-    if (t.name === 'mode') ui.setup.mode = t.value as 'classica' | 'bilanciata';
     if (t.name === 'sorte') ui.setup.sorte = t.value as Sorte;
     if (t.name === 'count') {
       ui.setup.count = Number(t.value);
@@ -390,7 +397,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         }
         ui.rngKind = ui.setup.rngKind;
         const exp = findExpansion(ui.setup.expansion);
-        const rules = ui.setup.mode === 'classica' ? CLASSIC_OPTIONS : BALANCED_OPTIONS;
+        const rules = GAME_OPTIONS;
         ui.game = Game.create(players, makeRng(ui.rngKind), opts.fatti === false ? rules : { ...rules, fatti: ui.setup.sorte }, exp?.rules ?? null);
         ui.slot = newSlotId();
         ui.message = '';
@@ -648,7 +655,7 @@ function renderSaves(saves: SaveSlot[]): string {
     const st = s.state;
     const lords = st.players.map(p => `${esc(p.name)}${p.bot ? ` <small>(computer, ${p.bot})</small>` : ''}`).join(', ');
     const exp = findExpansion(st.expansion);
-    const rules = [st.options.spoilOncePerYear ? 'bilanciata' : 'classica', exp ? exp.view.title : '', st.options.fatti ? `sorte: ${st.options.fatti}` : ''].filter(Boolean).join(' · ');
+    const rules = [exp ? exp.view.title : '', st.options.fatti ? `sorte: ${st.options.fatti}` : ''].filter(Boolean).join(' · ');
     return `<li class="save-slot"><div class="save-info"><b>Anno ${900 + st.q}</b> · ${lords}<br><small>${rules} · salvata ${when(s.savedAt)}</small></div>
       <div class="save-btns"><button data-act="resume" data-slot="${esc(s.id)}" class="primary">Riprendi</button><button data-act="deleteSave" data-slot="${esc(s.id)}" class="ghost">Elimina</button></div></li>`;
   }).join('');
@@ -677,14 +684,10 @@ function renderSetup(ui: UiState): string {
     ${renderSaves(listSaves())}
     <form class="setup">
       <label>Signori <select name="count">${Array.from({ length: MAX_PLAYERS }, (_, i) => `<option ${i + 1 === ui.setup.count ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></label>
-      <label>Regole <select name="mode">
-        <option value="classica" ${ui.setup.mode === 'classica' ? 'selected' : ''}>classica (regole originali, tributo corretto)</option>
-        <option value="bilanciata" ${ui.setup.mode === 'bilanciata' ? 'selected' : ''}>bilanciata (bug corretti)</option>
-      </select></label>
       <label>Quanto temete la sorte, messere? <select name="sorte">
-        <option value="poco" ${ui.setup.sorte === 'poco' ? 'selected' : ''}>poco (un fatto del reame ogni due anni)</option>
+        <option value="poco" ${ui.setup.sorte === 'poco' ? 'selected' : ''}>poco (due fatti del reame l'anno)</option>
         <option value="normale" ${ui.setup.sorte === 'normale' ? 'selected' : ''}>normale (un fatto l'anno)</option>
-        <option value="molto" ${ui.setup.sorte === 'molto' ? 'selected' : ''}>molto (due fatti l'anno)</option>
+        <option value="molto" ${ui.setup.sorte === 'molto' ? 'selected' : ''}>molto (un fatto ogni due anni)</option>
       </select></label>
       ${table}
       ${renderExpansions(ui.setup.expansion)}
@@ -899,7 +902,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       else if (ext.menu === 'guerra' && war.length) {
         body = `<h2>Guerra</h2>${exp?.view.alert?.(g, 'guerra') ?? ''}${renderExtCards(war, '')}
           <div class="btns"><button data-act="warMenu" data-close="1">Torna ai dispendimenti</button><button data-act="next" class="primary">Proximus: fine dell'anno</button></div>`;
-      } else body = `<h2>Dispendimenti</h2>${exp?.view.alert?.(g, 'dispendimenti') ?? ''}${renderCantiere(g, cantiere, war.length > 0)}${renderSignoriCard(signori)}${renderExtCards(rest)}`;
+      } else body = `<h2>Dispendimenti</h2>${exp?.view.alert?.(g, 'dispendimenti') ?? ''}${renderCantiere(g, cantiere, war.length > 0, renderSignoriBuildCard(signori))}${renderExtCards(rest)}`;
       break;
     }
   }

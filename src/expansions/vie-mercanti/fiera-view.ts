@@ -4,7 +4,7 @@
  */
 import type { Game } from '../../domain/turn';
 import type { GameState, Player } from '../../domain/types';
-import { FEUDI } from '../../domain/rank';
+import { FEUDI, titleName } from '../../domain/rank';
 import {
   bidOf, fairOpen, quotaValue, FIERA_OGNI, impegniOf, nextFair, OFFERTA_MAX, PAGA_RITARDO, PENALE, PESO_PREZZO, PESO_PRESTIGIO, QUOTE,
   visibleTo, type Contratto, type FieraDispatch, type FieraState,
@@ -119,6 +119,23 @@ export function fieraPanel(g: Game, st: FieraState): string {
   return `${fair}
     ${going ? `<h3>Contratti in corso</h3><ul class="ext-ledger">${going}</ul>` : ''}
     <p class="hint">La fiera si tiene ogni ${FIERA_OGNI} anni. Chi vince spedisce la merce con una carovana: si incassa all'arrivo. Alla scadenza la carovana parte da sola con quello che c'è in magazzino; la merce che manca costa una penale del ${Math.round(PENALE * 100)}% del suo prezzo. Chi arriva in ritardo è pagato il ${Math.round((1 - PAGA_RITARDO) * 100)}% in meno, e la merce perduta per strada non si paga. Consegna intera e puntuale fa salire il prestigio. Consegne parziali o mancate fanno diminuire il prestigio.<br>Se la merce non basta, compratela al fondaco a buon cuore degli offerenti.</p>`;
+}
+
+/**
+ * Avviso nei dispendimenti dell'ultimo anno utile: c'è un contratto da
+ * spedire entro quest'anno e la merce in magazzino basta.
+ */
+export function shipReminder(g: Game, st: FieraState): { title: string; body: string } | null {
+  const me = g.state.current, p = g.player, q = g.state.q, cant = st.cantine[me];
+  const due = impegniOf(st, me).filter(x => !x.spedito && x.entro === q && cant[x.c.good] >= x.c.qty);
+  if (!due.length) return null;
+  const rank = (p.title - 1) % 5;
+  const who = rank === 0 ? (p.gender === 1 ? 'Messere' : 'Madonna') : `${p.gender === 1 ? 'Messer' : 'Madonna'} ${titleName(p.title)}`;
+  const list = due.map(x => `<br>- ${contractLine(x.c)} (in magazzino: ${n(cant[x.c.good])})`).join('');
+  return {
+    title: 'Merce da spedire',
+    body: `${who}, non dimenticate di spedire la merce ai mercanti! Quest'anno è l'ultimo utile:${list}<br>Per spedirla aprite Fra signori, poi la Fiera: è fra i contratti in corso.`,
+  };
 }
 
 /** Sottotitolo della tessera della fiera. */

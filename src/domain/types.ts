@@ -137,11 +137,11 @@ export interface Scalars {
 export interface Options {
   /** probabilità evento: indice estratto in 1..eventSlots [32 nel listato] */
   eventSlots: number;
-  /** A1 bilanciata: il tributo dei vassalli viene incassato (riga 1335 resa raggiungibile) */
+  /** A1: il tributo dei vassalli viene incassato (riga 1335 resa raggiungibile) */
   vassalTributeCredited: boolean;
-  /** A2 bilanciata: il grano deperisce una sola volta l'anno, non a ogni modifica delle gabelle */
+  /** A2: il grano deperisce una sola volta l'anno, non a ogni modifica delle gabelle */
   spoilOncePerYear: boolean;
-  /** A8 bilanciata: i servi non scendono sotto zero dopo una battaglia */
+  /** A8: i servi non scendono sotto zero dopo una battaglia */
   clampServants: boolean;
   /** ogni 30 anni 10 annate abbondanti, 10 medie e 10 di carestia per signore, mai più di 3 uguali di fila */
   annate?: boolean;
@@ -185,30 +185,11 @@ export const ORIGINAL_OPTIONS: Options = {
 };
 
 /**
- * Modalità classica: regole originali, con il tributo dei vassalli
- * effettivamente incassato (riga 1335 resa raggiungibile, su richiesta del committente).
+ * Le regole del gioco: il listato con i suoi bug corretti (tributo dei
+ * vassalli incassato, grano che deperisce una volta l'anno, servi mai sotto
+ * zero) e tutte le novità.
  */
-export const CLASSIC_OPTIONS: Options = {
-  eventSlots: 32,
-  vassalTributeCredited: true,
-  spoilOncePerYear: false,
-  clampServants: false,
-  annate: true,
-  gabelle: true,
-  fazioni: true,
-  granai: true,
-  tieBreakWealth: true,
-  commercio: true,
-  imprese: true,
-  botteghe: true,
-  pignoramenti: true,
-  palazzoReale: true,
-  mazzo: true,
-  sensale: true,
-  bancarotta: true,
-};
-
-export const BALANCED_OPTIONS: Options = {
+export const GAME_OPTIONS: Options = {
   eventSlots: 32,
   vassalTributeCredited: true,
   spoilOncePerYear: true,

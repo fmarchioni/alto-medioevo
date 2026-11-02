@@ -114,12 +114,17 @@ const signoriArt = `<svg viewBox="0 0 64 48" class="card-art" aria-hidden="true"
   <g fill="#e3bb4f" stroke="#a8801f"><ellipse cx="32" cy="42" rx="5" ry="2"/><ellipse cx="32" cy="39" rx="5" ry="2"/></g>
 </svg>`;
 
-/** La carta che apre la pagina "Fra signori": riassume le carte che vi stanno. */
-export function renderSignoriCard(cards: ExtCard[]): string {
+/** Nei dispendimenti "Fra signori" è una carta grande come quelle del cantiere, accanto al palazzo. */
+export function renderSignoriBuildCard(cards: ExtCard[]): string {
   if (!cards.length) return '';
   const what = cards.map(c => c.title.toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' e $1');
-  return `<h3 class="ext-cards-title">Fra signori</h3><div class="action-cards ext-cards"><button class="action-card" data-act="signoriMenu">
-    ${signoriArt}<span class="card-title">Fra signori</span><span class="card-sub">${what}</span></button></div>`;
+  return `<div class="build-card signori-card">${signoriArt}
+      <div class="build-body">
+        <div class="build-head"><span class="build-title">Fra signori</span></div>
+        <p class="build-effect">Affari con gli altri signori e con i mercanti: ${what}.</p>
+        <button data-act="signoriMenu" class="primary">Apri</button>
+      </div>
+    </div>`;
 }
 
 /** Carte di un'espansione ("Fra signori"), in Delibera e nei dispendimenti. */

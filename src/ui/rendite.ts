@@ -5,7 +5,7 @@
  * originali su una copia dello stato. Le gabelle vengono applicate al motore
  * solo alla conferma, una chiamata setRate per ciascuna voce cambiata, come se
  * il giocatore le avesse ritoccate una alla volta nell'originale (con il
- * relativo deperimento del grano in modalità classica).
+ * relativo deperimento del grano, se le regole lo prevedono).
  */
 import { type RateKind } from '../domain/economy';
 import { bestRates, currentRates, KINDS, previewRates, RATE_SUM_CAP, yieldPerPoint, type Rates } from '../domain/strategy';

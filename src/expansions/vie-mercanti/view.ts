@@ -23,7 +23,7 @@ import { consumiChronicle, festaTitoloText, festeCardSub, festePanel, palaceLine
 import { BANCHETTI, RICHIESTE, type Banchetto, type RichiestaId } from './consumi';
 import { impresaCardNote, impresaChronicle, impresaDispatchHead, impresaDispatchText, impreseAside, smuggleArrestText } from './imprese-view';
 import type { ImpresaDispatch } from './imprese';
-import { contractLine, fairCardSub, fairChronicle, fairDispatchHead, fairDispatchText, fairNews, fieraPanel } from './fiera-view';
+import { contractLine, shipReminder, fairCardSub, fairChronicle, fairDispatchHead, fairDispatchText, fairNews, fieraPanel } from './fiera-view';
 
 const n = (v: number) => Math.floor(v).toLocaleString('it-IT');
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -328,6 +328,8 @@ export const view: ExpansionView = {
   },
 
   imprese: g => impreseAside(g, ms(g)),
+
+  reminder: g => shipReminder(g, ms(g)),
 
   arrestText: g => smuggleArrestText(ms(g), g) ?? '<p class="big">Le guardie vi hanno arrestato: per voi la partita è finita.</p>',
 
