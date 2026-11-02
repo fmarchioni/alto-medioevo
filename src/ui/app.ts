@@ -839,7 +839,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
           ${proceed}`;
       } else if (ev.effect.kind === 'impresa') {
         body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
-          <p class="big">Non dovete decidere ora: la carta resta fra le vostre <b>Imprese temerarie</b>, nel pannello a sinistra, e potete giocarla quando volete nei prossimi anni.</p>
+          <p class="big">Non dovete decidere ora: la carta resta fra le vostre <b>Imprese</b>, nel pannello a sinistra, e potete giocarla quando volete nei prossimi anni.</p>
           ${proceed}`;
       } else if (ev.effect.kind === 'carta') {
         // carta del mazzo di un'espansione: va fra le carte in mano, nella colonna a sinistra

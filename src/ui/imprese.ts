@@ -79,7 +79,7 @@ const CARTE: Record<ImpresaId, CartaText> = {
   },
 };
 
-/** Riquadro "Imprese temerarie" sotto l'elenco dei signori. */
+/** Riquadro "Imprese" sotto l'elenco dei signori. */
 export function impreseAside(g: Game): string {
   if (!g.state.options.imprese) return '';
   const p = g.player, q = g.state.q, i = p.impresa;
@@ -103,7 +103,7 @@ export function impreseAside(g: Game): string {
   } else {
     body = '<p class="hint">Nessuna impresa in serbo. Le occasioni arrivano fra gli imprevisti.</p>';
   }
-  return `<section class="imprese"><h3>Imprese temerarie</h3>${body}</section>`;
+  return `<section class="imprese"><h3>Imprese</h3>${body}</section>`;
 }
 
 const SOUND: Record<EsitoImpresa, string> = { riuscita: 'TLIN TLIN!', fallita: 'CLANK!', multa: 'SOB!', arresto: 'CLANK!' };
