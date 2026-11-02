@@ -103,9 +103,27 @@ const advisorBox = (text: string) => speechBox(ANSELMO, text);
 /** Aggiunte di un'espansione alla Delibera. */
 export interface TradeExtras {
   cards: ExtCard[];
+  /** carte della pagina "Fra signori": in Delibera compare solo la carta che la apre */
+  signori?: ExtCard[];
   /** notizie per il signore di turno (HTML) */
   dispatches: string;
   hint: (mode: TradeMode) => string;
+}
+
+const signoriArt = `<svg viewBox="0 0 64 48" class="card-art" aria-hidden="true" data-label="fra signori">
+  <path d="M2 44 h60" stroke="#6b4a2c" stroke-width="2"/>
+  <g transform="translate(18 44)"><path d="M-7 0 v-16 h14 v16z" fill="#7a1f2b"/><circle cx="0" cy="-21" r="5" fill="#f0c9a0"/><path d="M-6 -25 h12 l-2 -4 h-8z" fill="#2e5fa3"/></g>
+  <g transform="translate(46 44)"><path d="M-7 0 v-16 h14 v16z" fill="#2f5b3a"/><circle cx="0" cy="-21" r="5" fill="#f0c9a0"/><path d="M-6 -25 h12 l-2 -4 h-8z" fill="#8b2a1e"/></g>
+  <path d="M25 34 q7 -5 14 0" stroke="#f0c9a0" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <g fill="#e3bb4f" stroke="#a8801f"><ellipse cx="32" cy="42" rx="5" ry="2"/><ellipse cx="32" cy="39" rx="5" ry="2"/></g>
+</svg>`;
+
+/** La carta che apre la pagina "Fra signori": riassume le carte che vi stanno. */
+export function renderSignoriCard(cards: ExtCard[]): string {
+  if (!cards.length) return '';
+  const what = cards.map(c => c.title.toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' e $1');
+  return `<h3 class="ext-cards-title">Fra signori</h3><div class="action-cards ext-cards"><button class="action-card" data-act="signoriMenu">
+    ${signoriArt}<span class="card-title">Fra signori</span><span class="card-sub">${what}</span></button></div>`;
 }
 
 /** Carte di un'espansione ("Fra signori"), in Delibera e nei dispendimenti. */
@@ -124,7 +142,7 @@ export function renderTrade(g: Game, t: TradeUi, extras?: TradeExtras): string {
       return `<button class="action-card ${mode === 'feed' ? 'decisive' : ''}" data-act="tradeMode" data-mode="${mode}" ${disabled}>
         ${cardArt[mode]}<span class="card-title">${title}</span><span class="card-sub">${sub}</span></button>`;
     };
-    const ext = renderExtCards(extras?.cards ?? []);
+    const ext = renderSignoriCard(extras?.signori ?? []) + renderExtCards(extras?.cards ?? []);
     return `${extras?.dispatches ?? ''}${advisorBox(t.advisor)}
       <div class="action-cards">
         ${card('buy', 'Comprare grano', `${sc.prezzo} scudi ogni mille`)}

@@ -123,6 +123,8 @@ function story(py: PlayerYear, players: Player[], view: ExpansionView | null): s
       : `Le gabelle non fruttarono nulla${income.tribute ? `, ma i vassalli gli versarono ${n(income.tribute)} scudi di tributo` : ''}.`);
   }
 
+  for (const f of py.of('bancarotta')) s.push(`Chiuse l'anno con ${n(-f.scudi)} scudi di debiti: gli usurai lo fecero arrestare, e uscì dalla storia del regno.`);
+
   // il sensale di piazza
   for (const x of py.of('sensale')) s.push(sensaleSentence(x.who, x.cost));
 

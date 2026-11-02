@@ -145,6 +145,7 @@ const PAGES: Page[] = [
     text: [
       'Gli usurai vi fanno credito quanto avete incassato l\'anno prima, ma a fine anno chiedono gli interessi. Negli anni di carestia l\'usura è più alta.',
       'Con il tesoro in debito i granai non si riparano: ogni anno fino a un decimo del grano va a male.',
+      'Attenti a non sprofondare: chi chiude l\'anno con 20.000 scudi di debiti o più finisce in ceppi, e per lui la partita è finita.',
       'Ritoccare le gabelle invece non costa nulla: cambiatele quando le cose cambiano.',
     ],
     quip: 'Gli usurai sono come me: sorridenti all\'andata, spietati al ritorno.',

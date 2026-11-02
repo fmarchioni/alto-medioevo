@@ -169,6 +169,8 @@ export interface Options {
   mazzo?: boolean;
   /** sensale di piazza: con la riforma delle gabelle giudica le gabelle in bozza (src/domain/sensale.ts) */
   sensale?: boolean;
+  /** bancarotta: chi chiude l'anno con DEBITO_ARRESTO scudi di debito o più è arrestato ed esce dalla partita */
+  bancarotta?: boolean;
 }
 
 /**
@@ -203,6 +205,7 @@ export const CLASSIC_OPTIONS: Options = {
   palazzoReale: true,
   mazzo: true,
   sensale: true,
+  bancarotta: true,
 };
 
 export const BALANCED_OPTIONS: Options = {
@@ -222,6 +225,7 @@ export const BALANCED_OPTIONS: Options = {
   palazzoReale: true,
   mazzo: true,
   sensale: true,
+  bancarotta: true,
 };
 
 export type Phase =
@@ -229,8 +233,8 @@ export type Phase =
   /** esito di un'impresa temeraria; poi si torna alla fase `dopo` ('inizio': all'inizio del turno) */
   | { kind: 'impresa'; id: ImpresaId; esito: EsitoImpresa; amount: number; dopo: 'inizio' | 'commercio' | 'investimenti' }
   | { kind: 'commercio' }
-  /** il signore è stato arrestato all'inizio del turno per una carta di un'espansione: lascia il posto al seguente */
-  | { kind: 'arresto' }
+  /** il signore è stato arrestato (per una carta di un'espansione, o per bancarotta a fine anno): lascia il posto al seguente */
+  | { kind: 'arresto'; motivo?: 'debiti' }
   | { kind: 'esitoNutrimento' }
   | { kind: 'evento'; eventId: number; awaitingChoice: boolean; outcome?: EventOutcome; faction?: FactionId; nemici?: number }
   | { kind: 'rendite'; preview: RenditePreview }
@@ -332,6 +336,8 @@ export type ChronicleFact =
   | { t: 'impresa'; id: ImpresaId; esito: EsitoImpresa | 'scaduta'; amount: number }
   /** fatto di un'espansione: la narrazione spetta alla sua vista */
   | { t: 'ext'; kind: string; data: Record<string, number> }
+  /** bancarotta: arrestato a fine anno per i debiti */
+  | { t: 'bancarotta'; scudi: number }
   /** sensale di piazza assoldato per l'anno */
   | { t: 'sensale'; who: SensaleId; cost: number }
   | {

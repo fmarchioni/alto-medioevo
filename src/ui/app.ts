@@ -11,14 +11,14 @@ import { effettiStrip, fattoBadges, fattoCaption, fattoOptionText, fattoScene, f
 import { crest, factionBadges, factionOutcomeText, forcesBox, INFO as FACTION_INFO, optionText, pactsStrip, renderFactionOutcome } from './fazioni';
 import { EVENTS } from '../domain/events';
 import { COSTS, type InvestmentKind } from '../domain/investments';
-import { FEUDI, rankOf, titleName, wealthIndex } from '../domain/rank';
+import { DEBITO_ARRESTO, FEUDI, rankOf, titleName, wealthIndex } from '../domain/rank';
 import { C64Rnd, Mulberry32, ORIGINAL_SEED, type Rng } from '../domain/rng';
 import { Game, MAX_PLAYERS, type NewPlayer } from '../domain/turn';
 import { BALANCED_OPTIONS, CLASSIC_OPTIONS, type BotLevel, type Gender, type Player } from '../domain/types';
 import { playBotTurn } from '../domain/bots';
 import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
-import type { Expansion, ExtUi } from '../expansions/types';
+import type { Expansion, ExtCard, ExtUi } from '../expansions/types';
 import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
 import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
 import { seizedNotice } from './pignoramenti';
@@ -38,7 +38,11 @@ import { ANSELMO } from './advisor';
 import { speechBox } from './speaker';
 import { comicText, effectBadges, outcomeText, renderEventComic, renderOutcomeComic, type ComicText } from './comics';
 import { changedKinds, currentRates, KINDS, presets, previewRates, renderRendite, spoilsFor, treasurerGreeting, treasurerReaction, updateLive, type RenditeUi } from './rendite';
-import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderTrade, type TradeUi } from './trade';
+import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderSignoriCard, renderTrade, type TradeUi } from './trade';
+
+/** Pagina "Fra signori": le carte dell'espansione per gli affari con gli altri signori. */
+const signoriPage = (cards: ExtCard[], back: string) => `<h2>Fra signori</h2>${renderExtCards(cards, '')}
+  <div class="btns"><button data-act="signoriMenu" data-close="1" class="primary">${back}</button></div>`;
 
 type RngKind = 'c64' | 'mulberry';
 
@@ -424,6 +428,10 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'extClose':
         ui.ext.panel = null;
         return render();
+      case 'signoriMenu':
+        ui.ext.signori = btn.dataset.close ? undefined : g!.state.phase.kind;
+        ui.message = '';
+        return render();
       case 'warMenu':
         ui.ext.menu = btn.dataset.close ? undefined : 'guerra';
         ui.message = '';
@@ -796,13 +804,17 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       body = `<h2>Notizie dal reame: ${fattoTitle(ph.id)}</h2>${fattoScene(ph.id)}${cards}`;
       break;
     }
-    case 'commercio':
+    case 'commercio': {
+      const all = exp ? exp.view.cards(g) : [];
+      const signori = all.filter(c => c.menu === 'signori');
       if (exp && ext.panel) body = exp.view.panel(g, ext);
+      else if (ext.signori === 'commercio' && signori.length) body = signoriPage(signori, 'Torna alla delibera');
       else {
-        const extras = exp ? { cards: exp.view.cards(g), dispatches: ext.archived ? '' : exp.view.dispatches(g, !ext.seen), hint: (m: TradeMode) => exp.view.tradeHint?.(g, m) ?? '' } : undefined;
+        const extras = exp ? { cards: all.filter(c => c.menu !== 'signori'), signori, dispatches: ext.archived ? '' : exp.view.dispatches(g, !ext.seen), hint: (m: TradeMode) => exp.view.tradeHint?.(g, m) ?? '' } : undefined;
         body = `<h2>Delibera</h2>${exp?.view.alert?.(g, 'delibera') ?? ''}${renderTrade(g, trade, extras)}`;
       }
       break;
+    }
     case 'esitoNutrimento':
       body = `<h2>Nello anno</h2>
         <p class="big">${sc.natiMorti >= 0 ? 'Sono nati' : 'Sono morti'} ${fmt(Math.abs(sc.natiMorti))} servi.</p>
@@ -859,7 +871,9 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       body = renderImpresa(ph.id, ph.esito, ph.amount, p);
       break;
     case 'arresto':
-      body = `<h2>Arrestato!</h2>${exp?.view.arrestText?.(g) ?? '<p class="big">Le guardie vi hanno arrestato: per voi la partita è finita.</p>'}
+      body = `<h2>Arrestato!</h2>${ph.motivo === 'debiti'
+        ? `<p class="big">Avete chiuso l'anno con <b>${Math.round(-p.scudi).toLocaleString('it-IT')} scudi</b> di debiti, oltre i ${DEBITO_ARRESTO.toLocaleString('it-IT')} che gli usurai sopportano. Le guardie vi portano in ceppi: per voi la partita è finita.</p>`
+        : exp?.view.arrestText?.(g) ?? '<p class="big">Le guardie vi hanno arrestato: per voi la partita è finita.</p>'}
         <div class="btns"><button data-act="afterArrest" class="primary">Lasciate il feudo</button></div>`;
       break;
     case 'rendite':
@@ -876,12 +890,13 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     case 'investimenti':
     {
       const cards = exp ? exp.view.cards(g) : [];
-      const war = cards.filter(c => c.menu === 'guerra'), rest = cards.filter(c => c.menu !== 'guerra');
+      const war = cards.filter(c => c.menu === 'guerra'), signori = cards.filter(c => c.menu === 'signori'), rest = cards.filter(c => !c.menu);
       if (exp && ext.panel) body = exp.view.panel(g, ext);
+      else if (ext.signori === 'investimenti' && signori.length) body = signoriPage(signori, 'Torna ai dispendimenti');
       else if (ext.menu === 'guerra' && war.length) {
         body = `<h2>Guerra</h2>${exp?.view.alert?.(g, 'guerra') ?? ''}${renderExtCards(war, '')}
           <div class="btns"><button data-act="warMenu" data-close="1">Torna ai dispendimenti</button><button data-act="next" class="primary">Proximus: fine dell'anno</button></div>`;
-      } else body = `<h2>Dispendimenti</h2>${exp?.view.alert?.(g, 'dispendimenti') ?? ''}${renderCantiere(g, cantiere, war.length > 0)}${renderExtCards(rest)}`;
+      } else body = `<h2>Dispendimenti</h2>${exp?.view.alert?.(g, 'dispendimenti') ?? ''}${renderCantiere(g, cantiere, war.length > 0)}${renderSignoriCard(signori)}${renderExtCards(rest)}`;
       break;
     }
   }

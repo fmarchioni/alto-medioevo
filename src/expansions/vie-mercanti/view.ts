@@ -18,7 +18,7 @@ import {
 import { specialitaText, SPECIALITA, travelYears, ZONA_FEUDO, ZONA_NOME } from './geografia';
 import { VIAGGIO, type EventoViaggio } from './carovane';
 import { MERCATI_MAX, MERCATI_PER_PUNTO, PRESTIGIO, prestigeName } from './prestigio';
-import { fairOpen, impegniOf, QUOTE, type FieraDispatch } from './fiera';
+import { fairOpen, FIERA_OGNI, impegniOf, QUOTE, type FieraDispatch } from './fiera';
 import { consumiChronicle, festaTitoloText, festeCardSub, festePanel, palaceLine, requestNote } from './consumi-view';
 import { BANCHETTI, RICHIESTE, type Banchetto, type RichiestaId } from './consumi';
 import { impresaCardNote, impresaChronicle, impresaDispatchHead, impresaDispatchText, impreseAside, smuggleArrestText } from './imprese-view';
@@ -300,7 +300,7 @@ export const view: ExpansionView = {
     'Carovane: la merce venduta al fondaco viaggia da uno a quattro anni secondo la distanza, e si incassa al suo arrivo.',
     'Specialità: ogni feudo ha la sua (più vino, più manufatti, più grano, un porto, più prestigio).',
     'Banco: prestate denaro agli altri signori o prendetelo in prestito; chi non rende subisce il pignoramento.',
-    'Fiera: ogni due anni i mercanti forestieri offrono grandi contratti; vince chi chiede meno, e a parità di prezzo chi ha più prestigio mercantile.',
+    `Fiera: ogni ${FIERA_OGNI} anni i mercanti forestieri offrono grandi contratti; vince chi chiede meno, e a parità di prezzo chi ha più prestigio mercantile.`,
     'Prestigio mercantile: sale con le consegne puntuali e i prestiti resi, scende con ritardi, penali e pignoramenti.',
     "Imprese: il vino annacquato, il contrabbando del Corno d'Oro, il console comprato e il mercante fallito. Grandi guadagni, e grandi rischi.",
     'Feste: il vino si consuma in banchetti e nozze, i manufatti arredano il palazzo e le cattedrali; danno prestigio, che conta nella ricchezza.',
@@ -318,7 +318,7 @@ export const view: ExpansionView = {
     cards.push({ panel: 'feste', title: 'Feste', sub: festeCardSub(g, st), art: festeArt });
     if (g.state.phase.kind === 'investimenti') cards.push({ panel: 'vigne', title: 'Vigne', sub: `${c.vigneti} ${c.vigneti === 1 ? 'vigneto' : 'vigneti'}`, art: vigneArt });
     cards.push({ panel: 'banco', title: 'Banco', sub: offers ? `${offers} ${offers === 1 ? 'prestito offerto' : 'prestiti offerti'}` : 'prestare e farsi prestare', art: bancoArt });
-    return cards;
+    return cards.map(c => ({ ...c, menu: 'signori' as const }));
   },
 
   aside(g) {
@@ -367,7 +367,7 @@ export const view: ExpansionView = {
       const f = fairOpen(ms(g), g.state.q), todo = impegniOf(ms(g), g.state.current).filter(x => !x.spedito);
       if (f) return f.quote[g.state.current] < 0 ? `${h(p)}, la fiera è aperta! Pagate la quota d'ingresso: più investite, più contratti vedrete.` : `Fate le vostre offerte, ${h(p)}. Chiedete poco e vincerete, ma badate di avere la merce.`;
       if (todo.length) return `${h(p)}, i mercanti forestieri aspettano la vostra merce. Spedite prima, e incasserete prima.`;
-      return `La fiera torna ogni due anni, ${h(p)}. Riempite i magazzini.`;
+      return `La fiera torna ogni ${FIERA_OGNI} anni, ${h(p)}. Riempite i magazzini.`;
     }
     if (panel === 'feste') return pick([`Il vino che non si vende si beve, ${h(p)}: e un banchetto ben dato vale più di cento botti vendute per poco.`, `La fama di un signore si misura dalle sue feste, ${h(p)}.`]);
     if (panel === 'banco') {
@@ -382,7 +382,7 @@ export const view: ExpansionView = {
     const panel = PANELS[ui.panel ?? ''];
     if (!panel) return '';
     return `<h2>${panel.title}</h2>${speechBox(IACOPO, ui.say)}<div class="ext-panel">${panel.render(g, ms(g))}</div>
-      <div class="btns"><button data-act="extClose" class="primary">${g.state.phase.kind === 'investimenti' ? 'Torna ai dispendimenti' : 'Torna alla delibera'}</button></div>`;
+      <div class="btns"><button data-act="extClose" class="primary">Torna a Fra signori</button></div>`;
   },
 
   act(g, op, data, field): ExtActionResult {
@@ -442,7 +442,7 @@ export const view: ExpansionView = {
       }
       case 'console': {
         const id = field('console-k'), k = st.fiera?.contratti.find(x => x.id === id);
-        return fromAside('Il console comprato', reaction(playConsole(g, id), k ? `Il console ha intascato l'oro: ${contractLine(k)} sarà vostro al prezzo base. Se nessuno parla.` : '', p));
+        return fromAside('Il console comprato', reaction(playConsole(g, id), k ? `Il console ha intascato l'oro: il contratto per ${contractLine(k)} sarà vostro al prezzo base. Se nessuno parla.` : '', p));
       }
       case 'bankrupt': {
         const r = playBankrupt(g);

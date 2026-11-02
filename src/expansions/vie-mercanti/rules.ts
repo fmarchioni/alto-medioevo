@@ -12,7 +12,7 @@
  *   carovane (carovane.ts).
  * - Prestigio mercantile (prestigio.ts): l'affidabilità di chi commercia.
  *
- * - Fiera biennale dei mercanti forestieri (fiera.ts): contratti a gara al
+ * - Fiera triennale dei mercanti forestieri (fiera.ts): contratti a gara al
  *   ribasso, consegne con le carovane alle piazze.
  * - Imprese dell'espansione (imprese.ts): vino annacquato, contrabbando,
  *   console comprato, mercante fallito. Le imprese del gioco base non escono.

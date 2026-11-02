@@ -23,6 +23,8 @@ export const TRIBUTE_PER_RANK = 100;
  * Trono con il palazzo reale (opzione `palazzoReale`): serve questa ricchezza
  * e il palazzo completo in tutti i suoi piani. Per cambiare la soglia basta questa costante.
  */
+/** Bancarotta: debito, in scudi, oltre il quale a fine anno si è arrestati (opzione `bancarotta`). */
+export const DEBITO_ARRESTO = 20000;
 export const THRONE_THRESHOLD = 500000;
 /** Servi che accorrono nel feudo per ogni piano di palazzo (opzione `palazzoReale`): minimo e massimo. */
 export const PALAZZO_SERVI = [100, 1000] as const;

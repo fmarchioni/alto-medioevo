@@ -15,8 +15,8 @@ export interface ExtCard {
   sub: string;
   art: string;
   disabled?: boolean;
-  /** nei dispendimenti: la carta sta nel menu Guerra, che segue il cantiere */
-  menu?: 'guerra';
+  /** nei dispendimenti: la carta sta nel menu Guerra, che segue il cantiere; 'signori': nella pagina "Fra signori" (Delibera e dispendimenti) */
+  menu?: 'guerra' | 'signori';
 }
 
 /** Stato dell'interfaccia dell'espansione durante un turno. */
@@ -27,6 +27,8 @@ export interface ExtUi {
   panel: string | null;
   /** nei dispendimenti: aperto il menu Guerra invece del cantiere */
   menu?: 'guerra';
+  /** pagina "Fra signori" aperta, nella fase indicata (si chiude da sola al cambio di fase) */
+  signori?: string;
   /** frase del personaggio dell'espansione */
   say: string;
   /** i dispacci sono già comparsi (non si srotolano di nuovo) */

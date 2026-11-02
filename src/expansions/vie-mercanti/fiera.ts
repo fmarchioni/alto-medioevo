@@ -1,7 +1,7 @@
 /**
- * Le vie dei mercanti: la fiera biennale dei mercanti forestieri.
+ * Le vie dei mercanti: la fiera triennale dei mercanti forestieri.
  *
- * - Ogni due anni (902, 904, …) i mercanti delle piazze (Venezia, Genova,
+ * - Ogni tre anni (902, 905, …) i mercanti delle piazze (Venezia, Genova,
  *   Pisa, Amalfi, Messina, Costantinopoli) cercano vino e manufatti. I
  *   contratti sono uguali per tutti; chi investe di più alla fiera ne vede di
  *   più: 300 scudi il primo, 850 i primi 3, 3.000 i primi 6, 10.000 tutti
@@ -25,7 +25,7 @@ import { MERCI, type Merce, type MerciState } from './merci';
 
 /** La prima fiera e ogni quanti anni si tiene. */
 export const FIERA_DAL = 2;
-export const FIERA_OGNI = 2;
+export const FIERA_OGNI = 3;
 export const isFairYear = (q: number) => q >= FIERA_DAL && (q - FIERA_DAL) % FIERA_OGNI === 0;
 export const nextFair = (q: number) => (q < FIERA_DAL ? FIERA_DAL : q + ((FIERA_OGNI - ((q - FIERA_DAL) % FIERA_OGNI)) % FIERA_OGNI));
 

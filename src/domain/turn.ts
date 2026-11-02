@@ -20,7 +20,7 @@ import {
 import { Mulberry32 } from './rng';
 import { canInvestTimes, invest, roomFor, type InvestmentKind } from './investments';
 import { bottino, cartaInMano, COMPLICE_CHANCE, IMPRESA_SUCCESSO, impresaOfEvent, multa, scadenza, silenzioDal } from './imprese';
-import { endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
+import { DEBITO_ARRESTO, endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
 import type { Rng } from './rng';
 import type { ActionResult, BotLevel, ChronicleFact, GameState, Gender, Options, Player, Strategia } from './types';
 import { CLASSIC_OPTIONS } from './types';
@@ -681,7 +681,7 @@ export class Game {
     this.state.phase = { kind: 'reame', returnTo: 'investimenti' };
   }
 
-  /** Opzione 6 "proximus": fine anno del giocatore, poi il successivo. */
+  /** Opzione 6 "proximus": fine anno del giocatore, poi il successivo (o l'arresto per bancarotta). */
   nextYear(): void {
     this.expect('investimenti');
     const st = this.state;
@@ -700,6 +700,14 @@ export class Game {
     if (end.won && !wait) {
       this.log('sale al trono');
       st.phase = { kind: 'fine', winner: st.current };
+      return;
+    }
+    // bancarotta: troppi debiti, il signore finisce in ceppi
+    if (st.options.bancarotta && p.scudi <= -DEBITO_ARRESTO) {
+      this.arrest();
+      this.record({ t: 'bancarotta', scudi: p.scudi });
+      st.phase = { kind: 'arresto', motivo: 'debiti' };
+      this.sync();
       return;
     }
     if (wait) {
