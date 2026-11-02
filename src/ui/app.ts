@@ -225,6 +225,8 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     else if (!g) page = ui.screen === 'welcome' ? `<section class="card castle setup-card">${battlements}${renderWelcome(ui.welcome)}</section>` : renderSetup(ui);
     else if (ui.realmReview) page = renderRealmReview(ui.realmReview);
     else if (ui.chronicleYear !== null) page = renderChronicle(g.state, ui.chronicleYear, exp?.view ?? null);
+    // sotto il sipario e le scene di fine anno non si vede nulla: l'anno nuovo (e le sue notizie) comincia dopo la cronaca
+    else if ((ui.interlude || ui.scenes) && g.state.phase.kind !== 'fine') page = '';
     else page = renderGame(g, ui.message, ui.trade, ui.rendite, ui.comic, ui.cantiere, ui.theme, ui.realmText.text, exp, ui.ext);
     // la pergamena compare solo durante i dispendimenti
     if (ui.deed && g?.state.phase.kind !== 'investimenti') ui.deed = null;
