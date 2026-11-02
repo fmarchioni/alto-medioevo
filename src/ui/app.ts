@@ -8,9 +8,9 @@ import { fiduciaOf, livelloOf, sereno, umoreOf, type Livello } from '../domain/g
 import type { FactionOption } from '../domain/fazioni';
 import type { Sorte } from '../domain/fatti';
 import { effettiStrip, fattoBadges, fattoCaption, fattoOptionText, fattoScene, fattoTitle } from './fatti';
-import { crest, factionBadges, forcesBox, INFO as FACTION_INFO, optionText, outcomeCaption, pactsStrip } from './fazioni';
+import { crest, factionBadges, factionOutcomeText, forcesBox, INFO as FACTION_INFO, optionText, pactsStrip, renderFactionOutcome } from './fazioni';
 import { EVENTS } from '../domain/events';
-import { type InvestmentKind } from '../domain/investments';
+import { COSTS, type InvestmentKind } from '../domain/investments';
 import { FEUDI, rankOf, titleName, wealthIndex } from '../domain/rank';
 import { C64Rnd, Mulberry32, ORIGINAL_SEED, type Rng } from '../domain/rng';
 import { Game, MAX_PLAYERS, type NewPlayer } from '../domain/turn';
@@ -20,6 +20,8 @@ import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
 import type { Expansion, ExtUi } from '../expansions/types';
 import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
+import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
+import { seizedNotice } from './pignoramenti';
 import { deleteSave, listSaves, loadGame, newSlotId, saveGame, type SaveSlot } from '../persistence/save';
 import { feedingOutcome, greeting, question, reaction, refusal, type TradeMode } from './advisor';
 import { icons, turret } from './art';
@@ -68,6 +70,12 @@ interface UiState {
   /** atto di acquisto mostrato come pergamena dopo un investimento */
   deed: Deed | null;
   deedCount: number;
+  /** pergamena da chiudere (arruolamento, catapulte): finché è aperta il resto della pagina non risponde */
+  notice: Notice | null;
+  /** spesa che manda il tesoro in debito, in attesa di conferma */
+  confirm: DebtConfirm | null;
+  /** turno per cui si è già cercato un pignoramento da annunciare */
+  seizedKey?: string;
 }
 
 /** Testi delle vignette, scelti una volta per evento così restano fissi ai ridisegni. */
@@ -148,6 +156,8 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     chronicleYear: null,
     deed: null,
     deedCount: 0,
+    notice: null,
+    confirm: null,
     realmText: { key: '', text: '' },
   };
 
@@ -169,6 +179,8 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       const key = `${turnKey(g)}-${ph.eventId}`;
       if (ui.comic.key !== key) ui.comic = { key, event: comicText(ph.eventId, g.player) };
       if (ph.outcome?.choice && !ph.faction && !ui.comic.outcome) ui.comic.outcome = outcomeText(ph.outcome, g.player);
+      // attacco di una fazione: dopo la scelta la vignetta racconta l'esito, non più l'arrivo
+      if (ph.faction && ph.outcome && !ph.awaitingChoice && !ui.comic.outcome) ui.comic.outcome = factionOutcomeText(ph.outcome, g.player);
     }
     if (g && ph?.kind === 'reame' && ui.realmText.key !== turnKey(g)) {
       ui.realmText = { key: turnKey(g), text: realmComment(g.player) };
@@ -206,7 +218,18 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     if (ui.deed && g?.state.phase.kind !== 'investimenti') ui.deed = null;
     const deed = ui.deed && !ui.tutorial && !ui.realmReview ? renderDeed(ui.deed) : '';
     const overlay = ui.tutorial ? '' : ui.scenes ? renderScene(ui.scenes) : ui.interlude ? renderInterlude(ui.interlude) : '';
-    root.innerHTML = c64ify(page + deed + overlay);
+    // una scelta dell'espansione (es. una proposta di pace) si mostra solo sulla pagina del turno, non sotto sipari e cronache
+    const onTurn = g && !g.player.bot && !overlay && !ui.realmReview && ui.chronicleYear === null && g.state.phase.kind !== 'fine';
+    // pignoramento di fine anno: la pergamena arriva al signore all'inizio del suo turno seguente, una volta sola
+    if (onTurn && g.state.phase.kind === 'commercio' && ui.seizedKey !== turnKey(g)) {
+      ui.seizedKey = turnKey(g);
+      const end = g.state.chronicle?.find(e => e.year === g.year - 1 && e.player === g.state.current && e.fact.t === 'yearEnd')?.fact;
+      if (end?.t === 'yearEnd' && end.seized && !ui.notice) ui.notice = seizedNotice(end.seized, g.player);
+    }
+    const decision = onTurn ? exp?.view.decision?.(g) ?? null : null;
+    const modal = !g || ui.tutorial ? '' : ui.confirm ? renderConfirm(ui.confirm) : ui.notice ? renderNotice(ui.notice) : decision ? renderDecision(decision) : '';
+    root.innerHTML = c64ify(page + deed + overlay + modal);
+    if (modal) root.querySelector<HTMLButtonElement>('.notice .primary')?.focus();
     if (ui.interlude && !ui.interlude.closing) root.querySelector<HTMLButtonElement>('.interlude button')?.focus();
     // i dispacci si srotolano una volta sola, quando la Delibera è davvero in vista (non sotto il siparietto)
     if (g && !ui.interlude && !ui.tutorial && !ui.realmReview && ui.chronicleYear === null) ui.ext.seen = true;
@@ -286,12 +309,54 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     if (pv) pv.innerHTML = c64ify(preview(ui.trade.mode, v, g.player, g.state.scalars));
   });
 
+  /** Scudi che un pulsante sta per spendere (0: non è un acquisto). */
+  const purchaseCost = (g: Game, a: string, data: DOMStringMap, field: (name: string) => number): number => {
+    let cost = 0;
+    if (a === 'invest') cost = (COSTS[data.kind as InvestmentKind] ?? 0) * Math.max(1, Number(data.times) || 1);
+    else if (a === 'confirmTrade' && ui.trade.mode === 'buy') cost = Math.ceil((field('qty') * g.state.scalars.prezzo) / 1000);
+    else if (a === 'ext') cost = findExpansion(g.state.expansion)?.view.cost?.(g, data.op!, data, field) ?? 0;
+    return Number.isFinite(cost) ? cost : 0;
+  };
+
   root.addEventListener('click', e => {
     const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-act]');
     if (!btn) return;
+    // con una pergamena aperta valgono solo i suoi pulsanti (un doppio clic non compra due volte)
+    const modal = root.querySelector('.notice-backdrop');
+    if (modal && !modal.contains(btn)) return;
+    handle(btn.dataset, num, false);
+  });
+
+  const handle = (data: DOMStringMap, num: (name: string) => number, confirmed: boolean): void => {
+    const btn = { dataset: data };
     const g = ui.game;
-    const a = btn.dataset.act!;
+    const a = data.act!;
+    // un acquisto che manda il tesoro in debito (ma resta nel credito concesso) si conferma prima
+    if (g && !confirmed) {
+      const cost = purchaseCost(g, a, data, num), p = g.player, after = p.scudi - cost;
+      if (cost > 0 && after < 0 && after >= -p.credito) {
+        // i campi del pannello si ridisegnano sotto la pergamena: se ne tengono i valori di adesso
+        const vals = new Map([...root.querySelectorAll<HTMLInputElement>('input[name], select[name]')].map(el => [el.name, el.value]));
+        const field = (name: string) => { const v = vals.get(name); return v !== undefined && v.trim() !== '' ? Number(v) : NaN; };
+        const saved = { ...data };
+        ui.confirm = { cost, after: -after, usura: g.state.scalars.usura, run: () => handle(saved, field, true) };
+        return render();
+      }
+    }
     switch (a) {
+      case 'confirmYes': {
+        const c = ui.confirm;
+        ui.confirm = null;
+        if (c) c.run();
+        else render();
+        return;
+      }
+      case 'confirmNo':
+        ui.confirm = null;
+        return render();
+      case 'noticeClose':
+        ui.notice = null;
+        return render();
       case 'start': {
         const players: NewPlayer[] = [];
         for (let i = 0; i < ui.setup.count; i++) {
@@ -353,8 +418,16 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         const r = exp.view.act(g!, btn.dataset.op!, btn.dataset, num);
         ui.ext.say = r.say;
         if (r.panel !== undefined) ui.ext.panel = r.panel;
+        if (r.notice) ui.notice = r.notice;
         ui.message = '';
-        return render();
+        render();
+        // la risposta del consigliere sta in cima al pannello: se il modulo l'ha spinta fuori schermo, la si riporta in vista
+        const box = root.querySelector('.ext-panel')?.previousElementSibling;
+        if (box?.classList.contains('advisor') && box.getBoundingClientRect().top < 0) {
+          const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+          box.scrollIntoView?.({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+        }
+        return;
       }
       case 'sceneNext':
         if (!ui.scenes) return;
@@ -458,12 +531,14 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'realmBack': return act(() => g!.continueFromRealm());
       case 'invest': {
         const kind = btn.dataset.kind as InvestmentKind;
-        const r = g!.invest(kind);
-        ui.cantiere.advisor = r.ok ? builderReaction(kind, g!.player) : `Non si può, ${g!.player.gender === 1 ? 'Messere' : 'Madonna'}: ${r.reason}.`;
+        // acquisto rapido delle terre: più fondi in una volta
+        const times = Math.max(1, Number(btn.dataset.times) || 1);
+        const r = g!.invest(kind, times);
+        ui.cantiere.advisor = r.ok ? builderReaction(kind, g!.player, times, r.ok ? r.servi : 0) : `Non si può, ${g!.player.gender === 1 ? 'Messere' : 'Madonna'}: ${r.reason}.`;
         ui.message = '';
         if (r.ok) {
           // la pergamena registra l'atto; si ritira da sola dopo qualche secondo
-          const deed = makeDeed(kind, g!.player, g!.year, ++ui.deedCount);
+          const deed = makeDeed(kind, g!.player, g!.year, ++ui.deedCount, times);
           ui.deed = deed;
           setTimeout(() => {
             if (ui.deed !== deed) return;
@@ -517,7 +592,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         ui.tutorial = null;
         return render();
     }
-  });
+  };
 
   render();
 }
@@ -632,11 +707,13 @@ function renderScene(sc: { year: number; list: { title: string; html: string }[]
 }
 
 /** Barra delle risorse in alto, sempre visibile. */
-function resourceBar(g: Game): string {
+function resourceBar(g: Game, exp: Expansion | null): string {
   const p = g.player, sc = g.state.scalars;
   const umoreLv = livelloOf(umoreOf(p)), fiduciaLv = livelloOf(fiduciaOf(p));
   const item = (ico: string, label: string, value: string, cls = '') =>
     `<div class="rb-item ${cls}" title="${label || value}">${ico}<span class="rb-val">${value}</span>${label ? `<span class="rb-lab">${label}</span>` : ''}</div>`;
+  // l'espansione aggiunge una seconda riga (Spade e Castelli: soldati, torri, catapulte)
+  const extra = exp?.view.resourceBar?.(g) ?? [];
   return `<div class="resource-bar">
     ${item(icons.grano, 'grano', fmt(p.grano), p.grano < sc.domanda ? 'low' : '')}
     ${item(icons.scudi, 'scudi', fmt(p.scudi), p.scudi < 0 ? 'low' : '')}
@@ -648,6 +725,7 @@ function resourceBar(g: Game): string {
     ${item(icons.prezzo, 'prezzo per 1000', String(sc.prezzo))}
     ${item(icons.domanda, 'domanda', fmt(sc.domanda))}
     ${item(icons.usura, 'usura', `${sc.usura}%`)}
+    ${extra.length ? `<span class="rb-break"></span>${extra.map(x => item(x.ico, x.label, x.value, x.low ? 'low' : '')).join('')}` : ''}
   </div>`;
 }
 
@@ -723,7 +801,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
           const forces = forcesBox(f, ph.nemici ?? 0, g.factionDefense(), winP, p.servi);
           body = `${head}${renderEventComic(ev.id, ev.title, comic.event!)}${forces}<div class="action-cards ${cards.length > 3 ? 'four' : ''}">${cards}</div>`;
         } else {
-          body = `${head}${renderEventComic(ev.id, ev.title, comic.event!)}<p class="big faction-out">${outcomeCaption(out!, p)}</p>${factionBadges(out!)}
+          body = `${head}${renderFactionOutcome(out!, comic.outcome!)}${factionBadges(out!)}
             ${proceed}`;
         }
       } else if (ph.awaitingChoice) {
@@ -740,6 +818,11 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       } else if (ev.effect.kind === 'impresa') {
         body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
           <p class="big">Non dovete decidere ora: la carta resta fra le vostre <b>Imprese temerarie</b>, nel pannello a sinistra, e potete giocarla quando volete nei prossimi anni.</p>
+          ${proceed}`;
+      } else if (ev.effect.kind === 'carta') {
+        // carta del mazzo di un'espansione: va fra le carte in mano, nella colonna a sinistra
+        body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
+          <p class="big">Non dovete decidere ora: la carta resta fra le vostre <b>Carte di guerra</b>, nel pannello a sinistra. Potete giocarla nei prossimi anni, una carta per anno.</p>
           ${proceed}`;
       } else {
         body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}${effectBadges(out!)}
@@ -780,7 +863,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     <button data-act="openTutorial" class="ghost">Insegnamento</button>
     <button data-act="theme" class="ghost">Stile: ${theme === 'c64' ? 'C64' : 'pergamena'}</button>
     <button data-act="new" class="ghost">Nuova partita</button></header>
-  ${resourceBar(g)}${pactsStrip(g.player)}${effettiStrip(g.player)}
+  ${resourceBar(g, exp)}${pactsStrip(g.player)}${effettiStrip(g.player)}
   <div class="layout">
     <aside class="card">${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${impreseAside(g)}</aside>
     <section class="card phase castle">${battlements}${message ? `<p class="msg">${esc(message)}</p>` : ''}${body}</section>

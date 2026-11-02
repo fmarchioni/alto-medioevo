@@ -124,7 +124,8 @@ export function pickFatto(st: GameState, f: FattiState, who: number): FattoId {
   const r = new Mulberry32(f.rng);
   const ps = st.players;
   const leader = ps.reduce((a, _, i) => (wealthIndex(ps[i]) > wealthIndex(ps[a]) ? i : a), 0);
-  const w = FATTI.map(id => (id === 'decima' && ps.length > 1 && who === leader ? 3 : 1));
+  // con il mazzo degli imprevisti il ciambellano resta solo fra gli imprevisti: niente doppione fra i fatti
+  const w = FATTI.map((id): number => (id === 'ciambellano' && st.options.mazzo ? 0 : id === 'decima' && ps.length > 1 && who === leader ? 3 : 1));
   let x = r.next() * w.reduce((a, b) => a + b, 0);
   const id = FATTI.find((_, i) => (x -= w[i]) < 0) ?? FATTI[FATTI.length - 1];
   f.rng = r.getState()[0];

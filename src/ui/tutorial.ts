@@ -4,7 +4,8 @@
  * programma per C64), con le regole ricavate dal listato.
  */
 import { createPlayer } from '../domain/turn';
-import { VICTORY_THRESHOLD } from '../domain/rank';
+import { MAX_PALAZZO } from '../domain/investments';
+import { PALAZZO_SERVI, THRONE_THRESHOLD } from '../domain/rank';
 import { merchantPortrait } from './art';
 import { bubble, coin, helmet, hood, person, shield } from './comics';
 import { realmScene } from './realm';
@@ -160,8 +161,8 @@ const PAGES: Page[] = [
   {
     title: 'Costruire e salire di rango',
     text: [
-      'Terre, mercati, opifici e piani di palazzo valgono per il rango quanto li pagate: costruire non vi fa perdere terreno. In più, mercati e opifici rendono con la gabella sul commerzio.',
-      `Superate le soglie di ricchezza e diventerete conte, duca, granduca, principe; i signori di rango inferiore vi pagheranno un tributo. Chi supera ${VICTORY_THRESHOLD.toLocaleString('it-IT')} di ricchezza sale al trono; se nello stesso anno ci riescono in più, vince il più ricco.`,
+      `Terre, mercati, opifici e piani di palazzo valgono per il rango quanto li pagate: costruire non vi fa perdere terreno. In più, mercati e opifici rendono con la gabella sul commerzio, e ogni piano di palazzo attira da ${PALAZZO_SERVI[0]} a ${PALAZZO_SERVI[1].toLocaleString('it-IT')} servi nel feudo.`,
+      `Superate le soglie di ricchezza e diventerete conte, duca, granduca, principe; i signori di rango inferiore vi pagheranno un tributo. Chi supera ${THRONE_THRESHOLD.toLocaleString('it-IT')} di ricchezza e ha completato il palazzo in tutti i suoi ${MAX_PALAZZO} piani sale al trono; se nello stesso anno ci riescono in più, vince il più ricco.`,
     ],
     quip: 'Un giorno racconterò nelle piazze di Genua del vostro trono. Se mi pagate bene, s\'intende!',
     art: () => {

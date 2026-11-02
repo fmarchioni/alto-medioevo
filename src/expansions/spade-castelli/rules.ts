@@ -60,12 +60,16 @@
 import { INT } from '../../domain/economy';
 import type { BotCtx, ExpansionRules } from '../../domain/expansion';
 import { borders } from '../../domain/geography';
-import { MAX_ACRI } from '../../domain/investments';
+import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI } from '../../domain/investments';
 import { wealthIndex } from '../../domain/rank';
 import { Mulberry32 } from '../../domain/rng';
 import type { Game } from '../../domain/turn';
 import { livelloOf, sereno } from '../../domain/gabelle';
 import type { ActionResult, EventOutcome, Player } from '../../domain/types';
+import { factionOfEvent } from '../../domain/fazioni';
+import {
+  cardOf, CARTA_EVENT, CARTA_PESO, CARTE_ID, cartaOfEvent, discard, drawCard, expireCards, handOf, MERC_PAGA, mercsOf, playedThisYear, scadenzaCarta, TRADITORE_MURA, traitorsAt, truceOn, type CartaGuerra,
+} from './carte';
 
 export const ID = 'spade-castelli';
 
@@ -106,6 +110,8 @@ export const CATAPULT_COST = 1200;
 export const CATAPULT_UPKEEP = 60;
 export const CATAPULTS_PER_RING = 2;
 export const CATAPULT_MAX = MURA_MAX * CATAPULTS_PER_RING;
+/** le catapulte oltre quelle che aprono le mura bombardano il feudo: fino a questa quota dei servi per ogni coppia in più, vinca o perda l'assalto */
+export const BOMBARD_KILL = 0.02;
 /** ogni cerchia riduce del 12% le perdite contro Longobardi e briganti */
 export const WALL_EVENT_SHIELD = 0.12;
 export const LOOT_SCUDI = 8;
@@ -148,6 +154,10 @@ export const RIVAL_LEAD = 1.5;
 export const MEDIO_DESTROY = 0.35;
 /** prima di questo anno (q) non si muove guerra per la distruzione: tempo per fortificarsi */
 export const DESTROY_FROM_Q = 5;
+/** anni in cui un signore del computer tiene i soldati radunati per una campagna che non parte */
+export const PLAN_YEARS = 4;
+/** un signore del computer con tanti scudi oltre la riserva si fortifica anche senza minacce */
+export const RICH_WALLS = 4 * MURA_COST;
 
 export type WarGoal = 'bottino' | 'distruzione';
 
@@ -172,12 +182,21 @@ export interface WarResult {
   catLost?: number;
   /** cerchie di mura abbattute */
   rings?: number;
+  /** servi uccisi dal tiro delle catapulte in più delle mura (assente nei salvataggi vecchi) */
+  bombard?: number;
   /** assalto dell'assedio (1: la prima battaglia) */
   round?: number;
   /** l'esercito resta ad assediare il feudo */
   siege?: boolean;
   /** il feudo è caduto */
   fell?: boolean;
+  /** mercenari in campo con l'assalitore e nel fortino del difensore */
+  merc?: number;
+  mercDef?: number;
+  /** traditore giocato dall'assalitore: ha aperto una porta, o le porte sono rimaste chiuse (doppio gioco) */
+  traditore?: 'aperte' | 'chiuse';
+  /** il traditore del difensore faceva il doppio gioco e gli ha aperto le porte */
+  tradito?: boolean;
 }
 
 /** Notizie per un signore, lette all'inizio del suo turno. */
@@ -187,8 +206,13 @@ export type Dispatch =
   /** all'attaccante: l'esito della battaglia, combattuta alla chiusura dell'anno */
   | { k: 'battle'; war: WarResult }
   | { k: 'returned'; n: number; lost: number; anni: number; from: number; cat?: number }
+  /** salvataggi vecchi: l'assediato comprava la pace senza chiedere */
   | { k: 'peace'; by: number; scudi: number }
+  /** all'assediato: l'assediante ha accettato (ok) o respinto la sua proposta di pace */
+  | { k: 'peaceAnswer'; by: number; ok: boolean; scudi: number }
   | { k: 'lifted'; by: number }
+  /** all'assalitore: il feudo di `by` è sotto la tregua di Dio; siege: l'assedio non ha dato l'assalto */
+  | { k: 'truce'; by: number; siege: boolean }
   | { k: 'brigandsIn'; by: number };
 
 /** Una schiera di ritorno da una campagna. */
@@ -211,6 +235,8 @@ export interface Campaign {
   n: number;
   cat: number;
   goal: WarGoal;
+  /** mercenari che marciano con l'esercito */
+  merc?: number;
   /** anno (q) della partenza */
   q: number;
   /** anno (q) alla cui chiusura si combatte */
@@ -227,6 +253,12 @@ export interface Siege {
   last: number;
   wins: number;
   rounds: number;
+  /** proposta di pace dell'assediato, in attesa della risposta dell'assediante (assente: nessuna) */
+  offerta?: { q: number; price: number };
+  /** anno (q) dell'ultima proposta respinta: se ne può fare un'altra l'anno dopo */
+  rifiuto?: number;
+  /** mercenari arrivati con i rinforzi: combattono il prossimo assalto, poi se ne vanno */
+  merc?: number;
 }
 
 export interface SpadeState {
@@ -255,6 +287,20 @@ export interface SpadeState {
   lastDrive: number[];
   /** ultimo anno (q) di servizio della spia di ciascun signore (-1: nessuna); assente nei salvataggi vecchi */
   spia?: number[];
+  /** signori del computer: esercito che stanno radunando per una campagna, dall'anno q (assente nei salvataggi vecchi) */
+  piani?: ({ q: number; n: number } | null)[];
+  /** carte di guerra in mano a ciascun signore (assente nei salvataggi vecchi) */
+  carte?: CartaGuerra[][];
+  /** anno (q) dell'ultima carta giocata da ciascun signore */
+  giocata?: number[];
+  /** mercenari nel fortino di ciascun signore, fino all'anno (q) `until` */
+  mercenari?: ({ n: number; until: number } | null)[];
+  /** traditori giocati: apriranno le porte di `target` al prossimo assalto di `owner` */
+  traditori?: { owner: number; target: number; doppio: boolean }[];
+  /** traditori che fanno il doppio gioco: apriranno le porte di `owner` al primo assalto, fino all'anno `until` */
+  serpi?: { owner: number; until: number }[];
+  /** anno (q) della tregua di Dio di ciascun signore */
+  tregue?: number[];
   wars: WarResult[];
   mail: { to: number; d: Dispatch }[];
   inbox: Dispatch[];
@@ -324,6 +370,9 @@ export const maxArmy = (p: Player, soldati: number) => Math.floor(ARMY_MAX_SHARE
 
 /** Cerchie di mura che restano in piedi davanti a tante catapulte. */
 export const standingWalls = (mura: number, cat = 0) => Math.max(0, mura - cat / CATAPULTS_PER_RING);
+
+/** Cerchie che le catapulte potrebbero aprire oltre quelle del feudo (0: le mura bastano a fermarle). */
+export const bombardRings = (mura: number, cat = 0) => Math.max(0, cat / CATAPULTS_PER_RING - mura);
 
 /** Forza difensiva media di un feudo (senza il tiro), contro un esercito con `cat` catapulte. */
 export function defenseOf(p: Player, soldati: number, mura: number, cat = 0): number {
@@ -495,11 +544,17 @@ function goHome(g: Game, st: SpadeState, owner: number, n: number, cat: number, 
  * Applica perdite e saccheggio; in distruzione anche strage, incendio e
  * mura abbattute. Ritorna l'esito (le schiere non si spostano qui).
  */
-function fight(g: Game, attacker: number, target: number, n: number, cat: number, goal: WarGoal, round: number): WarResult {
+function fight(g: Game, attacker: number, target: number, n: number, cat: number, goal: WarGoal, round: number, merc = 0): WarResult {
   const st = ss(g), ps = g.state.players, p = ps[attacker], d = ps[target];
   const rnd = roll(st);
-  const attack = n * (0.7 + 0.6 * rnd());
-  const defense = defenseOf(d, fieldSoldiers(g, target), st.mura[target], cat) * (0.7 + 0.6 * rnd());
+  // carte di guerra: il traditore apre le porte (al nemico, o al suo padrone se fa il doppio gioco);
+  // i mercenari del fortino difendono e poi se ne vanno
+  const tr = traitorsAt(g, st, attacker, target);
+  const mura = Math.max(0, st.mura[target] - (tr.help ? TRADITORE_MURA : 0) - (tr.betrayed ? TRADITORE_MURA : 0));
+  const mercDef = mercsOf(g, st, target);
+  if (st.mercenari?.[target]) st.mercenari[target] = null;
+  const attack = (n + merc) * (0.7 + 0.6 * rnd());
+  const defense = defenseOf(d, fieldSoldiers(g, target) + mercDef, mura, cat) * (0.7 + 0.6 * rnd());
   const win = attack > defense;
   const attackerLost = INT(n * (win ? 0.05 + 0.15 * rnd() : 0.3 + 0.3 * rnd()));
   const defenderLost = INT(st.soldati[target] * (win ? 0.3 + 0.3 * rnd() : 0.05 + 0.15 * rnd()));
@@ -509,12 +564,16 @@ function fight(g: Game, attacker: number, target: number, n: number, cat: number
   // anche la milizia dei servi combatte: qualcuno cade pure quando l'assalto è respinto
   const militia = INT(Math.max(0, d.servi) * MILITIA);
   const serviLost = win ? INT(Math.max(0, d.servi) * (destroy ? SIEGE_KILL * (0.8 + 0.4 * rnd()) : 0.03 * rnd())) : INT(militia * (0.05 + 0.1 * rnd()));
+  // le catapulte più forti delle mura colpiscono le case: muoiono servi comunque vada l'assalto
+  const over = bombardRings(mura, cat);
+  const bombard = over > 0 ? INT(Math.max(0, d.servi - serviLost) * Math.min(1, BOMBARD_KILL * over) * (0.5 + 0.5 * rnd())) : 0;
   st.soldati[target] -= defenderLost;
-  d.servi -= serviLost;
+  d.servi -= serviLost + bombard;
 
   let scudi = 0, grano = 0, rings = 0;
   if (win) {
-    const survivors = n - attackerLost;
+    // anche i mercenari rimasti in piedi fanno bottino per il loro signore
+    const survivors = n - attackerLost + INT(merc * (n ? 1 - attackerLost / n : 0.9));
     scudi = INT(Math.min(Math.max(0, d.scudi), survivors * LOOT_SCUDI));
     grano = INT(Math.min(d.grano * 0.5, survivors * LOOT_GRANO));
     d.scudi -= scudi;
@@ -530,7 +589,8 @@ function fight(g: Game, attacker: number, target: number, n: number, cat: number
       }
     }
   }
-  return { q: g.state.q, anni: travelYears(g, attacker, target), attacker, defender: target, goal, sent: n, win, attackerLost, defenderLost, serviLost, scudi, grano, acri: 0, cat, catLost, rings, round };
+  return { q: g.state.q, anni: travelYears(g, attacker, target), attacker, defender: target, goal, sent: n, win, attackerLost, defenderLost, serviLost, scudi, grano, acri: 0, cat, catLost, rings, round, ...(bombard ? { bombard } : {}),
+    ...(merc ? { merc } : {}), ...(mercDef ? { mercDef } : {}), ...(tr.played ? { traditore: tr.help ? ('aperte' as const) : ('chiuse' as const) } : {}), ...(tr.betrayed ? { tradito: true } : {}) };
 }
 
 /** Pubblica l'esito: storia, notizie e cronaca. */
@@ -540,7 +600,7 @@ function publish(g: Game, w: WarResult): void {
   send(st, w.defender, { k: 'attacked', war: w });
   const data = { target: w.defender, win: w.win ? 1 : 0, goal: w.goal === 'distruzione' ? 1 : 0, sent: w.sent, lost: w.attackerLost, scudi: w.scudi, grano: w.grano, acri: w.acri, round: w.round ?? 1, fell: w.fell ? 1 : 0, cat: w.cat ?? 0 };
   note(g, w.attacker, 'war', data);
-  note(g, w.defender, 'besieged', { attacker: w.attacker, held: w.win ? 0 : 1, lost: w.defenderLost, servi: w.serviLost, scudi: w.scudi, grano: w.grano, acri: w.acri, round: w.round ?? 1, rings: w.rings ?? 0 });
+  note(g, w.defender, 'besieged', { attacker: w.attacker, held: w.win ? 0 : 1, lost: w.defenderLost, servi: w.serviLost, scudi: w.scudi, grano: w.grano, acri: w.acri, round: w.round ?? 1, rings: w.rings ?? 0, bombard: w.bombard ?? 0 });
 }
 
 /**
@@ -576,14 +636,16 @@ function conquer(g: Game, attacker: number, target: number, w: WarResult): void 
 /** Dopo un assalto vinto in distruzione: il feudo cade? */
 const falls = (g: Game, target: number, wins: number) => wins >= SIEGE_FALL_WINS || g.state.players[target].servi < FALL_SERVI;
 
-export function declareWar(g: Game, target: number, sent: number, goal: WarGoal, cat = 0): ActionResult & { campaign?: Campaign; joined?: boolean } {
+/** merc: mercenari del fortino che partono con l'esercito (anche da soli) */
+export function declareWar(g: Game, target: number, sent: number, goal: WarGoal, cat = 0, merc = 0): ActionResult & { campaign?: Campaign; joined?: boolean } {
   const no = phaseIs(g, 'investimenti');
   if (no) return no;
   const st = ss(g), me = g.state.current, p = g.player;
   if (st.lastWar[me] === g.state.q) return { ok: false, reason: 'si muove guerra una sola volta l\'anno' };
   if (target === me || !g.state.players[target] || !alive(g, target)) return { ok: false, reason: 'scegliete il feudo di un altro signore' };
-  if (!isCount(sent) || sent > st.soldati[me]) return { ok: false, reason: 'non avete tanti soldati nel fortino' };
-  if (sent < WAR_MIN) return { ok: false, reason: `servono almeno ${WAR_MIN} soldati` };
+  if (!Number.isInteger(merc) || merc < 0 || merc > mercsOf(g, st, me)) return { ok: false, reason: 'non avete tanti mercenari nel fortino' };
+  if (!Number.isInteger(sent) || sent < 0 || sent > st.soldati[me]) return { ok: false, reason: 'non avete tanti soldati nel fortino' };
+  if (sent + merc < WAR_MIN) return { ok: false, reason: `servono almeno ${WAR_MIN} uomini` };
   if (!Number.isInteger(cat) || cat < 0 || cat > catapultsOf(st, me)) return { ok: false, reason: 'non avete tante catapulte nel fortino' };
   if (goal !== 'bottino' && goal !== 'distruzione') return { ok: false, reason: 'scegliete risorse o distruzione' };
   if (goal === 'distruzione' && g.state.q < DESTROY_FROM_Q) return { ok: false, reason: `per la distruzione si muove guerra solo dall'anno ${900 + DESTROY_FROM_Q}` };
@@ -594,20 +656,26 @@ export function declareWar(g: Game, target: number, sent: number, goal: WarGoal,
   st.lastWar[me] = g.state.q;
   st.soldati[me] -= sent;
   if (cat) st.catapulte![me] -= cat;
+  if (merc) {
+    const m = st.mercenari![me]!;
+    m.n -= merc;
+    if (m.n <= 0) st.mercenari![me] = null;
+  }
   // l'esercito parte a fine turno: contro un confinante combatte alla chiusura dell'anno seguente, contro un feudo lontano di quello dopo
   const arrive = g.state.q + travelYears(g, me, target);
-  const c: Campaign = { owner: me, target, n: sent, cat, goal, q: g.state.q, arrive };
+  const c: Campaign = { owner: me, target, n: sent, cat, goal, q: g.state.q, arrive, ...(merc ? { merc } : {}) };
   (st.campagne ??= []).push(c);
-  note(g, me, siege ? 'reinforce' : 'march', { target, n: sent, cat, goal: goal === 'distruzione' ? 1 : 0, arrive: 900 + arrive });
+  note(g, me, siege ? 'reinforce' : 'march', { target, n: sent, cat, goal: goal === 'distruzione' ? 1 : 0, arrive: 900 + arrive, merc });
   return { ok: true, campaign: c, joined: !!siege };
 }
 
 /** Una battaglia d'apertura: l'esercito arrivato assale il feudo. */
 function openBattle(g: Game, c: Campaign): void {
   const st = ss(g);
-  const w = fight(g, c.owner, c.target, c.n, c.cat, c.goal, 1);
+  // i mercenari combattono questa battaglia e se ne vanno: l'assedio lo tengono solo i soldati
+  const w = fight(g, c.owner, c.target, c.n, c.cat, c.goal, 1, c.merc ?? 0);
   const left = c.n - w.attackerLost, catLeft = c.cat - (w.catLost ?? 0);
-  if (c.goal === 'distruzione' && w.win) {
+  if (c.goal === 'distruzione' && w.win && (left >= WAR_MIN || falls(g, c.target, 1))) {
     if (falls(g, c.target, 1)) {
       conquer(g, c.owner, c.target, w);
       goHome(g, st, c.owner, left, catLeft, c.target);
@@ -638,15 +706,36 @@ export function resolveBattles(g: Game): void {
     if (siege) {
       siege.n += c.n;
       siege.cat += c.cat;
+      if (c.merc) siege.merc = (siege.merc ?? 0) + c.merc;
+    } else if (alive(g, c.target) && truceOn(g, st, c.target)) {
+      // tregua di Dio: l'esercito si ferma un anno e combatterà alla chiusura del prossimo
+      c.arrive = q + 1;
+      st.campagne.push(c);
+      send(st, c.owner, { k: 'truce', by: c.target, siege: false });
     } else fresh.push(c);
   }
   for (const s of [...(st.assedi ?? [])].filter(x => x.last < q)) {
-    if ((st.assedi ?? []).includes(s) && alive(g, s.owner) && alive(g, s.target)) siegeRound(g, s);
+    if (!(st.assedi ?? []).includes(s) || !alive(g, s.owner) || !alive(g, s.target)) continue;
+    if (truceOn(g, st, s.target)) truceRound(g, s);
+    else siegeRound(g, s);
   }
   for (const c of fresh) {
     // il feudo è già caduto: l'esercito torna indietro senza combattere
     if (!alive(g, c.target)) goHome(g, st, c.owner, c.n, c.cat, c.target);
     else openBattle(g, c);
+  }
+}
+
+/** Tregua di Dio sull'assedio: niente assalto, ma il campo si ammala come sempre. */
+function truceRound(g: Game, s: Siege): void {
+  const st = ss(g);
+  s.last = g.state.q;
+  s.n -= INT(s.n * SIEGE_ATTRITION * (0.5 + 0.5 * roll(st)()));
+  send(st, s.owner, { k: 'truce', by: s.target, siege: true });
+  if (s.n < WAR_MIN) {
+    st.assedi = (st.assedi ?? []).filter(x => x !== s);
+    goHome(g, st, s.owner, s.n, s.cat, s.target);
+    send(st, s.target, { k: 'lifted', by: s.owner });
   }
 }
 
@@ -657,7 +746,8 @@ function siegeRound(g: Game, s: Siege): void {
   s.last = g.state.q;
   // il campo si ammala: l'assedio logora anche chi lo pone
   s.n -= INT(s.n * SIEGE_ATTRITION * (0.5 + 0.5 * roll(st)()));
-  const w = fight(g, s.owner, s.target, s.n, s.cat, 'distruzione', s.rounds);
+  const w = fight(g, s.owner, s.target, s.n, s.cat, 'distruzione', s.rounds, s.merc ?? 0);
+  s.merc = undefined;
   s.n -= w.attackerLost;
   s.cat -= w.catLost ?? 0;
   if (w.win) s.wins += 1;
@@ -693,22 +783,154 @@ export function liftSiege(g: Game, target: number): ActionResult {
 /** Prezzo della pace per l'assedio posto da `owner` al feudo di `target`. */
 export const peacePrice = (s: Siege) => s.n * PEACE_PER_SOLDIER;
 
-/** L'assediato compra la pace: paga l'assediante, che torna a casa. */
-export function buyPeace(g: Game, owner: number): ActionResult {
+/** Si può proporre la pace a chi ci assedia? (null: sì, altrimenti il motivo) */
+export function peaceBlock(g: Game, s: Siege): string | null {
+  if (s.offerta) return `la vostra proposta attende la risposta di ${g.state.players[s.owner].name}`;
+  if (s.rifiuto === g.state.q) return "la vostra proposta è stata respinta: se ne potrà fare un'altra l'anno prossimo";
+  return null;
+}
+
+/**
+ * L'assediato propone la pace al prezzo di oggi; paga solo se l'assediante
+ * accetta. Un signore del computer risponde subito, un giocatore nel suo turno.
+ */
+export function offerPeace(g: Game, owner: number): ActionResult & { answered?: boolean; accepted?: boolean; price?: number } {
   const no = phaseIs(g, 'commercio', 'investimenti');
   if (no) return no;
   const st = ss(g), me = g.state.current, p = g.player;
   const s = siegesOn(st, me).find(x => x.owner === owner);
   if (!s) return { ok: false, reason: 'quel signore non vi assedia' };
+  const block = peaceBlock(g, s);
+  if (block) return { ok: false, reason: block };
   const price = peacePrice(s);
   if (!canSpend(p, price)) return { ok: false, reason: `servono ${price} scudi` };
-  p.scudi -= price;
-  g.state.players[owner].scudi += price;
-  st.assedi = st.assedi!.filter(x => x !== s);
-  goHome(g, st, owner, s.n, s.cat, me);
-  send(st, owner, { k: 'peace', by: me, scudi: price });
-  note(g, me, 'peace', { attacker: owner, scudi: price });
+  s.offerta = { q: g.state.q, price };
+  note(g, me, 'peaceOffer', { attacker: owner, scudi: price });
+  const bot = g.state.players[owner].bot;
+  if (!bot) return { ok: true, answered: false, price };
+  settlePeace(g, s, botAcceptsPeace(g, s, bot, roll(st)));
+  return { ok: true, answered: true, accepted: !(st.assedi ?? []).includes(s), price };
+}
+
+/** L'assediante (il signore di turno) risponde alla proposta di pace di `target`. */
+export function answerPeace(g: Game, target: number, accept: boolean): ActionResult & { paid?: boolean } {
+  const st = ss(g), me = g.state.current;
+  const s = siegesBy(st, me).find(x => x.target === target && x.offerta);
+  if (!s) return { ok: false, reason: 'nessuna proposta di pace da quel feudo' };
+  settlePeace(g, s, accept);
+  return { ok: true, paid: !(st.assedi ?? []).includes(s) };
+}
+
+/** Pace accettata: l'assediato paga (se ancora può) e l'assedio finisce. Respinta: l'assedio continua. */
+function settlePeace(g: Game, s: Siege, accept: boolean): void {
+  const st = ss(g), d = g.state.players[s.target];
+  const price = s.offerta!.price;
+  s.offerta = undefined;
+  if (accept && canSpend(d, price)) {
+    d.scudi -= price;
+    g.state.players[s.owner].scudi += price;
+    st.assedi = (st.assedi ?? []).filter(x => x !== s);
+    goHome(g, st, s.owner, s.n, s.cat, s.target);
+    send(st, s.target, { k: 'peaceAnswer', by: s.owner, ok: true, scudi: price });
+    note(g, s.target, 'peace', { attacker: s.owner, scudi: price });
+    note(g, s.owner, 'peaceAccepted', { target: s.target, scudi: price });
+    return;
+  }
+  // respinta, o accettata quando l'assediato non ha più di che pagare
+  s.rifiuto = g.state.q;
+  send(st, s.target, { k: 'peaceAnswer', by: s.owner, ok: false, scudi: price });
+  note(g, s.target, 'peaceRefused', { attacker: s.owner, scudi: price });
+}
+
+// ---------------------------------------------------------------- carte di guerra (carte.ts)
+
+/** Si può giocare la carta? (null: sì, altrimenti il motivo) */
+function cardBlock(g: Game, id: CartaGuerra['id']): string | null {
+  const st = ss(g), me = g.state.current;
+  const no = phaseIs(g, 'commercio', 'investimenti');
+  if (no && !no.ok) return no.reason;
+  const c = cardOf(st, me, id);
+  if (!c || g.state.q > scadenzaCarta(c)) return 'non avete questa carta';
+  if (playedThisYear(g, st, me)) return "quest'anno avete già giocato una carta";
+  return null;
+}
+
+const played = (g: Game, id: CartaGuerra['id']) => {
+  const st = ss(g), me = g.state.current;
+  discard(st, me, id);
+  (st.giocata ??= g.state.players.map(() => -1))[me] = g.state.q;
+};
+
+/** Costo della compagnia di ventura in mano (0 se non c'è). */
+export const mercCost = (g: Game) => (cardOf(ss(g), g.state.current, 'mercenari')?.n ?? 0) * MERC_PAGA;
+
+/** Mercenari: la compagnia si paga ora e si accampa nel fortino fino alla scadenza della carta. */
+export function hireMercs(g: Game): ActionResult & { n?: number } {
+  const block = cardBlock(g, 'mercenari');
+  if (block) return { ok: false, reason: block };
+  const st = ss(g), me = g.state.current, p = g.player;
+  const c = cardOf(st, me, 'mercenari')!;
+  const cost = c.n! * MERC_PAGA;
+  if (!canSpend(p, cost)) return { ok: false, reason: `la compagnia vuole ${cost} scudi` };
+  p.scudi -= cost;
+  (st.mercenari ??= g.state.players.map(() => null))[me] = { n: mercsOf(g, st, me) + c.n!, until: scadenzaCarta(c) };
+  played(g, 'mercenari');
+  note(g, me, 'mercHired', { n: c.n!, scudi: cost });
+  return { ok: true, n: c.n };
+}
+
+/** Feudi dove il traditore può lavorare: quelli contro cui marcia o che assedia un esercito del signore. */
+export function traitorTargets(g: Game, i = g.state.current): number[] {
+  const st = ss(g);
+  return [...new Set([...campaignsBy(st, i).map(c => c.target), ...siegesBy(st, i).map(s => s.target)])].filter(t => alive(g, t));
+}
+
+/** Il traditore: aprirà una porta di `target` al prossimo assalto (se non fa il doppio gioco). */
+export function playTraitor(g: Game, target: number): ActionResult {
+  const block = cardBlock(g, 'traditore');
+  if (block) return { ok: false, reason: block };
+  const st = ss(g), me = g.state.current;
+  if (!traitorTargets(g).includes(target)) return { ok: false, reason: "serve un vostro esercito in marcia o all'assedio contro quel feudo" };
+  const c = cardOf(st, me, 'traditore')!;
+  (st.traditori ??= []).push({ owner: me, target, doppio: !!c.doppio });
+  played(g, 'traditore');
+  // segreto: non va nella cronaca prima dell'assalto
   return { ok: true };
+}
+
+/** Tregua di Dio: nessuno combatte contro il feudo alla chiusura di quest'anno. */
+export function invokeTruce(g: Game): ActionResult {
+  const block = cardBlock(g, 'tregua');
+  if (block) return { ok: false, reason: block };
+  const st = ss(g), me = g.state.current;
+  (st.tregue ??= g.state.players.map(() => -1))[me] = g.state.q;
+  played(g, 'tregua');
+  note(g, me, 'truce', {});
+  return { ok: true };
+}
+
+/** Carte di guerra di un signore del computer: una per turno, quando servono. */
+function botCards(c: BotCtx): void {
+  const { g, level, rnd, log } = c;
+  const st = ss(g), me = g.state.current, p = g.player;
+  if (!handOf(st, me).length || playedThisYear(g, st, me)) return;
+  const threatened = siegesOn(st, me).length > 0 || towerAlerts(g, me, 'dispendimenti').length > 0;
+  // tregua: sotto un assedio che non si regge, o con un esercito avvistato e poca difesa
+  if (cardOf(st, me, 'tregua') && threatened) {
+    const foe = Math.max(0, ...siegesOn(st, me).map(s => s.n), ...towerAlerts(g, me, 'dispendimenti').map(x => x.n));
+    const weak = defenseOf(p, st.soldati[me] + mercsOf(g, st, me), st.mura[me]) < foe * (level === 'difficile' ? 1.2 : 1);
+    if ((weak || level === 'facile') && invokeTruce(g).ok) return void log.push('invoca la tregua di Dio');
+  }
+  // mercenari: contro una minaccia, o per una campagna che si prepara
+  if (cardOf(st, me, 'mercenari') && (threatened || planOf(st, me, g.state.q) || rnd() < (level === 'facile' ? 0.2 : 0.05))) {
+    if (p.scudi - mercCost(g) >= (level === 'difficile' ? 800 : 300)) {
+      const r = hireMercs(g);
+      if (r.ok) return void log.push(`assolda ${r.n} mercenari`);
+    }
+  }
+  // traditore: sul primo feudo contro cui marcia o che assedia
+  const t = traitorTargets(g)[0];
+  if (cardOf(st, me, 'traditore') && t !== undefined && playTraitor(g, t).ok) log.push(`manda un traditore fra le mura di ${g.state.players[t].name}`);
 }
 
 // ---------------------------------------------------------------- briganti
@@ -790,6 +1012,16 @@ function winChance(sent: number, defense: number, rnd: () => number): number {
 /** Attacchi subiti negli ultimi tre anni. */
 const recentlyAttacked = (st: SpadeState, me: number, q: number) => st.wars.filter(w => w.defender === me && w.q >= q - 3).length;
 
+/** Esercito che il signore sta radunando per una campagna (null: nessuno, o rinunciato dopo PLAN_YEARS anni). */
+function planOf(st: SpadeState, me: number, q: number): { q: number; n: number } | null {
+  const pl = st.piani?.[me];
+  return pl && q - pl.q < PLAN_YEARS ? pl : null;
+}
+
+function setPlan(g: Game, me: number, pl: { q: number; n: number } | null): void {
+  (ss(g).piani ??= g.state.players.map(() => null))[me] = pl;
+}
+
 /**
  * Minaccia dei vicini: i soldati che hanno e un terzo di quelli che
  * potrebbero arruolare (dopo una guerra spesso li congedano), e chi assedia.
@@ -806,10 +1038,12 @@ function botDefend(c: BotCtx): void {
   const hit = recentlyAttacked(st, me, g.state.q);
   const reserve = level === 'difficile' ? Math.max(800, (p.acri * 75 * 0.5 * 35) / 1000) : 1000;
   const defense = defenseOf(p, st.soldati[me], st.mura[me]);
+  // con il tesoro pieno ci si fortifica comunque: il difficile fino a quattro cerchie, il medio tre, il facile una
+  const rich = p.scudi - MURA_COST >= reserve + RICH_WALLS;
   const wantWalls =
-    level === 'difficile' ? defense < threat * (hit ? 1.3 : 0.9)
-    : level === 'medio' ? (hit > 0 && st.mura[me] < 3) || (defense < threat * 0.6 && st.mura[me] < 2)
-    : hit > 0 ? rnd() < 0.4 : rnd() < 0.05;
+    level === 'difficile' ? defense < threat * (hit ? 1.3 : 0.9) || (rich && st.mura[me] < 4)
+    : level === 'medio' ? (hit > 0 && st.mura[me] < 3) || (defense < threat * 0.6 && st.mura[me] < 2) || (rich && st.mura[me] < 3)
+    : (hit > 0 ? rnd() < 0.4 : rnd() < 0.05) || (rich && st.mura[me] < 1);
   if (wantWalls && st.mura[me] < MURA_MAX && p.scudi - MURA_COST >= reserve && buildWall(g).ok) log.push(`innalza la ${st.mura[me]}ª cerchia di mura`);
   // torri di guardia: il medio ne tiene una, il difficile due, quando il tesoro lo consente
   const wantTowers = level === 'difficile' ? 2 : level === 'medio' ? 1 : rnd() < 0.05 ? 1 : 0;
@@ -841,7 +1075,10 @@ function botUnderSiege(c: BotCtx): void {
     }
     const hopeless = winChance(s.n, def(), rnd) > 0.5;
     const pay = level === 'difficile' ? hopeless : level === 'medio' ? hopeless && rnd() < 0.7 : rnd() < 0.3;
-    if (pay && p.scudi >= peacePrice(s) + 300 && buyPeace(g, s.owner).ok) log.push(`compra la pace da ${g.state.players[s.owner].name} per ${peacePrice(s)} scudi`);
+    if (!pay || p.scudi < peacePrice(s) + 300 || peaceBlock(g, s)) continue;
+    const price = peacePrice(s), foe = g.state.players[s.owner].name;
+    const r = offerPeace(g, s.owner);
+    if (r.ok) log.push(!r.answered ? `propone la pace a ${foe} per ${price} scudi` : r.accepted ? `compra la pace da ${foe} per ${price} scudi` : `propone la pace a ${foe}, che la respinge`);
   }
 }
 
@@ -866,10 +1103,72 @@ function botSpy(c: BotCtx): void {
   if (want && hireSpy(g).ok) c.log.push('assolda una spia');
 }
 
+/** anni d'assedio che il difficile mette nel conto, e quanto vale un anno dopo l'altro (il futuro è incerto) */
+const PEACE_HORIZON = 6;
+const PEACE_DISCOUNT = 0.85;
+/** valore di un servo conquistato, in scudi: lavora e paga gabelle */
+const SERVO_VALUE = 5;
+
+/**
+ * Quanto vale, in scudi, continuare l'assedio: anno per anno, con la
+ * probabilità di vincere l'assalto, il bottino di ogni vittoria e la
+ * conquista quando arrivano le vittorie che mancano; meno il soldo e la
+ * malattia del campo. Gli anni lontani contano meno.
+ */
+function siegeValue(g: Game, s: Siege, chance: number): number {
+  const d = g.state.players[s.target], p = g.state.players[s.owner];
+  const prezzo = g.state.scalars.prezzo || 30;
+  const need = Math.max(1, SIEGE_FALL_WINS - s.wins);
+  // a ogni vittoria: scudi e grano che i soldati possono portar via, finché ce ne sono
+  const perWin = Math.min(Math.max(0, d.scudi), s.n * LOOT_SCUDI) + (Math.min(d.grano * 0.5, s.n * LOOT_GRANO) * prezzo) / 1000;
+  const prize = Math.max(0, d.scudi) + Math.min(Math.max(0, d.acri), MAX_ACRI - p.acri) * (COSTS.terre / ACRI_PER_ACQUISTO)
+    + Math.max(0, d.servi) * CONQUEST_SERVI * SERVO_VALUE;
+  const upkeep = s.n * SOLDO + s.cat * CATAPULT_UPKEEP + s.n * SIEGE_ATTRITION * 0.75 * RECRUIT_COST;
+  // dist[k]: probabilità di avere ancora k vittorie da ottenere (il feudo non è ancora caduto)
+  let dist = new Map([[need, 1]]);
+  let value = 0, w = 1, loot = 0;
+  for (let y = 0; y < PEACE_HORIZON && dist.size; y++) {
+    const next = new Map<number, number>();
+    for (const [k, pr] of dist) {
+      value -= w * pr * upkeep;
+      // il bottino non supera il tesoro del feudo
+      const gain = Math.min(perWin, Math.max(0, d.scudi - loot));
+      value += w * pr * chance * gain;
+      if (k === 1) value += w * pr * chance * prize;
+      else next.set(k - 1, (next.get(k - 1) ?? 0) + pr * chance);
+      next.set(k, (next.get(k) ?? 0) + pr * (1 - chance));
+    }
+    loot += perWin * chance;
+    dist = next;
+    w *= PEACE_DISCOUNT;
+  }
+  return value;
+}
+
+/**
+ * Un signore del computer davanti a una proposta di pace. Il facile accetta
+ * quasi sempre, il medio se l'assalto è incerto; il difficile fa i conti:
+ * accetta se gli scudi offerti valgono più di quanto renderebbe continuare.
+ */
+function botAcceptsPeace(g: Game, s: Siege, level: string, rnd: () => number): boolean {
+  const st = ss(g), d = g.state.players[s.target];
+  const chance = winChance(s.n, defenseOf(d, st.soldati[s.target], st.mura[s.target], s.cat), rnd);
+  if (level === 'facile') return rnd() < 0.7;
+  if (level === 'medio') return chance < 0.6 || rnd() < 0.25;
+  return s.offerta!.price >= siegeValue(g, s, chance);
+}
+
 /** L'assedio continua solo se l'assalto ha buone speranze. */
 function botSiege(c: BotCtx): void {
   const { g, level, rnd, log } = c;
   const st = ss(g), me = g.state.current;
+  // una proposta di pace rimasta in sospeso (per esempio da un salvataggio): si risponde subito
+  for (const s of siegesBy(st, me).filter(x => x.offerta)) {
+    const price = s.offerta!.price, foe = g.state.players[s.target].name;
+    const yes = botAcceptsPeace(g, s, level, rnd);
+    settlePeace(g, s, yes);
+    log.push(yes ? `accetta la pace da ${foe} per ${price} scudi` : `respinge la pace offerta da ${foe}`);
+  }
   for (const s of siegesBy(st, me)) {
     const d = g.state.players[s.target];
     const chance = winChance(s.n, defenseOf(d, st.soldati[s.target], st.mura[s.target], s.cat), rnd);
@@ -930,9 +1229,9 @@ function botWar(c: BotCtx): void {
     const score = (x: T) => ((net(x) + (rival(x) ? 2000 : 0)) / (x.defense + 50)) * (x.leader ? 2 : 1) * (x.foe ? 2 : 1);
     t = targets.filter(x => (net(x) >= MEDIO_MIN_LOOT || rival(x)) && Math.ceil(x.defense * 1.3) <= room).sort((a, b) => score(b) - score(a))[0];
     if (!t) return;
-    // più è facile la vittoria, più è probabile che la tenti
+    // più è facile la vittoria, più è probabile che la tenti; se sta già radunando l'esercito, va avanti
     const easy = Math.min(1, room / Math.max(1, t.defense * 1.3) - 1);
-    if (rnd() > (t.leader || t.foe ? 0.35 : 0.2) + 0.3 * easy) return;
+    if (!planOf(st, me, g.state.q) && rnd() > (t.leader || t.foe ? 0.35 : 0.2) + 0.3 * easy) return;
     // contro un rivale, se ha forze per un assedio lungo, punta a distruggerlo
     if (rival(t) && g.state.q >= DESTROY_FROM_Q && t.defense * 1.6 <= room && !siegesBy(st, me).length && !siegesOn(st, t.i).length && rnd() < MEDIO_DESTROY) goal = 'distruzione';
     else if (net(t) < MEDIO_MIN_LOOT) return;
@@ -949,16 +1248,19 @@ function botWar(c: BotCtx): void {
   if (p.scudi < need * RECRUIT_COST + t.buy * CATAPULT_COST + wanted * CAMPAIGN_COST + (level === 'medio' ? 300 : 500)) return;
   if (t.buy && !buildCatapults(g, t.buy).ok) return;
   if (t.buy) log.push(`costruisce ${t.buy} catapulte`);
-  // i volontari sono pochi: un esercito grande si mette insieme in più anni
+  // i volontari sono pochi: un esercito grande si mette insieme in più anni, e intanto non si congeda
   if (need > recruitRoom(g)) {
     const k = recruitRoom(g);
+    setPlan(g, me, { q: planOf(st, me, g.state.q)?.q ?? g.state.q, n: wanted });
     if (k > 0 && recruit(g, k).ok) log.push(`arruola ${k} soldati (pochi volontari: la campagna aspetta)`);
     return;
   }
   if (need && !recruit(g, need).ok) return;
   if (need) log.push(`arruola ${need} soldati`);
-  const r = declareWar(g, t.i, Math.min(wanted, st.soldati[me]), goal, Math.min(t.cat, catapultsOf(st, me)));
+  const merc = warLooms(g, me) ? 0 : mercsOf(g, st, me);
+  const r = declareWar(g, t.i, Math.min(wanted, st.soldati[me]), goal, Math.min(t.cat, catapultsOf(st, me)), merc);
   if (r.ok && r.campaign) {
+    setPlan(g, me, null);
     const k = r.campaign;
     log.push(`manda ${k.n} soldati${k.cat ? ` e ${k.cat} catapulte` : ''} contro ${ps[t.i].name} ${goal === 'distruzione' ? 'per distruggerlo' : 'per le risorse'}: battaglia alla fine del ${900 + k.arrive}`);
   }
@@ -971,7 +1273,11 @@ function botGarrison(c: BotCtx): void {
   if (level === 'facile') return;
   const threat = threatOf(g, me);
   const besieged = siegesOn(st, me).length > 0;
-  const keep = besieged ? Math.ceil(threat * 1.1) : recentlyAttacked(st, me, g.state.q) ? Math.ceil(threat * (level === 'difficile' ? 0.8 : 0.5)) : 0;
+  const keep = Math.max(
+    besieged ? Math.ceil(threat * 1.1) : recentlyAttacked(st, me, g.state.q) ? Math.ceil(threat * (level === 'difficile' ? 0.8 : 0.5)) : 0,
+    // l'esercito che si sta radunando per una campagna resta sotto le armi
+    planOf(st, me, g.state.q)?.n ?? 0,
+  );
   if (st.soldati[me] > keep) disband(g, st.soldati[me] - keep);
 }
 
@@ -1017,8 +1323,22 @@ export const rules: ExpansionRules = {
     };
   },
 
+  // mazzo dell'espansione: ogni carta che il signore non ha già in mano (traditore e tregua solo con altri signori)
+  deck(g) {
+    const st = ss(g), me = g.state.current, rivals = others(g, me).length > 0;
+    return CARTE_ID.filter(id => !cardOf(st, me, id) && (id === 'mercenari' || rivals)).map(id => ({ id: CARTA_EVENT[id], w: CARTA_PESO }));
+  },
+
+  onCard(g, id) {
+    const st = ss(g), me = g.state.current, card = cartaOfEvent(id);
+    if (!card) return;
+    const c = drawCard(g, st, me, card, roll(st));
+    note(g, me, 'cardDrawn', { card: CARTE_ID.indexOf(card), n: c.n ?? 0 });
+  },
+
   onTurnStart(g) {
     const st = ss(g), me = g.state.current;
+    for (const id of expireCards(g, st, me)) note(g, me, 'cardLost', { card: CARTE_ID.indexOf(id) });
     st.inbox = st.mail.filter(m => m.to === me).map(m => m.d);
     st.mail = st.mail.filter(m => m.to !== me);
     // le schiere che arrivano a casa: la malattia ne ha portati via fino al 5% per anno di viaggio
@@ -1038,6 +1358,8 @@ export const rules: ExpansionRules = {
 
   onEvent(g, eventId, outcome) {
     const st = ss(g), me = g.state.current, p = g.player;
+    // i mercenari del fortino hanno combattuto contro l'orda: se ne vanno
+    if (factionOfEvent(eventId) && outcome.win !== undefined && st.mercenari?.[me]) st.mercenari[me] = null;
     if (!RAID_EVENTS.includes(eventId)) return;
     if (st.mura[me] > 0) wallShield(p, st.mura[me], outcome);
     // i briganti diventano una pedina: chi li ha subiti li manda su un avversario
@@ -1055,7 +1377,7 @@ export const rules: ExpansionRules = {
   // contro le orde delle fazioni un soldato vale tre nemici (sei servi), ogni cerchia di mura +20% di difesa
   factionDefense(g) {
     const st = ss(g), me = g.state.current;
-    return { soldati: st.soldati[me] * SOLDIER_VS_HORDE, mura: 1 + WALL_VS_HORDE * st.mura[me] };
+    return { soldati: (st.soldati[me] + mercsOf(g, st, me)) * SOLDIER_VS_HORDE, mura: 1 + WALL_VS_HORDE * st.mura[me] };
   },
 
   onIncome(g, amount) {
@@ -1086,6 +1408,7 @@ export const rules: ExpansionRules = {
   botBeforeTrade: botBrigands,
 
   botBeforeInvest(c) {
+    botCards(c);
     botBrigands(c);
     botSpy(c);
     botUnderSiege(c);

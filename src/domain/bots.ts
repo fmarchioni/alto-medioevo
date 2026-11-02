@@ -16,6 +16,7 @@ import { granaryCapacity, MACINA_MOOD_WEIGHT, RIOT_MOOD, SETTLER_MEDIA_PRICE, um
 import { BATTLE_OPTIONS, marriageCost, type FactionId, type FactionOption } from './fazioni';
 import { canInvest, COSTS, type InvestmentKind } from './investments';
 import { scadenza } from './imprese';
+import { RANK_THRESHOLDS, wealthIndex } from './rank';
 import { Mulberry32, type Rng } from './rng';
 import { bestRates, currentRates, KINDS, maxBuyable, previewRates, RATE_SUM_CAP, yieldPerPoint, type Rates } from './strategy';
 import type { Game } from './turn';
@@ -336,6 +337,7 @@ function invest(c: Ctx, level: BotLevel): void {
     return true;
   };
   const kinds: InvestmentKind[] = ['terre', 'mercato', 'opificio', 'palazzo'];
+  const reale = !!g.state.options.palazzoReale;
   // il mercante vuole granai capaci di un raccolto abbondante intero
   if (level !== 'facile' && p.strategia === 'mercante' && p.granai !== undefined) {
     while (granaryCapacity(p) < p.acri * 75 && canInvest(p, 'granaio').ok && p.scudi - COSTS.granaio >= 1000 && buy('granaio'));
@@ -356,7 +358,8 @@ function invest(c: Ctx, level: BotLevel): void {
     // prudente: tiene una riserva e spesso rimanda
     const reserve = 2000;
     for (let i = 0; i < 6; i++) {
-      const options = kinds.filter(k => k !== 'palazzo' && canInvest(p, k).ok && p.scudi - COSTS[k] >= reserve);
+      // con il palazzo reale il palazzo serve per il trono: lo considera come gli altri beni
+      const options = kinds.filter(k => (k !== 'palazzo' || reale) && canInvest(p, k).ok && p.scudi - COSTS[k] >= reserve);
       if (!options.length || rnd() < 0.4) break;
       buy(options[Math.floor(rnd() * options.length)]);
     }
@@ -366,7 +369,9 @@ function invest(c: Ctx, level: BotLevel): void {
     for (let i = 0; i < 40; i++) {
       const can = (k: InvestmentKind) => canInvest(p, k).ok && p.scudi - COSTS[k] >= reserve;
       let pick: InvestmentKind | null = null;
-      if (p.rateCommerzio > 0 || p.mercato > 1) {
+      // palazzo reale: da duca in su completa il palazzo, che serve per il trono e attira servi
+      if (reale && wealthIndex(p) > RANK_THRESHOLDS[1] && can('palazzo')) pick = 'palazzo';
+      else if (p.rateCommerzio > 0 || p.mercato > 1) {
         const perM = marketYield(p) / COSTS.mercato;
         const perO = opificioYield(p) / COSTS.opificio;
         const order: InvestmentKind[] = perM >= perO ? ['mercato', 'opificio'] : ['opificio', 'mercato'];

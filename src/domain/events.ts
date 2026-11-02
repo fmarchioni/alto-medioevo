@@ -7,7 +7,7 @@ import { INT } from './economy';
 import type { EventOutcome, Options, Player } from './types';
 import type { Rng } from './rng';
 import { applyRiot, RIOT_EVENT } from './gabelle';
-import { impresaOfSlot, IMPRESE } from './imprese';
+import { impresaOfSlot, IMPRESE, type ImpresaId } from './imprese';
 
 export type EventEffect =
   | { kind: 'scudi'; amount: number } // stringa terminata da "+" o "-"
@@ -15,7 +15,8 @@ export type EventEffect =
   | { kind: 'scelta' } // stringa terminata da "?": pugna o riscatto
   | { kind: 'rivolta' } // riforma delle gabelle: solo con l'umore del popolo basso
   | { kind: 'fazione' } // fazioni storiche: la scelta dipende dalla fazione
-  | { kind: 'impresa' }; // imprese temerarie: una carta da giocare quando si vuole
+  | { kind: 'impresa' } // imprese temerarie: una carta da giocare quando si vuole
+  | { kind: 'carta' }; // carta di un'espansione: la mette in mano l'espansione (ExpansionRules.onCard)
 
 export interface RandomEvent {
   id: number;
@@ -24,7 +25,7 @@ export interface RandomEvent {
   effect: EventEffect;
 }
 
-export const EVENTS: readonly RandomEvent[] = [
+export const EVENTS: RandomEvent[] = [
   { id: 1, title: 'Tributo longobardo', description: 'I Longobardi di Patavium pretendono un tributo.', effect: { kind: 'scelta' } },
   { id: 2, title: 'Doni saraceni', description: 'Un principe saraceno porta omaggi e una regalia.', effect: { kind: 'scudi', amount: 500 } },
   { id: 3, title: 'Peste', description: 'La peste colpisce i servi del feudo.', effect: { kind: 'serviPercent', percent: 40 } },
@@ -42,6 +43,14 @@ export const EVENTS: readonly RandomEvent[] = [
   { id: IMPRESE.decime.event, title: "Le decime dell'abate", description: 'I briganti cercano un complice per assaltare il carro delle decime.', effect: { kind: 'impresa' } },
   { id: IMPRESE.commercio.event, title: 'Il commercio segreto', description: 'Mercanti senza scrupoli offrono di partecipare a un lucroso commercio segreto.', effect: { kind: 'impresa' } },
 ];
+
+/**
+ * Le espansioni aggiungono qui le carte del proprio mazzo (effetto `carta`),
+ * così titolo e descrizione si trovano come per gli altri imprevisti.
+ */
+export function registerEvents(cards: RandomEvent[]): void {
+  for (const c of cards) if (!EVENTS.some(e => e.id === c.id)) EVENTS.push(c);
+}
 
 /** Segnaposto dell'estrazione: un attacco di una fazione (quale, lo decide il motore). */
 export const ATTACK: RandomEvent = { id: 0, title: 'Attacco', description: 'Una fazione straniera si presenta ai confini.', effect: { kind: 'fazione' } };
@@ -66,7 +75,63 @@ export function rollEvent(rng: Rng, options: Options, riotSlots = 0, attackSlots
   if (card) return EVENTS.find(e => e.id === IMPRESE[card].event)!;
   // con i fatti del reame il ciambellano infedele diventa un fatto con una scelta: la sua casella resta vuota
   if (options.fatti && kj === 8) return null;
-  return EVENTS.find(e => e.id === kj && e.effect.kind !== 'rivolta' && e.effect.kind !== 'fazione' && e.effect.kind !== 'impresa') ?? null;
+  return EVENTS.find(e => e.id === kj && e.effect.kind !== 'rivolta' && e.effect.kind !== 'fazione' && e.effect.kind !== 'impresa' && e.effect.kind !== 'carta') ?? null;
+}
+
+// ---------------------------------------------------------------- mazzo (opzione `mazzo`)
+
+/**
+ * Probabilità a turno di ogni punto di peso: ogni carta ha la sua (peso × PESO_CHANCE)
+ * e il totale è la somma delle carte in gioco. Una carta semplice pesa 1 (3,3%); la
+ * rivolta del popolo furioso pesa 12 (40%). Rivolta e attacchi si aggiungono alle
+ * altre carte, senza renderle più rare.
+ */
+export const PESO_CHANCE = 1 / 30;
+/** La cloaca romana si rompe solo da questo anno (q) in poi: all'inizio sarebbe troppo gravosa. */
+export const CLOACA_DAL = 5;
+/** Imprevisti del listato tolti dal mazzo: tributo longobardo (doppione dei Longobardi) e campagna vittoriosa. */
+export const FUORI_MAZZO = [1, 4];
+const CLOACA = 6;
+
+export interface DrawCtx {
+  /** anno (q) */
+  q: number;
+  /** peso della rivolta (le sue caselle nel listato; 0 senza gabelle) */
+  riot: number;
+  /** peso degli attacchi delle fazioni (-1: fazioni assenti) */
+  attack: number;
+  /** il signore può ricevere un'impresa temeraria */
+  impresa: boolean;
+  /** carte del mazzo di un'espansione, con il loro peso */
+  extra?: { id: number; w: number }[];
+}
+
+/** Carte del mazzo per questo signore, con il loro peso: gli imprevisti semplici pesano 1. */
+export function deckFor(ctx: DrawCtx): { ev: RandomEvent; w: number }[] {
+  const deck = EVENTS.filter(e => e.effect.kind === 'scudi' || e.effect.kind === 'serviPercent' || e.effect.kind === 'scelta')
+    .filter(e => !FUORI_MAZZO.includes(e.id) && (e.id !== CLOACA || ctx.q >= CLOACA_DAL))
+    .map(ev => ({ ev, w: 1 }));
+  if (ctx.riot > 0) deck.push({ ev: EVENTS.find(e => e.id === RIOT_EVENT)!, w: ctx.riot });
+  if (ctx.attack > 0) deck.push({ ev: ATTACK, w: ctx.attack });
+  if (ctx.impresa) for (const id of Object.keys(IMPRESE) as ImpresaId[]) deck.push({ ev: EVENTS.find(e => e.id === IMPRESE[id].event)!, w: 1 });
+  for (const x of ctx.extra ?? []) if (x.w > 0) deck.push({ ev: EVENTS.find(e => e.id === x.id)!, w: x.w });
+  return deck;
+}
+
+/** Probabilità che in questo turno arrivi un imprevisto qualsiasi (al più 1). */
+export const eventChance = (ctx: DrawCtx) => Math.min(1, deckFor(ctx).reduce((a, c) => a + c.w, 0) * PESO_CHANCE);
+
+/**
+ * Estrae l'imprevisto del turno: ogni carta arriva con probabilità peso × PESO_CHANCE,
+ * nessuna se il numero cade oltre la somma. Se la somma supera 1 (casi estremi)
+ * le probabilità si riducono in proporzione. Consuma 1 RND.
+ */
+export function drawEvent(rng: Rng, ctx: DrawCtx): RandomEvent | null {
+  const deck = deckFor(ctx);
+  const total = deck.reduce((a, c) => a + c.w, 0);
+  let x = rng.next() / Math.min(PESO_CHANCE, 1 / total);
+  if (x >= total) return null;
+  return (deck.find(c => (x -= c.w) < 0) ?? deck[deck.length - 1]).ev;
 }
 
 /** Righe 785-788: effetti immediati degli eventi senza scelta. */

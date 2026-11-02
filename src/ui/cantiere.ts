@@ -5,12 +5,13 @@
  */
 import { trustFactor } from '../domain/economy';
 import { fiduciaOf, livelloMid, livelloOf, MARKET_MULT, OPIFICIO_MULT, umoreOf, workFactor } from '../domain/gabelle';
-import { COSTS, canInvest, MAX_ACRI, maxBotteghe, MAX_GRANAI, MAX_PALAZZO, type InvestmentKind } from '../domain/investments';
+import { ACRI_IN_BLOCCO, ACRI_PER_ACQUISTO, COSTS, canInvest, canInvestTimes, MAX_ACRI, maxBotteghe, MAX_GRANAI, MAX_PALAZZO, type InvestmentKind } from '../domain/investments';
 import { GRANAIO_CAPACITY, granaryCapacity, SETTLER_GRAIN } from '../domain/gabelle';
-import { RANK_THRESHOLDS, titleName, VICTORY_THRESHOLD, wealthIndex } from '../domain/rank';
+import { LISTING_VICTORY, missingFloors, PALAZZO_SERVI, RANK_THRESHOLDS, titleName, victoryRule, wealthIndex, type Victory } from '../domain/rank';
 import type { Game } from '../domain/turn';
 import type { Player, Scalars } from '../domain/types';
 import { honorific } from './advisor';
+import { foreclosureWarning } from './pignoramenti';
 import { builderPortrait, buildingArt } from './art';
 import { pick, speechBox, type Speaker } from './speaker';
 
@@ -28,11 +29,15 @@ export const KINDS: InvestmentKind[] = (['terre', 'granaio', 'mercato', 'opifici
 /** Beni costruibili in questa partita (i granai solo con il commercio del grano). */
 const kindsFor = (p: Player) => KINDS.filter(k => k !== 'granaio' || p.granai !== undefined);
 
-/** Prossimo traguardo di ricchezza: titolo superiore o trono. */
-export function nextGoal(p: Player): { label: string; target: number; from: number } {
+/** Prossimo traguardo di ricchezza: titolo superiore o trono (con il palazzo reale serve anche il palazzo completo). */
+export function nextGoal(p: Player, v: Victory = LISTING_VICTORY): { label: string; target: number; from: number; floors?: number } {
   const ka = wealthIndex(p);
   const idx = RANK_THRESHOLDS.findIndex(t => ka <= t);
-  if (idx === -1) return { label: p.gender === 1 ? 'il trono di re' : 'il trono di regina', target: VICTORY_THRESHOLD, from: RANK_THRESHOLDS[RANK_THRESHOLDS.length - 1] };
+  if (idx === -1) {
+    // floors: piani di palazzo che mancano ancora per il trono
+    const floors = missingFloors(p, v);
+    return { label: p.gender === 1 ? 'il trono di re' : 'il trono di regina', target: v.threshold, from: RANK_THRESHOLDS[RANK_THRESHOLDS.length - 1], ...(floors ? { floors } : {}) };
+  }
   return { label: titleName(idx + 1 + p.gender), target: RANK_THRESHOLDS[idx], from: idx === 0 ? 0 : RANK_THRESHOLDS[idx - 1] };
 }
 
@@ -73,7 +78,8 @@ export function opificioYield(p: Player, umore = livelloOf(umoreOf(p))): number 
 }
 
 /** Descrizione dell'effetto di ciascun bene, con i numeri del feudo. */
-export function effectText(p: Player, k: InvestmentKind): string {
+/** reale: con il palazzo reale ogni piano attira servi e il palazzo completo serve per il trono. */
+export function effectText(p: Player, k: InvestmentKind, reale = false): string {
   switch (k) {
     case 'terre':
       return `+25 acri: il raccolto può crescere fino a ${n((p.acri + 25) * 75)} misure. ${p.botteghe ? 'Ogni 100 acri consentono un mercato e un opificio.' : 'Ogni 500 acri in più consentono un mercato e un opificio in più.'}`;
@@ -88,7 +94,9 @@ export function effectText(p: Player, k: InvestmentKind): string {
         ? `Rende fino a ${n(opificioYield(p))} scudi l'anno con la gabella corrente sul commerzio, se i servi crescono: la resa varia con la loro crescita.`
         : `Rende circa ${n(opificioYield(p, 'buono'))} scudi l'anno con la gabella corrente sul commerzio e il popolo felice.`;
     case 'palazzo':
-      return 'Non rende nulla, ma conta per il rango quanto costa. Il massimo è di 11 piani.';
+      return reale
+        ? `Non rende scudi, ma conta per il rango quanto costa e ogni piano attira da ${PALAZZO_SERVI[0]} a ${n(PALAZZO_SERVI[1])} servi nel feudo. Per salire al trono servono tutti gli ${MAX_PALAZZO} piani.`
+        : 'Non rende nulla, ma conta per il rango quanto costa. Il massimo è di 11 piani.';
     case 'granaio':
       return `I granai tengono ${n(GRANAIO_CAPACITY)} misure in più (ora ${n(granaryCapacity(p))}). Grano comprato nelle annate buone e venduto in carestia rende, e ogni ${SETTLER_GRAIN} misure vendute dalle scorte attirano una famiglia nel feudo.`;
   }
@@ -117,19 +125,22 @@ export function recommend(g: Game): { kind: InvestmentKind | null; why: string }
     return { kind: 'granaio', why: 'I granai sono quasi pieni: un granaio nuovo vi lascia conservare il grano per gli anni di carestia.' };
   }
   if (ok('terre')) return { kind: 'terre', why: 'Più terre significano raccolti più grandi e spazio per nuove botteghe.' };
-  if (ok('palazzo')) return { kind: 'palazzo', why: 'Non resta molto altro: un piano di palazzo almeno fa crescere il prestigio.' };
+  if (ok('palazzo')) return { kind: 'palazzo', why: g.state.options.palazzoReale ? 'Il palazzo attira servi, e senza tutti i suoi piani il trono resta lontano.' : 'Non resta molto altro: un piano di palazzo almeno fa crescere il prestigio.' };
   return { kind: null, why: 'Per quest\'anno non c\'è nulla che possiamo permetterci.' };
 }
 
 export function builderGreeting(g: Game): string {
   const p = g.player, sc: Scalars = g.state.scalars, h = honorific(p);
-  const goal = nextGoal(p);
+  const goal = nextGoal(p, victoryRule(g.state.options));
   const ka = wealthIndex(p);
-  const lines = [pick([
+  // ricchezza del trono già raggiunta: manca solo il palazzo
+  const rich = ka > goal.target;
+  const lines = rich ? [`${h}, la vostra ricchezza (${n(ka)}) basterebbe già per ${goal.label}: manca solo il palazzo completo, ${goal.floors === 1 ? 'un piano' : `${goal.floors} piani`}.`] : [pick([
     `${h}, il cantiere attende ordini. La vostra ricchezza vale ${n(ka)}: ne servono ${n(goal.target - ka + 1)} in più per ${goal.label}.`,
     `Buongiorno, ${h}! Mattoni e calce sono pronti. Per diventare ${goal.label} vi mancano ${n(goal.target - ka + 1)} di ricchezza.`,
     `Eccomi, ${h}. Contando terre, botteghe, palazzo e tesoro valete ${n(ka)}. Il prossimo traguardo è ${goal.label}.`,
   ])];
+  if (goal.floors && !rich) lines.push(`Ricordate però che il trono spetta solo a chi ha il palazzo completo: ${goal.floors === 1 ? 'manca ancora un piano' : `mancano ancora ${goal.floors} piani`}.`);
   lines.push(pick([
     'Sappiate che ogni scudo speso in beni conta per il rango quanto conta nel tesoro: costruendo non perdete nulla nella scalata al trono.',
     'Un consiglio da vecchio muratore: ciò che costruite vale per il rango esattamente quanto lo pagate, ma in più può rendere.',
@@ -142,16 +153,26 @@ export function builderGreeting(g: Game): string {
   return lines.join(' ');
 }
 
-export function builderReaction(kind: InvestmentKind, p: Player): string {
+/** servi: accorsi nel feudo per il nuovo piano di palazzo (palazzo reale). */
+export function builderReaction(kind: InvestmentKind, p: Player, times = 1, servi = 0): string {
   const h = honorific(p);
   switch (kind) {
     case 'terre':
+      if (times > 1) {
+        const k = n(times * ACRI_PER_ACQUISTO);
+        return pick([`Cippi piantati tutt'intorno: ${k} acri nuovi in un colpo solo, ${h}. Ora ne avete ${n(p.acri)}.`, `Un bel tratto di pianura, ${h}: ${k} acri in più, ${n(p.acri)} in tutto!`]);
+      }
       return pick([`Ho fatto piantare i cippi: altri 25 acri sono vostri, ${h}. Ora ne avete ${n(p.acri)}.`, `I contadini già arano le nuove terre. ${n(p.acri)} acri in tutto!`]);
     case 'mercato':
       return pick([`Le bancarelle sono montate! I mercanti pagheranno la gabella dall'anno prossimo.`, `Un nuovo mercato in piazza, ${h}: è il numero ${p.mercato - 1}.`]);
     case 'opificio':
       return pick([`La ruota del nuovo opificio gira già, ${h}!`, `Telai, mole e fornaci: l'opificio numero ${p.opificio - 1} è pronto.`]);
     case 'palazzo':
+      if (servi) {
+        const left = MAX_PALAZZO - p.palazzo;
+        const end = left ? `${left === 1 ? 'Manca un piano solo' : `Mancano ${left} piani`} al palazzo completo.` : 'Il palazzo è completo: ora il trono attende solo la vostra ricchezza!';
+        return pick([`Un piano in più al palazzo, ${h}: si vede da tre valli, e ${n(servi)} servi sono già accorsi a cercare lavoro nel feudo. ${end}`, `La fama del palazzo corre lontano: ${n(servi)} servi arrivano con le loro famiglie. ${end}`]);
+      }
       return pick([`Un piano in più al palazzo, ${h}: si vede da tre valli!`, `Il palazzo cresce: ${p.palazzo} piani su 11. Che magnificenza!`]);
     case 'granaio':
       return pick([`Il granaio nuovo profuma di legno, ${h}: ora i granai tengono ${n(granaryCapacity(p))} misure.`, `Travi, tegole e un buon gatto contro i sorci: il granaio è pronto.`]);
@@ -162,11 +183,19 @@ export function builderReaction(kind: InvestmentKind, p: Player): string {
 
 const TITLES: Record<InvestmentKind, string> = { terre: '25 acri di terra', mercato: 'Mercato', opificio: 'Opificio', palazzo: 'Piano di palazzo', granaio: 'Granaio' };
 
+/** Acquisto rapido delle terre: ACRI_IN_BLOCCO acri in una volta, entro MAX_ACRI e il credito. */
+function bulkLandButton(p: Player): string {
+  const times = ACRI_IN_BLOCCO / ACRI_PER_ACQUISTO;
+  const c = canInvestTimes(p, 'terre', times);
+  const label = c.ok ? `Costruisci ${ACRI_IN_BLOCCO} acri di terra (${n(times * COSTS.terre)} scudi)` : `${ACRI_IN_BLOCCO} acri: ${c.reason}`;
+  return `<button data-act="invest" data-kind="terre" data-times="${times}" ${c.ok ? '' : `disabled title="${c.reason}"`}>${label}</button>`;
+}
+
 /** war: dopo il cantiere viene il menu Guerra dell'espansione */
 export function renderCantiere(g: Game, ui: CantiereUi, war = false): string {
   const p = g.player, sc = g.state.scalars;
   const ka = wealthIndex(p);
-  const goal = nextGoal(p);
+  const goal = nextGoal(p, victoryRule(g.state.options));
   const pct = Math.max(0, Math.min(100, ((ka - goal.from) / (goal.target - goal.from)) * 100));
   const rec = recommend(g).kind;
   const cards = kindsFor(p).map(k => {
@@ -178,19 +207,20 @@ export function renderCantiere(g: Game, ui: CantiereUi, war = false): string {
       <div class="build-body">
         <div class="build-head"><span class="build-title">${TITLES[k]}</span><span class="build-cost">${n(COSTS[k])} scudi</span></div>
         <div class="build-owned">posseduti: <b>${n(cap.owned)}</b>${cap.unit ? ' ' + cap.unit : ''} su ${n(cap.max)}</div>
-        <p class="build-effect">${effectText(p, k)}</p>
+        <p class="build-effect">${effectText(p, k, !!g.state.options.palazzoReale)}</p>
         <button data-act="invest" data-kind="${k}" ${c.ok ? 'class="primary"' : `disabled title="${c.reason}"`}>${c.ok ? 'Costruisci' : c.reason}</button>
+        ${k === 'terre' ? bulkLandButton(p) : ''}
       </div>
     </div>`;
   }).join('');
   const usury = p.scudi < 0 ? `<p class="warn">A fine anno l'usura costerà circa ${n(Math.abs(Math.floor((sc.usura / 100) * p.scudi)))} scudi.</p>` : '';
   return `${speechBox(UGOLINO, ui.advisor)}
     <div class="goal">
-      <div class="goal-label">Ricchezza <b>${n(ka)}</b> · prossimo traguardo: <b>${goal.label}</b> oltre ${n(goal.target)}</div>
+      <div class="goal-label">Ricchezza <b>${n(ka)}</b> · prossimo traguardo: <b>${goal.label}</b> ${ka > goal.target ? '(ricchezza raggiunta)' : `oltre ${n(goal.target)}`}${goal.floors ? `, con il palazzo completo (mancano <b>${goal.floors}</b> ${goal.floors === 1 ? 'piano' : 'piani'})` : ''}</div>
       <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
     </div>
     <div class="build-cards">${cards}</div>
     <p>Tesoro: <b>${n(p.scudi)}</b> scudi · credito degli usurai fino a <b>${n(-p.credito)}</b></p>
-    ${usury}
+    ${usury}${g.state.options.pignoramenti ? foreclosureWarning(p, sc) : ''}
     <div class="btns"><button data-act="karta">Karta: guarda lo reame</button>${war ? '<button data-act="warMenu" class="primary">Proximus: guerra</button>' : '<button data-act="next" class="primary">Proximus: fine dell\'anno</button>'}</div>`;
 }

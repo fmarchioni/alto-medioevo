@@ -12,15 +12,15 @@ import {
 } from './fatti';
 import { abitudineOf, DEBT_SPOIL_MAX, FAMINE_MAX_DEATHS, FIDUCIA_START, grainPrices, LEAVE_CHANCE, livelloOf, MERCHANT_CHANCE, MOOD_DRIFT, stepCapriccio, tolleranzaMercanti, tolleranzaServi, nextAbitudine, nextFiducia, nextUmore, ricarico, riotSlots, umoreOf, UMORE_START } from './gabelle';
 import type { ExpansionRules, MacinaRule } from './expansion';
-import { applyFixedEvent, ATTACK, EVENTS, resolveChoice, rollEvent } from './events';
+import { applyFixedEvent, ATTACK, EVENTS, drawEvent, resolveChoice, rollEvent } from './events';
 import {
   attackSlots, defenseFrom, expirePacts, FACTION_EVENT, FACTION_OPTIONS, harvestFactor, hasPact, hordeSize, optionAvailable, pickFaction, PROTETTORATO_TRIBUTE,
   resolveFaction, winChance, type Defense, type FactionOption,
 } from './fazioni';
 import { Mulberry32 } from './rng';
-import { invest, roomFor, type InvestmentKind } from './investments';
+import { canInvestTimes, invest, roomFor, type InvestmentKind } from './investments';
 import { bottino, cartaInMano, COMPLICE_CHANCE, IMPRESA_SUCCESSO, impresaOfEvent, multa, scadenza, silenzioDal } from './imprese';
-import { endOfPlayerYear, wealthIndex } from './rank';
+import { endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
 import type { Rng } from './rng';
 import type { ActionResult, BotLevel, ChronicleFact, GameState, Gender, Options, Player, Strategia } from './types';
 import { CLASSIC_OPTIONS } from './types';
@@ -424,7 +424,10 @@ export class Game {
     const p = this.player;
     // un'impresa temeraria arriva solo a chi non ne ha già una in serbo o in corso
     const impresa = !!this.state.options.imprese && !p.impresa;
-    const ev = rollEvent(this.rng, this.state.options, p.umore === undefined ? 0 : riotSlots(umoreOf(p)), p.patti ? attackSlots(p) : -1, impresa);
+    const riot = p.umore === undefined ? 0 : riotSlots(umoreOf(p)), attack = p.patti ? attackSlots(p) : -1;
+    const ev = this.state.options.mazzo
+      ? drawEvent(this.rng, { q: this.state.q, riot, attack, impresa, extra: this.rules?.deck?.(this) })
+      : rollEvent(this.rng, this.state.options, riot, attack, impresa);
     this.sync();
     if (!ev) return this.enterRendite();
     if (ev.effect.kind === 'impresa') {
@@ -433,6 +436,13 @@ export class Game {
       this.log(`evento: ${ev.title}`);
       this.record({ t: 'event', id: ev.id, scudi: 0, servi: 0 });
       this.state.phase = { kind: 'evento', eventId: ev.id, awaitingChoice: false, outcome };
+      return;
+    }
+    if (ev.effect.kind === 'carta') {
+      // carta di un'espansione: va in mano, la cronaca la racconta l'espansione
+      this.rules?.onCard?.(this, ev.id);
+      this.log(`evento: ${ev.title}`);
+      this.state.phase = { kind: 'evento', eventId: ev.id, awaitingChoice: false, outcome: { scudi: 0, servi: 0 } };
       return;
     }
     if (ev === ATTACK) {
@@ -626,15 +636,24 @@ export class Game {
     this.state.phase = { kind: 'investimenti' };
   }
 
-  invest(kind: InvestmentKind): ActionResult {
+  /** Investe una volta, o `times` volte di fila (tutte o nessuna: acquisto rapido delle terre). */
+  invest(kind: InvestmentKind, times = 1): ActionResult & { servi?: number } {
     this.expect('investimenti');
-    const r = invest(this.player, kind);
-    if (r.ok) {
+    const check = canInvestTimes(this.player, kind, times);
+    if (!check.ok) return check;
+    let servi = 0;
+    for (let i = 0; i < times; i++) {
+      const r = invest(this.player, kind);
+      if (!r.ok) return r;
       this.log(`investe in ${kind}`);
-      this.record({ t: 'build', kind });
-      this.enterInvestments();
+      // palazzo reale: la fama del palazzo che cresce attira servi nel feudo
+      const come = kind === 'palazzo' && this.state.options.palazzoReale ? PALAZZO_SERVI[0] + Math.floor(this.rng.next() * (PALAZZO_SERVI[1] - PALAZZO_SERVI[0] + 1)) : 0;
+      this.player.servi += come;
+      servi += come;
+      this.record(come ? { t: 'build', kind, servi: come } : { t: 'build', kind });
     }
-    return r;
+    this.enterInvestments();
+    return servi ? { ok: true, servi } : { ok: true };
   }
 
   /** Opzione 5 "karta": rivede il reame e torna agli investimenti. */
@@ -654,10 +673,11 @@ export class Game {
       if (lost.over + lost.rot > 0) this.record({ t: 'granaio', ...lost });
     }
     this.rules?.beforeYearEnd?.(this);
-    const end = endOfPlayerYear(st.players, st.current, st.scalars, this.rules?.usuryScale?.(this) ?? 1);
+    const end = endOfPlayerYear(st.players, st.current, st.scalars, this.rules?.usuryScale?.(this) ?? 1, !!st.options.pignoramenti, victoryRule(st.options));
     // con più signori chi supera la soglia attende la fine dell'anno: se sono più d'uno, vince il più ricco
     const wait = end.won && st.options.tieBreakWealth && st.players.length > 1;
-    this.record({ t: 'yearEnd', usury: end.usury, titleBefore, titleAfter: p.title, tribute: end.tribute, scudi: p.scudi, servi: p.servi, won: end.won && !wait });
+    this.record({ t: 'yearEnd', usury: end.usury, titleBefore, titleAfter: p.title, tribute: end.tribute, scudi: p.scudi, servi: p.servi, won: end.won && !wait, ...(end.seized ? { seized: end.seized } : {}) });
+    if (end.seized) this.log(`subisce il pignoramento: ${end.seized.acri} acri, ${end.seized.mercati} mercati, ${end.seized.opifici} opifici, ${end.seized.palazzo} piani di palazzo per ${end.seized.paid} scudi`);
     if (end.won && !wait) {
       this.log('sale al trono');
       st.phase = { kind: 'fine', winner: st.current };

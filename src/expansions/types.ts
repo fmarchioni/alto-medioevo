@@ -39,6 +39,8 @@ export interface ExtActionResult {
   say: string;
   /** pannello dopo l'azione (undefined: resta quello aperto) */
   panel?: string | null;
+  /** pergamena da chiudere prima di continuare (conferma di un acquisto: evita i doppi clic) */
+  notice?: { title: string; body: string };
 }
 
 export interface ExpansionView {
@@ -55,6 +57,8 @@ export interface ExpansionView {
   eventPanel?(g: Game): string | null;
   /** riga sotto l'etichetta dell'espansione, nella colonna a sinistra */
   aside?(g: Game): string;
+  /** seconda riga della barra delle risorse in alto: icona (SVG), valore, etichetta; low: in rosso */
+  resourceBar?(g: Game): { ico: string; value: string; label: string; low?: boolean }[];
   /** avviso urgente in cima alla Delibera, ai Dispendimenti o al menu Guerra ('' se nessuno) */
   alert?(g: Game, where: 'delibera' | 'dispendimenti' | 'guerra'): string;
   /** scene mostrate a tutti alla chiusura dell'anno `year`, prima del riepilogo (es. le battaglie) */
@@ -70,6 +74,13 @@ export interface ExpansionView {
   panel(g: Game, ui: ExtUi): string;
   /** pulsante data-act="ext": op e dataset del pulsante, field legge un campo numerico del pannello */
   act(g: Game, op: string, data: DOMStringMap, field: (name: string) => number): ExtActionResult;
+  /**
+   * scelta che il signore di turno deve fare prima di continuare (es. una proposta di pace),
+   * mostrata come pergamena come gli imprevisti; ogni opzione è un pulsante data-act="ext" (null: nessuna)
+   */
+  decision?(g: Game): { title: string; body: string; options: { label: string; op: string; target?: number; primary?: boolean }[] } | null;
+  /** scudi che l'azione spende (o promette, come un'offerta) prima di eseguirla: serve all'avviso di debito; 0 se non costa */
+  cost?(g: Game, op: string, data: DOMStringMap, field: (name: string) => number): number;
   /** frase della cronaca per un fatto dell'espansione (null: non si racconta) */
   chronicle(f: { kind: string; data: Record<string, number> }, players: Player[]): string | null;
   /** notizie del regno dell'anno */

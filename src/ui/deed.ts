@@ -2,7 +2,7 @@
  * Atto di acquisto: una piccola pergamena che registra ogni acquisto nei
  * dispendimenti (terre, mercati, opifici, palazzo), con sigillo di ceralacca.
  */
-import { COSTS, type InvestmentKind } from '../domain/investments';
+import { ACRI_PER_ACQUISTO, COSTS, type InvestmentKind } from '../domain/investments';
 import { FEUDI, titleName } from '../domain/rank';
 import type { Player } from '../domain/types';
 import { pick } from './speaker';
@@ -23,14 +23,15 @@ const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 const NOTARIES = ['Ser Guglielmo', 'Ser Rolando', 'Ser Ildebrando', 'Ser Gherardo', 'Ser Ubaldo'];
 
-export function makeDeed(kind: InvestmentKind, p: Player, year: number, number: number): Deed {
+/** times: acquisti fatti in una volta (le terre a blocchi) */
+export function makeDeed(kind: InvestmentKind, p: Player, year: number, number: number, times = 1): Deed {
   const who = `${titleName(p.title)} ${esc(p.name)} da ${FEUDI[p.feudo]}`;
-  const price = `per il prezzo di ${n(COSTS[kind])} scudi`;
+  const price = `per il prezzo di ${n(COSTS[kind] * times)} scudi`;
   let title: string, what: string;
   switch (kind) {
     case 'terre':
       title = 'Atto di compravendita';
-      what = `acquista un fondo di 25 acri di terra arativa ${price}. Il feudo conta ora ${n(p.acri)} acri.`;
+      what = `acquista ${times > 1 ? `${times} fondi, ${n(times * ACRI_PER_ACQUISTO)} acri` : `un fondo di ${ACRI_PER_ACQUISTO} acri`} di terra arativa ${price}. Il feudo conta ora ${n(p.acri)} acri.`;
       break;
     case 'mercato':
       title = 'Atto di concessione';

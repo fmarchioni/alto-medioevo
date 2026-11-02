@@ -18,6 +18,8 @@ export const MAX_GRANAI = 20;
 export const ACRI_PER_ACQUISTO = 25;
 export const MAX_ACRI = 2000;
 export const MAX_PALAZZO = 11;
+/** Acquisto rapido di terre: tanti acri in una volta (quattro fondi da 25). */
+export const ACRI_IN_BLOCCO = 100;
 
 /** Riga 1700: in% = INT(te-500)/500 assegnato a intero (troncamento). */
 export function landBonus(p: Player): number {
@@ -84,5 +86,17 @@ export function invest(p: Player, kind: InvestmentKind): ActionResult {
   else if (kind === 'opificio') p.opificio += 1;
   else if (kind === 'granaio') p.granai = (p.granai ?? 0) + 1;
   else p.palazzo += 1;
+  return { ok: true };
+}
+
+/**
+ * Più acquisti dello stesso bene in una volta (per ora le terre a blocchi):
+ * tutti o nessuno, entro i limiti del bene (al più MAX_ACRI) e il credito.
+ */
+export function canInvestTimes(p: Player, kind: InvestmentKind, times: number): ActionResult {
+  const one = canInvest(p, kind);
+  if (!one.ok) return one;
+  if (kind === 'terre' && p.acri + times * ACRI_PER_ACQUISTO > MAX_ACRI) return { ok: false, reason: `si arriva al più a ${MAX_ACRI} acri` };
+  if (p.scudi - times * COSTS[kind] < -p.credito) return { ok: false, reason: 'tesoro e credito insufficienti' };
   return { ok: true };
 }

@@ -403,6 +403,20 @@ export const view: ExpansionView = {
       <div class="btns"><button data-act="extClose" class="primary">${g.state.phase.kind === 'investimenti' ? 'Torna ai dispendimenti' : 'Torna alla delibera'}</button></div>`;
   },
 
+  cost(g, op, data, field) {
+    const st = ms(g);
+    switch (op) {
+      case 'hireSensale': return hasSensale(g) ? 0 : sensaleCost(g.player, sensaleOfTurn(g));
+      case 'buyLot': {
+        const id = Number(data.id), lot = st.lots.find(l => l.id === id);
+        return lot ? Math.ceil(lotCost(field(`lot-${id}`) || 0, lot.price)) : 0;
+      }
+      // l'offerta alla fiera si paga solo se vince, ma allora si paga tutta
+      case 'bid': return field('bid') || 0;
+    }
+    return 0;
+  },
+
   act(g, op, data, field): ExtActionResult {
     const p = g.player, st = ms(g);
     switch (op) {

@@ -1,8 +1,9 @@
 /** Fine anno del giocatore ("proximus"): righe 1960-2100. */
 import { INT } from './economy';
-import type { Player, Scalars } from './types';
+import type { Options, Player, Scalars } from './types';
 import { OPIFICIO_MULT, workFactor } from './gabelle';
-import { COSTS } from './investments';
+import { COSTS, MAX_PALAZZO } from './investments';
+import { foreclose, type Foreclosure } from './pignoramenti';
 
 export const TITLES_M = ['messere', 'conte', 'duca', 'granduca', 'principe'] as const;
 export const TITLES_F = ['madonna', 'contessa', 'duchessa', 'granduchessa', 'principessa'] as const;
@@ -17,6 +18,26 @@ export const FEUDI = ['Taurinum', 'Mediolanum', 'Verona', 'Ravenna', 'Roma', 'Be
 export const RANK_THRESHOLDS = [10000, 50000, 95000, 160000] as const;
 export const VICTORY_THRESHOLD = 367000;
 export const TRIBUTE_PER_RANK = 100;
+
+/**
+ * Trono con il palazzo reale (opzione `palazzoReale`): serve questa ricchezza
+ * e il palazzo completo in tutti i suoi piani. Per cambiare la soglia basta questa costante.
+ */
+export const THRONE_THRESHOLD = 500000;
+/** Servi che accorrono nel feudo per ogni piano di palazzo (opzione `palazzoReale`): minimo e massimo. */
+export const PALAZZO_SERVI = [100, 1000] as const;
+
+/** Condizione di vittoria della partita: soglia di ricchezza ed eventuale palazzo completo. */
+export interface Victory {
+  threshold: number;
+  palazzo: boolean;
+}
+export const LISTING_VICTORY: Victory = { threshold: VICTORY_THRESHOLD, palazzo: false };
+export const victoryRule = (o: Options): Victory => (o.palazzoReale ? { threshold: THRONE_THRESHOLD, palazzo: true } : LISTING_VICTORY);
+/** Piani di palazzo che mancano per poter salire al trono (0 se non servono). */
+export const missingFloors = (p: Player, v: Victory) => (v.palazzo ? Math.max(0, MAX_PALAZZO - p.palazzo) : 0);
+/** Riga 2080, più il palazzo completo se la regola lo chiede. */
+export const reachesThrone = (p: Player, ka: number, v: Victory) => ka > v.threshold && missingFloors(p, v) === 0;
 
 export function titleName(title: number): string {
   return title > 5 ? TITLES_F[title - 6] : TITLES_M[title - 1];
@@ -81,7 +102,8 @@ export function calculateVassalTribute(players: Player[], a: number): { from: nu
   const pj = rankOf(lord);
   const paid: { from: number; amount: number }[] = [];
   players.forEach((y, i) => {
-    const dy = pj - rankOf(y);
+    // i signori usciti dalla partita (caduti in guerra o arrestati) non pagano più
+    const dy = y.caduto === undefined ? pj - rankOf(y) : 0;
     if (dy > 0) {
       lord.vassalli += TRIBUTE_PER_RANK * dy;
       y.scudi -= TRIBUTE_PER_RANK * dy;
@@ -96,10 +118,12 @@ export interface YearEndResult {
   /** scudi pagati agli usurai (positivo) */
   usury: number;
   tribute: { from: number; amount: number }[];
+  /** beni pignorati per un debito oltre il credito (solo con l'opzione `pignoramenti`) */
+  seized?: Foreclosure;
 }
 
-/** Righe 1960-2090 in ordine. */
-export function endOfPlayerYear(players: Player[], a: number, sc: Scalars, usuryScale = 1): YearEndResult {
+/** Righe 1960-2090 in ordine; con `pignoramenti` il debito oltre il credito si salda con i beni, dopo l'usura. */
+export function endOfPlayerYear(players: Player[], a: number, sc: Scalars, usuryScale = 1, pignoramenti = false, victory: Victory = LISTING_VICTORY): YearEndResult {
   const p = players[a];
   p.baseMercati = marketBase(p);
   // riga 1970: gli interessi si applicano fra il calcolo di k e quello di v(a), ma non lo influenzano
@@ -108,8 +132,13 @@ export function endOfPlayerYear(players: Player[], a: number, sc: Scalars, usury
   applyUsury(p, sc.usura * usuryScale);
   p.baseOpifici = base;
   const usury = beforeUsury - p.scudi;
+  const seized = pignoramenti ? foreclose(p) ?? undefined : undefined;
+  // mercati e opifici pignorati non rendono più: le basi si riducono (quella degli opifici è proporzionale al loro numero oltre il primo)
+  if (seized?.mercati) p.baseMercati = marketBase(p);
+  if (seized?.opifici) p.baseOpifici = INT((base * (p.opificio - 1)) / (p.opificio - 1 + seized.opifici));
   const ka = wealthIndex(p);
   updateTitle(p, ka);
-  if (ka > VICTORY_THRESHOLD) return { won: true, usury, tribute: [] };
-  return { won: false, usury, tribute: calculateVassalTribute(players, a) };
+  const extra = seized ? { seized } : {};
+  if (reachesThrone(p, ka, victory)) return { won: true, usury, tribute: [], ...extra };
+  return { won: false, usury, tribute: calculateVassalTribute(players, a), ...extra };
 }

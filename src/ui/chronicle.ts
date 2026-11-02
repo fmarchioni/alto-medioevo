@@ -12,6 +12,7 @@ import { eventMiniature } from './comics';
 import { factionSentence } from './fazioni';
 import { annualSentence, fattoSentence } from './fatti';
 import { impresaSentence } from './imprese';
+import { seizedSentence } from './pignoramenti';
 import { realmScene } from './realm';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
@@ -32,9 +33,11 @@ interface PlayerYear {
 
 function playerYears(state: GameState, year: number): PlayerYear[] {
   const entries = (state.chronicle ?? []).filter(e => e.year === year);
-  return state.players.map((p, index) => {
+  // chi era già uscito dalla partita negli anni passati non ha più storia; l'anno della caduta si racconta ancora
+  return state.players.flatMap((p, index) => {
+    if (p.caduto !== undefined && 900 + p.caduto < year) return [];
     const facts = entries.filter(e => e.player === index).map(e => e.fact);
-    return { index, p, facts, of: <T extends ChronicleFact['t']>(t: T) => facts.filter(f => f.t === t) as Facts<T> };
+    return [{ index, p, facts, of: <T extends ChronicleFact['t']>(t: T) => facts.filter(f => f.t === t) as Facts<T> }];
   });
 }
 
@@ -71,7 +74,8 @@ function eventSentence(f: Facts<'event'>[number]): string {
   }
 }
 
-function story(py: PlayerYear, all: PlayerYear[], view: ExpansionView | null): string[] {
+/** players: tutti i signori della partita, caduti compresi (i fatti li citano per indice) */
+function story(py: PlayerYear, players: Player[], view: ExpansionView | null): string[] {
   const { p } = py;
   const end = py.of('yearEnd')[0];
   const titleStart = end?.titleBefore ?? p.title;
@@ -130,6 +134,9 @@ function story(py: PlayerYear, all: PlayerYear[], view: ExpansionView | null): s
     const built = parts.length ? `Fece edificare ${parts.join(', ').replace(/, ([^,]*)$/, ' e $1')}` : '';
     const land = t ? `${built ? ' e acquistò' : 'Acquistò'} ${n(t * 25)} acri di terra` : '';
     s.push(`${built}${land}.`);
+    // palazzo reale: i servi accorsi per i nuovi piani
+    const came = py.of('build').reduce((sum, b) => sum + (b.servi ?? 0), 0);
+    if (came) s.push(`La fama del palazzo attirò nel feudo ${n(came)} servi.`);
   }
 
   // mercanti: chi se ne va per le gabelle, chi arriva perché si fida
@@ -142,7 +149,7 @@ function story(py: PlayerYear, all: PlayerYear[], view: ExpansionView | null): s
   // fatti dell'espansione: fondaco, prestiti, fiere...
   if (view) {
     for (const f of py.of('ext')) {
-      const line = view.chronicle(f, all.map(x => x.p));
+      const line = view.chronicle(f, players);
       if (line) s.push(line);
     }
   }
@@ -150,8 +157,9 @@ function story(py: PlayerYear, all: PlayerYear[], view: ExpansionView | null): s
   // fine dell'anno
   if (end) {
     if (end.usury > 0) s.push(`Gli usurai pretesero ${n(end.usury)} scudi d'interesse sui suoi debiti.`);
+    if (end.seized) s.push(seizedSentence(end.seized));
     if (end.tribute.length) {
-      const payers = end.tribute.map(t => esc(all[t.from].p.name)).join(', ').replace(/, ([^,]*)$/, ' e $1');
+      const payers = end.tribute.map(t => esc(players[t.from].name)).join(', ').replace(/, ([^,]*)$/, ' e $1');
       s.push(`Come signore di rango più alto, riscosse tributo da ${payers}.`);
     }
     if (end.titleAfter > end.titleBefore) s.push(`Per tanta ricchezza fu elevato al rango di ${titleName(end.titleAfter)}.`);
@@ -247,7 +255,7 @@ export function renderChronicle(state: GameState, year: number, view: ExpansionV
       <h3 class="chr-name">${titleName(py.p.title)} ${esc(py.p.name)} da ${FEUDI[py.p.feudo]}${tag}</h3>
       <figure class="chr-mini">${realmScene(py.p, `miniatura del reame di ${esc(py.p.name)}`)}</figure>
       ${ev ? `<figure class="chr-mini chr-event">${eventMiniature(ev.id, ev.choice ? { scudi: ev.scudi, servi: ev.servi, choice: ev.choice } : undefined)}</figure>` : ''}
-      <p>${story(py, pys, view).join(' ')}</p>
+      <p>${story(py, state.players, view).join(' ')}</p>
     </article>`;
   }).join(fleuron);
   return `

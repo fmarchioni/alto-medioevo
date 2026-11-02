@@ -29,6 +29,10 @@ export interface ExpansionRules {
   onTurnStart?(g: Game): void;
   /** gabella della macina: il grano distribuito oltre `cap` conta solo per la quota `beyond` (assente: tutto) */
   macina?(g: Game): MacinaRule;
+  /** mazzo dell'espansione: carte (registrate con registerEvents) che si aggiungono al mazzo comune, con il loro peso; solo con l'opzione `mazzo` */
+  deck?(g: Game): { id: number; w: number }[];
+  /** è uscita una carta del mazzo dell'espansione: la mette in mano al signore di turno */
+  onCard?(g: Game, id: number): void;
   /** dopo un imprevisto: può correggere l'esito (e il signore) prima che sia annotato */
   onEvent?(g: Game, eventId: number, outcome: EventOutcome): void;
   /** dopo l'incasso delle rendite del signore di turno (amount = rendita dell'anno) */

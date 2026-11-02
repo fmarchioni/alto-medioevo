@@ -6,6 +6,7 @@ import type { AnnateState } from './annate';
 import type { FactionId, FactionOption, Pact } from './fazioni';
 import type { Effetto, FattiState, FattoId, FattoOutcome, Sorte } from './fatti';
 import type { EsitoImpresa, Impresa, ImpresaId } from './imprese';
+import type { Foreclosure } from './pignoramenti';
 
 /** 1 = cavaliere (titoli maschili, finale "re"), 6 = madonna (titoli femminili, finale "regina") [ll(a)] */
 export type Gender = 1 | 6;
@@ -157,6 +158,12 @@ export interface Options {
   imprese?: boolean;
   /** un mercato e un opificio ogni 100 acri, al posto dei 19 + 1 ogni 500 acri del listato */
   botteghe?: boolean;
+  /** pignoramenti: a fine anno il debito oltre il credito degli usurai si salda con i beni, a metà prezzo (src/domain/pignoramenti.ts) */
+  pignoramenti?: boolean;
+  /** palazzo reale: il trono chiede THRONE_THRESHOLD di ricchezza e il palazzo completo; ogni piano attira servi (src/domain/rank.ts) */
+  palazzoReale?: boolean;
+  /** mazzo degli imprevisti: niente caselle vuote, un imprevisto con probabilità fissa, senza doppioni (src/domain/events.ts) */
+  mazzo?: boolean;
 }
 
 /**
@@ -187,6 +194,9 @@ export const CLASSIC_OPTIONS: Options = {
   commercio: true,
   imprese: true,
   botteghe: true,
+  pignoramenti: true,
+  palazzoReale: true,
+  mazzo: true,
 };
 
 export const BALANCED_OPTIONS: Options = {
@@ -202,6 +212,9 @@ export const BALANCED_OPTIONS: Options = {
   commercio: true,
   imprese: true,
   botteghe: true,
+  pignoramenti: true,
+  palazzoReale: true,
+  mazzo: true,
 };
 
 export type Phase =
@@ -302,7 +315,8 @@ export type ChronicleFact =
   /** grano perduto a fine anno: oltre la capienza dei granai e per ratti e muffa */
   | { t: 'granaio'; over: number; rot: number }
   | { t: 'income'; amount: number; tribute: number }
-  | { t: 'build'; kind: 'terre' | 'mercato' | 'opificio' | 'palazzo' | 'granaio' }
+  /** costruzione; servi: accorsi per un piano di palazzo (opzione `palazzoReale`) */
+  | { t: 'build'; kind: 'terre' | 'mercato' | 'opificio' | 'palazzo' | 'granaio'; servi?: number }
   /** impresa temeraria: tentata, scoperta da un complice, o lasciata scadere */
   | { t: 'impresa'; id: ImpresaId; esito: EsitoImpresa | 'scaduta'; amount: number }
   /** fatto di un'espansione: la narrazione spetta alla sua vista */
@@ -317,6 +331,8 @@ export type ChronicleFact =
       scudi: number;
       servi: number;
       won: boolean;
+      /** beni pignorati per il debito oltre il credito (assente: nessuno) */
+      seized?: Foreclosure;
     };
 
 export interface ChronicleEntry {

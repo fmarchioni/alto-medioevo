@@ -11,7 +11,7 @@ import {
 } from '../domain/fazioni';
 import type { ChronicleFact, EventOutcome, Player } from '../domain/types';
 import { honorific } from './advisor';
-import { bubble, castle, COMICS, ground, helmet, house, person, shield, sky, spear } from './comics';
+import { bubble, castle, coin, COMICS, type ComicText, ground, helmet, house, panel, person, shield, sky, spear } from './comics';
 import { pick } from './speaker';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
@@ -267,6 +267,148 @@ function lossText(o: EventOutcome): string {
     o.palazzo && o.palazzo < 0 ? 'un piano del palazzo' : '',
   ].filter(Boolean);
   return parts.length ? parts.join(', ').replace(/, ([^,]*)$/, ' e $1') : 'nessuna';
+}
+
+// ---------------------------------------------------------------- vignette degli esiti
+
+const turban = `<path d="M-8 -32 C-8 -42 8 -42 8 -32z" fill="#f3f0e6" stroke="#c9b48a"/><circle cx="0" cy="-38" r="2" fill="#8b2a1e"/>`;
+const crown = `<path d="M-8 -34 l2 -8 3 5 3 -7 3 7 3 -5 2 8z" fill="#e3bb4f" stroke="#8a6420"/>`;
+/** sacco del bottino in spalla (coordinate della figura) */
+const loot = `<g transform="translate(12 -26)"><path d="M-6 0 C-11 0 -11 13 0 13 C11 13 11 0 6 0z" fill="#a8844f" stroke="#5a3d26"/><path d="M-3 0 q3 -4 6 0" stroke="#5a3d26" stroke-width="2" fill="none"/></g>`;
+const grainSack = (x: number, y: number, cls = '', d = 0) => `<g class="${cls}" style="animation-delay:${d}s"><path d="M${x - 6} ${y} C${x - 10} ${y} ${x - 10} ${y + 12} ${x} ${y + 12} C${x + 10} ${y + 12} ${x + 10} ${y} ${x + 6} ${y}z" fill="#d9b76a" stroke="#8a6420"/></g>`;
+const flames = (x: number, y: number, s = 1, d = 0) => `<g transform="translate(${x} ${y}) scale(${s})">
+  <path class="a-flicker" style="animation-delay:${d}s" d="M0 0 q-9 -10 0 -24 q9 12 0 24z" fill="#f2a33a"/>
+  <path class="a-flicker" style="animation-delay:${d + 0.08}s" d="M0 0 q-5 -6 0 -14 q5 7 0 14z" fill="#ffe08a"/></g>`;
+const smoke = (x: number, y: number, d = 0) => `<circle class="a-stink" style="animation-delay:${d}s" cx="${x}" cy="${y}" r="8" fill="#5f574e" opacity=".6"/>`;
+const sparkles = (x: number, y: number) => [0, 1, 2].map(i => `<circle class="a-sparkle" style="animation-delay:${i * 0.4}s" cx="${x - 14 + i * 14}" cy="${y}" r="2.5" fill="#fff3a0"/>`).join('');
+/** soldati del feudo: tunica bruna, elmo, scudo d'oro */
+const ours = (x: number, y: number, extra = '') => person(x, y, '#7a5a2a', helmet + shield('#d6b25a') + spear + extra);
+/** il signore del feudo, con la berretta rossa */
+const lord = (x: number, y: number) => person(x, y, '#2f5b3a', '<path d="M-8 -36 h16 l-3 -6 h-10z" fill="#8b2a1e"/>');
+
+/** Un uomo della fazione, rivolto a destra, con qualcosa in spalla. */
+function foe(f: FactionId, x: number, y: number, i: number, carry = ''): string {
+  switch (f) {
+    case 'ungari': return horse(x, y, i % 2 ? '#8a5a3a' : '#5a3d26', rider('#b8321e', carry));
+    case 'saraceni': return person(x, y, '#2f6b3a', turban + carry);
+    case 'franchi': return person(x, y, '#2e4fa3', helmet + shield('#e3bb4f') + spear + carry);
+    case 'longobardi': return person(x, y, '#6e3a2a', helmet + shield('#8b2a1e') + spear + carry);
+    case 'bizantini': return person(x, y, '#5b2a6e', helmet + shield('#e3bb4f') + spear + carry);
+  }
+}
+/** Lo stesso, rivolto a sinistra (in fuga o sulla via del ritorno). */
+const foeBack = (f: FactionId, x: number, y: number, i: number, carry = '') => `<g transform="translate(${x} ${y}) scale(-1 1)">${foe(f, 0, 0, i, carry)}</g>`;
+/** Il capo della fazione che tratta: duca e governatore con la corona, gli altri un uomo qualunque. */
+const envoy = (f: FactionId, x: number, y: number) =>
+  f === 'longobardi' ? person(x, y, '#8b2a1e', crown) : f === 'bizantini' ? person(x, y, '#5b2a6e', '<path d="M-8 -34 h16 l-2 -6 h-12z" fill="#e3bb4f"/>') : foeBack(f, x, y, 0);
+const bySea = (f: FactionId) => f === 'saraceni';
+
+/** Fondale: cielo e terra (o costa, per chi viene dal mare). */
+function backdrop(f: FactionId, mood: 'bright' | 'dark', id: string, landLeft = false): string {
+  const [top, bottom] = mood === 'bright' ? ['#9cc8e8', '#f2e6c4'] : ['#6a5650', '#c09a7a'];
+  if (!bySea(f)) return sky(top, bottom, id) + ground(mood === 'bright' ? '#8fae5a' : '#8a7a4e');
+  // la costa a sinistra: il signore sta a terra e le navi arrivano da destra
+  const land = landLeft ? 'M150 112 L0 106 V180 H170 Q160 140 150 112z' : 'M170 112 L320 106 V180 H150 Q160 140 170 112z';
+  return `${sky(top, bottom, id)}${sea(104, mood === 'bright' ? '#3f78a3' : '#3a5a72')}<path d="${land}" fill="#d9c49a"/>`;
+}
+
+/** Vittoria: il nemico fugge, i soldati esultano e il bottino resta sul campo. */
+function winScene(f: FactionId, line: string): string {
+  const flee = bySea(f)
+    ? `<g class="a-flee">${ship(90, 128, 0.7)}${ship(30, 118, 0.55)}</g>`
+    : `<g class="a-flee">${[0, 1].map(i => `<g class="a-bob" style="animation-delay:${i * 0.2}s">${foeBack(f, 110 - i * 50, 148 - i * 4, i)}</g>`).join('')}</g>`;
+  const x0 = bySea(f) ? 200 : 170;
+  return `${backdrop(f, 'bright', 'skfw')}${bySea(f) ? '' : castle(236, 150)}${flee}
+    <g transform="translate(${x0 + 12} 151) rotate(-82)">${banner(0, 0, f)}</g>
+    ${[0, 1, 2].map(i => coin(x0 - 4 + i * 9, 150 - (i % 2) * 3, 'a-glow', i * 0.3)).join('')}
+    ${[0, 1].map(i => `<g class="a-bounce" style="animation-delay:${i * 0.15}s">${ours(x0 + 30 + i * 30, 146)}</g>`).join('')}
+    ${bubble(120, 22, line, x0 + 30, 104)}`;
+}
+
+/** Sconfitta (o saccheggio): case in fiamme, il nemico se ne va con il bottino. */
+function lossScene(f: FactionId, line: string): string {
+  const fire = bySea(f)
+    ? `${house(230, 140, 34)}${house(272, 146, 30)}${flames(247, 118, 1)}${flames(287, 126, 0.8, 0.1)}${smoke(247, 92)}${smoke(287, 100, 0.6)}`
+    : f === 'ungari'
+      ? [190, 225, 260, 295].map((x, i) => `<path d="M${x} 150 v-14 M${x - 6} 150 v-10 M${x + 6} 150 v-10" stroke="#5a4a2a" stroke-width="3"/>${flames(x, 140, 0.9, i * 0.07)}${smoke(x, 112, i * 0.4)}`).join('')
+      : `${f === 'franchi' ? castle(220, 150) : house(226, 150, 50)}${flames(f === 'franchi' ? 255 : 251, f === 'franchi' ? 92 : 108, 1.2)}${smoke(250, 70)}${smoke(266, 80, 0.7)}`;
+  const away = bySea(f)
+    ? `<g class="a-flee" style="animation-duration:5s">${ship(110, 124, 0.75)}<g transform="translate(96 108) scale(.55)">${person(0, 0, '#d9c49a')}${person(18, 0, '#c9b48a')}</g></g>`
+    : `<g class="a-flee" style="animation-duration:4.5s">${[0, 1, 2].map(i => `<g class="a-bob" style="animation-delay:${i * 0.15}s">${foeBack(f, 150 - i * 44, 148 - (i % 2) * 4, i, loot)}</g>`).join('')}</g>`;
+  return `${backdrop(f, 'dark', 'skfl')}${fire}${away}${bubble(14, 22, line, bySea(f) ? 110 : 150, bySea(f) ? 96 : 104)}`;
+}
+
+/** Tributo, riscatto, passaggio, corruzione: il signore paga e il nemico se ne va soddisfatto. */
+function payScene(f: FactionId, grain: boolean, line: string): string {
+  // dal mare: il signore paga sulla spiaggia, il capo dei predoni torna alla nave
+  const sea = bySea(f), x = sea ? 60 : 96, ex = sea ? 190 : 234;
+  const goods = grain
+    ? [0, 1, 2].map(i => grainSack(x + 20, 122, 'a-toss', i * 0.4)).join('')
+    : [0, 1, 2, 3, 4].map(i => coin(x + 16 + i * 4, 112, 'a-toss', i * 0.25)).join('');
+  return `${backdrop(f, 'bright', 'skfp', true)}${sea ? `<g class="a-drift">${ship(256, 128, 0.7)}</g>` : castle(14, 150)}
+    ${lord(x, 142)}${goods}
+    <g class="a-march-in">${envoy(f, ex, 142)}${sea ? '' : banner(268, 148, f)}</g>
+    ${bubble(130, 24, line, ex, 100)}`;
+}
+
+/** Patti: nozze, giuramento, sigillo imperiale o accordi coi mercanti. */
+function pactScene(f: FactionId, opt: FactionOption, line: string): string {
+  const sign: Partial<Record<FactionOption, string>> = {
+    matrimonio: '<path d="M0 6 C-14 -6 -8 -18 0 -10 C8 -18 14 -6 0 6z" fill="#d43a4a" stroke="#7a1a24"/>',
+    vassallo: '<path d="M0 -18 v26 M-7 -10 h14" stroke="#c8c8c8" stroke-width="3"/><circle cx="0" cy="10" r="3" fill="#e3bb4f"/>',
+    protettorato: '<rect x="-9" y="-14" width="18" height="22" fill="#f6ecd2" stroke="#8a6b3e"/><circle cx="0" cy="8" r="5" fill="#8b2a1e"/>',
+    accordi: '<circle cx="-2" cy="-2" r="11" fill="#f3f0e6"/><circle cx="3" cy="-4" r="9" fill="#9cc8e8"/>',
+  };
+  // nelle nozze il signore porta la sposa, altrove sta davanti al capo della fazione
+  // dal mare la scena si sposta a sinistra, sulla spiaggia, con la nave alla fonda
+  const dx = bySea(f) ? -58 : 0;
+  const partner = opt === 'matrimonio'
+    ? person(200, 146, '#e8d0e8', '<path d="M-10 -24 q10 -22 20 0" fill="#f3f0e6" opacity=".8"/>')
+    : envoy(f, 210 + dx, 146);
+  return `${backdrop(f, 'bright', 'skfa', true)}${bySea(f) ? `<g class="a-drift">${ship(240, 126, 0.7)}</g>` : castle(236, 150)}
+    ${banner(150 + dx, 150, f)}${lord(118 + dx, 146)}${partner}
+    <g class="a-pop" style="animation-delay:.4s"><g transform="translate(${164 + dx} 82)">${sign[opt] ?? ''}</g></g>${sparkles(164 + dx, 70)}
+    ${bubble(14, 18, line, 118 + dx, 104)}`;
+}
+
+/** Chiusi nelle mura: le porte sbarrate, fuori i cavalieri bruciano i campi. */
+function wallsScene(f: FactionId, line: string): string {
+  return `${backdrop(f, 'dark', 'skfm')}${castle(200, 150)}
+    <path d="M225 150 v-22 a10 10 0 0 1 20 0 v22z" fill="#6b4a2c" stroke="#3e2617"/><path d="M229 132 v18 M235 128 v22 M241 132 v18" stroke="#3e2617" stroke-width="1.5"/>
+    ${[30, 70, 110].map((x, i) => `<path d="M${x} 150 v-14 M${x - 6} 150 v-10 M${x + 6} 150 v-10" stroke="#5a4a2a" stroke-width="3"/>${flames(x, 140, 0.9, i * 0.07)}${smoke(x, 112, i * 0.5)}`).join('')}
+    <g class="a-run">${foe(f, 20, 150, 0)}</g>
+    ${bubble(120, 22, line, 222, 70)}`;
+}
+
+/** Testi della vignetta dell'esito: la didascalia è il racconto dell'esito, scelto una volta. */
+export function factionOutcomeText(o: EventOutcome, p: Player): ComicText {
+  const f = o.faction!;
+  const caption = outcomeCaption(o, p);
+  if (o.win === true) return { caption, sound: pick(['EVVIVA!', 'CLANG! ZAC!']), line: pick(['Fuggono!', 'Vittoria!', 'Per il feudo!']) };
+  if (o.win === false) return { caption, sound: pick(['CRAC!', 'AHIMÈ!']), line: pick(bySea(f) ? ['Alle navi!', 'Ricco bottino!'] : ['Ricco bottino!', 'A casa, carichi!']) };
+  switch (o.option) {
+    case 'tributo': case 'riscatto': case 'corrompere': case 'passaggio':
+      return { caption, sound: pick(['TLIN TLIN!', 'SOB!']), line: pick(['Così va bene...', 'Ci rivedremo!', 'Affare fatto.']) };
+    case 'matrimonio': return { caption, sound: 'DIN DON!', line: pick(['Lunga vita agli sposi!', 'Evviva gli sposi!']) };
+    case 'vassallo': return { caption, sound: 'TUM!', line: pick(['Lo giuro, mio duca.', 'Fedeltà al duca!']) };
+    case 'protettorato': return { caption, sound: 'TRRR-TUUU!', line: pick(["Per l'Imperatore!", 'Sigillo apposto.']) };
+    case 'accordi': return { caption, sound: 'TLIN!', line: pick(['Spezie e sete!', 'Buoni affari!']) };
+    case 'mura': return { caption, sound: 'BUM! BUM!', line: pick(['Tenete le porte!', 'Nessuno esca!']) };
+    case 'saccheggio': return { caption, sound: 'CRASH!', line: pick(['Alle navi!', 'Prendete tutto!']) };
+  }
+  return { caption, sound: '', line: '' };
+}
+
+/** Vignetta animata dell'esito di un attacco: scena, onomatopea e racconto. */
+export function renderFactionOutcome(o: EventOutcome, t: ComicText): string {
+  const f = o.faction!;
+  let svg: string;
+  if (o.win === true) svg = winScene(f, t.line);
+  else if (o.win === false || o.option === 'saccheggio') svg = lossScene(f, t.line);
+  else if (o.option === 'mura') svg = wallsScene(f, t.line);
+  else if (o.option === 'matrimonio' || o.option === 'vassallo' || o.option === 'protettorato' || o.option === 'accordi') svg = pactScene(f, o.option, t.line);
+  else svg = payScene(f, o.option === 'passaggio' || (!o.scudi && !!o.grano), t.line);
+  return `<div class="faction-out">${panel(svg, t.sound, t.caption, `esito: ${INFO[f].name}`)}</div>`;
 }
 
 /** Badge degli effetti, compresi i beni e i patti. */

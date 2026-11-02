@@ -67,7 +67,9 @@ function fullName(p: Player): string {
 
 export function buildInterlude(before: YearSnapshot, state: GameState, mapMarkers = ''): Interlude {
   const year = 900 + before.q;
-  const players = state.players.map((p, i): PlayerChronicle => {
+  // chi è caduto in guerra (o è stato arrestato) è uscito dalla partita: non compare più, né nell'elenco né sulla carta
+  const alive = state.players.map((p, i) => ({ p, i })).filter(x => x.p.caduto === undefined);
+  const players = alive.map(({ p, i }): PlayerChronicle => {
     const b = before.players[i];
     const built: string[] = [];
     if (p.acri > b.acri) built.push(`${n(p.acri - b.acri)} acri`);
@@ -82,7 +84,7 @@ export function buildInterlude(before: YearSnapshot, state: GameState, mapMarker
       promotedTo: p.title !== b.title ? titleName(p.title) : null,
     };
   });
-  return { year, nextYear: year + 1, proclamation: proclaim(year, players), players, map: renderRealmMap(state.players, year, mapMarkers), closing: false };
+  return { year, nextYear: year + 1, proclamation: proclaim(year, players), players, map: renderRealmMap(alive.map(x => x.p), year, mapMarkers), closing: false };
 }
 
 function proclaim(year: number, players: PlayerChronicle[]): string {
