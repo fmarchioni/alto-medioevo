@@ -1,7 +1,7 @@
 /**
  * Il sensale di piazza (opzione `sensale`, con la riforma delle gabelle):
  * ogni anno si presenta al signore uno di tre esperti, sorteggiato. Assoldato
- * durante la Delibera per un compenso che cresce con il rango, alle rendite
+ * alle rendite per un compenso che cresce con il rango, alle rendite
  * dice se le gabelle in bozza sono basse, eque o inique per il popolo (bevere
  * e macina) e per i mercanti (commerzio). Il più caro sbaglia di meno.
  */
@@ -58,10 +58,10 @@ export const hasSensale = (g: Game, i = g.state.current) => hireOf(g, i) !== nul
 /** Il sensale di quest'anno: quello assoldato o quello che si presenta. */
 export const sensaleNow = (g: Game, i = g.state.current): SensaleId => hireOf(g, i)?.who ?? sensaleOfTurn(g, i);
 
-/** Si assolda per l'anno in corso, durante la Delibera: il compenso si paga subito. */
+/** Si assolda per l'anno in corso, alle rendite, mentre si fissano le gabelle: il compenso si paga subito. */
 export function hireSensale(g: Game): ActionResult {
   const p = g.player, me = g.state.current;
-  if (g.state.phase.kind !== 'commercio') return { ok: false, reason: 'il sensale si assolda durante la Delibera' };
+  if (g.state.phase.kind !== 'rendite') return { ok: false, reason: 'il sensale si assolda alle rendite' };
   if (!sensaleUseful(g)) return { ok: false, reason: "senza la riforma delle gabelle non c'è nulla da indovinare" };
   if (hasSensale(g)) return { ok: false, reason: "il sensale è già al vostro servizio quest'anno" };
   const who = sensaleOfTurn(g), cost = sensaleCost(p, who);

@@ -52,7 +52,7 @@ body {
   font: 16px/1.6 var(--font);
   -webkit-font-smoothing: none;
 }
-#app { max-width: 1040px; margin: 0 auto; padding: 16px; }
+#app { max-width: 1360px; margin: 0 auto; padding: 16px; }
 h1, h2 { font-weight: normal; color: var(--red); margin: 0 0 .5em; }
 h1 { font-size: 32px; }
 h2 { font-size: 24px; text-transform: uppercase; }
@@ -645,7 +645,8 @@ b, strong { color: var(--gold); }
 .ext-table th, .ext-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
 .ext-table thead th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .ext-table tbody th { color: var(--ink); font-weight: normal; }
-.ext-table input { width: 7em; margin-right: 6px; }
+.ext-table input { width: 6em; margin-right: 6px; }
+.ext-table td:last-child { white-space: nowrap; }
 .ext-table small { font-size: 11px; }
 .ext-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
 .ext-form label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
@@ -681,7 +682,6 @@ b, strong { color: var(--gold); }
 .ext-form.with-art { align-items: center; }
 .ext-art { flex: none; width: 120px; height: 92px; background: #efe2bf; border: 2px solid #b8902e; border-radius: 4px; }
 /* pannello di guerra: frame più largo, i pulsanti d'assalto uno sotto l'altro */
-#app:has(.war-table) { max-width: 1340px; }
 .war-table td.war-acts { min-width: 170px; }
 .war-table td.war-acts button { display: block; width: 100%; margin: 3px 0; white-space: nowrap; }
 .rings { display: inline-flex; gap: 4px; vertical-align: middle; }

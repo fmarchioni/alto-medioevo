@@ -171,12 +171,19 @@ export interface FairCtx {
 
 const between = (rnd: () => number, [a, b]: readonly [number, number], step = 1) => a + step * Math.floor((rnd() * (b - a + step)) / step);
 
-/** I dieci contratti di una fiera, sorteggiati con il caso dell'espansione. */
+/**
+ * I dieci contratti di una fiera, sorteggiati con il caso dell'espansione.
+ * Alla prima fiera i contratti in posizione pari sono di vino: ogni quota ne
+ * vede almeno la metà, perché i manufatti chiedono opifici che all'inizio
+ * quasi nessuno ha.
+ */
 export function makeFair(rnd: () => number, q: number, nextId: () => number, players: number): Fiera {
   const contratti: Contratto[] = [];
   const add = (fascia: 0 | 1 | 2, f: { qty: readonly [number, number]; base: readonly [number, number]; tempo: number }, speciale = false) => {
     const piazza = speciale && rnd() < 0.5 ? 'costantinopoli' : PIAZZE[Math.floor(rnd() * PIAZZE.length)].id;
-    const good = MERCI[Math.floor(rnd() * MERCI.length)];
+    const drawn = MERCI[Math.floor(rnd() * MERCI.length)];
+    // alla prima fiera quasi nessuno ha opifici: un contratto su due (in ogni quota) è di vino
+    const good: Merce = q === FIERA_DAL && contratti.length % 2 === 0 ? 'vino' : drawn;
     contratti.push({
       id: nextId(), idx: contratti.length, fascia, ...(speciale ? { speciale } : {}),
       good, qty: between(rnd, f.qty, 10), piazza,
@@ -205,7 +212,7 @@ export const bidOf = (f: Fiera, i: number, contract: number) => f.offerte.find(o
 
 const fairPhase = (g: Game): ActionResult | null => {
   const k = g.state.phase.kind;
-  return k === 'commercio' || k === 'investimenti' ? null : { ok: false, reason: 'la fiera è aperta nella Delibera e nei dispendimenti' };
+  return k === 'signori' || k === 'investimenti' ? null : { ok: false, reason: 'la fiera è aperta fra signori e nei dispendimenti' };
 };
 
 /** Entra alla fiera con la quota `tier` (o sale a una quota più alta pagando la differenza). */

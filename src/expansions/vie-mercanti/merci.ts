@@ -156,7 +156,7 @@ export function plantVineyard(g: Game, c: Cantina): ActionResult {
 /** Vende ai mercanti di passaggio: pagano subito, al prezzo dell'anno. */
 export function sellToPassing(g: Game, c: Cantina, good: Merce, qty: number): ActionResult & { gain?: number } {
   const k = g.state.phase.kind;
-  if (k !== 'commercio' && k !== 'investimenti') return { ok: false, reason: 'si vende nella Delibera o nei dispendimenti' };
+  if (k !== 'signori' && k !== 'investimenti') return { ok: false, reason: 'si vende fra signori o nei dispendimenti' };
   if (!isCount(qty)) return { ok: false, reason: 'quantità non valida' };
   if (qty > c[good]) return { ok: false, reason: `non avete tante ${UNITA[good][1]}` };
   const gain = qty * passingPrices(g.state.q)[good];
@@ -169,7 +169,7 @@ export function sellToPassing(g: Game, c: Cantina, good: Merce, qty: number): Ac
 
 const fondacoOpen = (g: Game): ActionResult | null => {
   const k = g.state.phase.kind;
-  return k === 'commercio' || k === 'investimenti' ? null : { ok: false, reason: 'il fondaco è aperto nella Delibera e nei dispendimenti' };
+  return k === 'signori' || k === 'investimenti' ? null : { ok: false, reason: 'il fondaco è aperto fra signori e nei dispendimenti' };
 };
 
 /** Porta merce al fondaco (un banco per merce): resta in vendita fino al prossimo turno. */

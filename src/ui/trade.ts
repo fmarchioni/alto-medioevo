@@ -10,14 +10,12 @@ import type { Player, Scalars } from '../domain/types';
 import type { ExtCard } from '../expansions/types';
 import { ANSELMO, question, ruleNote, type TradeMode } from './advisor';
 import { cardArt } from './art';
-import { renderSensale, sensaleCard } from './sensale';
 import { speechBox } from './speaker';
 
 export interface TradeUi {
   /** giocatore+anno a cui si riferisce lo stato, per azzerarlo al cambio turno */
   key: string;
-  /** sensale: pannello del sensale di piazza (src/ui/sensale.ts) */
-  mode: 'menu' | 'sensale' | TradeMode;
+  mode: 'menu' | TradeMode;
   advisor: string;
   qty: number;
 }
@@ -103,8 +101,6 @@ const advisorBox = (text: string) => speechBox(ANSELMO, text);
 /** Aggiunte di un'espansione alla Delibera. */
 export interface TradeExtras {
   cards: ExtCard[];
-  /** carte della pagina "Fra signori": in Delibera compare solo la carta che la apre */
-  signori?: ExtCard[];
   /** notizie per il signore di turno (HTML) */
   dispatches: string;
   hint: (mode: TradeMode) => string;
@@ -135,20 +131,19 @@ export function renderExtCards(cards: ExtCard[], title = 'Fra signori'): string 
 
 export function renderTrade(g: Game, t: TradeUi, extras?: TradeExtras): string {
   const p = g.player, sc = g.state.scalars;
-  if (t.mode === 'sensale') return renderSensale(g, t.advisor);
   if (t.mode === 'menu') {
     const card = (mode: TradeMode, title: string, sub: string) => {
       const disabled = mode === 'buy' && maxQty('buy', p, sc) === 0 ? 'disabled' : '';
       return `<button class="action-card ${mode === 'feed' ? 'decisive' : ''}" data-act="tradeMode" data-mode="${mode}" ${disabled}>
         ${cardArt[mode]}<span class="card-title">${title}</span><span class="card-sub">${sub}</span></button>`;
     };
-    const ext = renderSignoriCard(extras?.signori ?? []) + renderExtCards(extras?.cards ?? []);
+    const ext = renderExtCards(extras?.cards ?? []);
     return `${extras?.dispatches ?? ''}${advisorBox(t.advisor)}
       <div class="action-cards">
         ${card('buy', 'Comprare grano', `${sc.prezzo} scudi ogni mille`)}
         ${card('sell', 'Vendere grano', sc.prezzoVendita !== undefined ? `a ${sc.prezzoVendita} scudi · granaio ${n(p.grano)}` : `granaio: ${n(p.grano)}`)}
         ${card('feed', 'Nutrire il popolo', 'chiude il mercato')}
-      </div>${sensaleCard(g)}${ext}`;
+      </div>${ext}`;
   }
   const mode = t.mode;
   const max = maxQty(mode, p, sc);

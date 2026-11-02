@@ -118,10 +118,10 @@ export const prestigeOf = (g: Game, i = g.state.current) => ms(g).prestigio[i] ?
 /** Varia il prestigio del signore `i` (con il bonus di Roma sui guadagni); ritorna la variazione effettiva. */
 export const changePrestige = (g: Game, i: number, delta: number) => addPrestige(ms(g).prestigio, i, g.state.players[i].feudo, delta);
 
-/** Il banco dei prestiti è aperto durante la delibera e i dispendimenti, quando le rendite sono in cassa. */
+/** Il banco dei prestiti è aperto fra signori (chiuso il mercato del grano) e nei dispendimenti, quando le rendite sono in cassa. */
 function bankGuard(g: Game): ActionResult | null {
   const k = g.state.phase.kind;
-  return k === 'commercio' || k === 'investimenti' ? null : { ok: false, reason: 'il banco è aperto durante la delibera e i dispendimenti' };
+  return k === 'signori' || k === 'investimenti' ? null : { ok: false, reason: 'il banco è aperto fra signori e nei dispendimenti' };
 }
 
 export const loanDue = (amount: number, rate: number) => amount + INT((amount * rate) / 100);
@@ -617,6 +617,8 @@ function botLend(c: BotCtx): void {
 
 export const rules: ExpansionRules = {
   id: ID,
+  // chiuso il mercato del grano, la pagina "Fra signori"
+  signori: true,
   init: (state): MercantiState => {
     let h = 2166136261;
     for (const v of [...state.rngState, state.players.length, 0x7e1e]) h = Math.imul(h ^ v, 16777619) >>> 0;
@@ -719,7 +721,7 @@ export const rules: ExpansionRules = {
     if (isFairYear(g.state.q + 1)) st.fiera = makeFair(roll(st), g.state.q + 1, () => st.nextId++, g.state.players.length);
   },
 
-  botBeforeTrade(c) {
+  botSignori(c) {
     botImprese(c);
     botBorrow(c);
     botShip(c);

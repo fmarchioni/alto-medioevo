@@ -236,6 +236,8 @@ export type Phase =
   /** il signore è stato arrestato (per una carta di un'espansione, o per bancarotta a fine anno): lascia il posto al seguente */
   | { kind: 'arresto'; motivo?: 'debiti' }
   | { kind: 'esitoNutrimento' }
+  /** chiuso il mercato del grano: gli affari fra signori di un'espansione (`signori`), prima dell'imprevisto */
+  | { kind: 'signori' }
   | { kind: 'evento'; eventId: number; awaitingChoice: boolean; outcome?: EventOutcome; faction?: FactionId; nemici?: number }
   | { kind: 'rendite'; preview: RenditePreview }
   | { kind: 'reame'; returnTo: 'investimenti' }

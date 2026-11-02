@@ -26,6 +26,8 @@ export interface ExpansionRules {
   id: string;
   /** stato iniziale dell'espansione (deve essere serializzabile in JSON) */
   init(state: GameState): unknown;
+  /** dopo il mercato del grano c'è la pagina "Fra signori" (fase `signori`, prima dell'imprevisto) */
+  signori?: boolean;
   /** inizio del turno di un signore, dopo raccolto, prezzo e domanda */
   onTurnStart?(g: Game): void;
   /** gabella della macina: il grano distribuito oltre `cap` conta solo per la quota `beyond` (assente: tutto) */
@@ -50,6 +52,8 @@ export interface ExpansionRules {
   onYearClose?(g: Game): void;
   /** signori del computer: azioni dell'espansione prima della Delibera */
   botBeforeTrade?(c: BotCtx): void;
+  /** signori del computer: affari fra signori, chiuso il mercato del grano (con `signori`) */
+  botSignori?(c: BotCtx): void;
   /** signori del computer: azioni prima di nutrire il popolo (feed = quanto distribuiranno) */
   botBeforeFeed?(c: BotCtx, feed: number): void;
   /** signori del computer: azioni all'inizio dei dispendimenti, dopo le rendite */

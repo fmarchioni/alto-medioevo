@@ -438,6 +438,22 @@ export class Game {
   /** Dopo l'esito del nutrimento: estrae l'evento dell'anno. */
   continueAfterFeeding(): void {
     this.expect('esitoNutrimento');
+    // chiuso il mercato del grano, gli affari fra signori dell'espansione vengono prima dell'imprevisto
+    if (this.rules?.signori) {
+      this.state.phase = { kind: 'signori' };
+      return;
+    }
+    this.drawYearEvent();
+  }
+
+  /** Fine degli affari fra signori: si estrae l'imprevisto dell'anno. */
+  continueAfterSignori(): void {
+    this.expect('signori');
+    this.drawYearEvent();
+  }
+
+  /** Estrae l'evento dell'anno (dopo il nutrimento, ed eventualmente gli affari fra signori). */
+  private drawYearEvent(): void {
     const p = this.player;
     // un'impresa temeraria arriva solo a chi non ne ha già una in serbo o in corso; con un'espansione ci sono solo le sue
     const impresa = !!this.state.options.imprese && !this.rules && !p.impresa;

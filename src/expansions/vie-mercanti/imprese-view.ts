@@ -119,7 +119,7 @@ function cardBody(g: Game, st: ImpreseState & FieraState, c: CartaMerc, can: boo
 /** Riquadro "Imprese" nella colonna a sinistra. */
 export function impreseAside(g: Game, st: ImpreseState & FieraState): string {
   const q = g.state.q, k = g.state.phase.kind;
-  const can = k === 'commercio' || k === 'investimenti';
+  const can = k === 'signori' || k === 'investimenti';
   const hand = impreseOf(st, g.state.current).filter(c => q <= scadenzaImpresa(c));
   const cards = hand.map(c => `<div class="impresa-card">
       <div class="impresa-head"><span class="impresa-emblem" aria-hidden="true">${EMBLEM[c.id]}</span><b>${TITLE[c.id]}</b></div>
@@ -127,7 +127,7 @@ export function impreseAside(g: Game, st: ImpreseState & FieraState): string {
       <p class="impresa-due">Si gioca fino all'anno ${year(scadenzaImpresa(c))}${q === scadenzaImpresa(c) ? ": è l'ultimo!" : '.'}</p>
     </div>`).join('');
   const hint = !hand.length ? '<p class="hint">Nessuna impresa in serbo. Le occasioni arrivano fra gli imprevisti.</p>'
-    : !can ? '<p class="hint">Si giocano nella Delibera o nei dispendimenti.</p>' : '';
+    : !can ? '<p class="hint">Si giocano fra signori (dopo il mercato del grano) o nei dispendimenti.</p>' : '';
   return `<section class="imprese"><h3>Imprese</h3>${cards}${hint}</section>`;
 }
 

@@ -22,7 +22,7 @@ import type { Expansion, ExtCard, ExtUi } from '../expansions/types';
 import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
 import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
 import { seizedNotice } from './pignoramenti';
-import { hiredLine, sensaleBadges } from './sensale';
+import { hiredLine, renderSensaleOffer, sensaleBadges } from './sensale';
 import { hasSensale, hireSensale, sensaleCost, sensaleNow } from '../domain/sensale';
 import type { RateBadges } from './rendite';
 import { deleteSave, listSaves, loadGame, newSlotId, saveGame, type SaveSlot } from '../persistence/save';
@@ -318,7 +318,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       return;
     }
     const mode = ui.trade.mode;
-    if (!g || mode === 'menu' || mode === 'sensale' || (t.name !== 'qty' && t.name !== 'qty-range')) return;
+    if (!g || mode === 'menu' || (t.name !== 'qty' && t.name !== 'qty-range')) return;
     const max = maxQty(mode, g.player, g.state.scalars);
     const v = Math.max(0, Math.min(max, Math.floor(Number(t.value) || 0)));
     ui.trade.qty = v;
@@ -492,12 +492,9 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         ui.message = '';
         return render();
       }
-      case 'sensaleOpen':
-        ui.trade = { ...ui.trade, mode: 'sensale', advisor: '' };
-        return render();
       case 'hireSensale': {
         const r = hireSensale(g!);
-        ui.trade = { ...ui.trade, advisor: r.ok ? hiredLine(g!) : `Non si può, ${g!.player.gender === 1 ? 'Messere' : 'Madonna'}: ${r.reason}.` };
+        ui.rendite.sensaleSay = r.ok ? hiredLine(g!) : `Non si può, ${g!.player.gender === 1 ? 'Messere' : 'Madonna'}: ${r.reason}.`;
         return render();
       }
       case 'tradeBack':
@@ -521,6 +518,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         return render();
       }
       case 'afterFeed': return act(() => g!.continueAfterFeeding());
+      case 'afterSignori': return act(() => g!.continueAfterSignori());
       case 'faction': return act(() => { g!.chooseFaction(btn.dataset.opt as FactionOption); });
       case 'pugna': return act(() => g!.chooseEvent('pugna'));
       case 'riscatto': return act(() => g!.chooseEvent('riscatto'));
@@ -806,13 +804,18 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     }
     case 'commercio': {
       const all = exp ? exp.view.cards(g) : [];
-      const signori = all.filter(c => c.menu === 'signori');
       if (exp && ext.panel) body = exp.view.panel(g, ext);
-      else if (ext.signori === 'commercio' && signori.length) body = signoriPage(signori, 'Torna alla delibera');
       else {
-        const extras = exp ? { cards: all.filter(c => c.menu !== 'signori'), signori, dispatches: ext.archived ? '' : exp.view.dispatches(g, !ext.seen), hint: (m: TradeMode) => exp.view.tradeHint?.(g, m) ?? '' } : undefined;
+        const extras = exp ? { cards: all.filter(c => c.menu !== 'signori'), dispatches: ext.archived ? '' : exp.view.dispatches(g, !ext.seen), hint: (m: TradeMode) => exp.view.tradeHint?.(g, m) ?? '' } : undefined;
         body = `<h2>Delibera</h2>${exp?.view.alert?.(g, 'delibera') ?? ''}${renderTrade(g, trade, extras)}`;
       }
+      break;
+    }
+    case 'signori': {
+      const cards = exp ? exp.view.cards(g).filter(c => c.menu === 'signori') : [];
+      body = exp && ext.panel ? exp.view.panel(g, ext)
+        : `<h2>Fra signori</h2><p class="hint">Chiuso il mercato del grano, è il momento degli affari con gli altri signori e con i mercanti.</p>${renderExtCards(cards, '')}
+          <div class="btns"><button data-act="afterSignori" class="primary">Prosegui</button></div>`;
       break;
     }
     case 'esitoNutrimento':
@@ -877,7 +880,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
         <div class="btns"><button data-act="afterArrest" class="primary">Lasciate il feudo</button></div>`;
       break;
     case 'rendite':
-      body = `<h2>Rendite</h2>${renderRendite(g, rendite, rateBadgesFor(g))}`;
+      body = `<h2>Rendite</h2>${renderRendite(g, rendite, rateBadgesFor(g), renderSensaleOffer(g, rendite.sensaleSay))}`;
       break;
     case 'reame':
       body = `<h2>Lo reame</h2>

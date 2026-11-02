@@ -26,6 +26,8 @@ export const BONIFACIO: Speaker = { name: 'Ser Bonifacio', role: 'camerlengo del
 export type RateBadges = (g: Game, r: Rates) => Partial<Record<RateKind, string>> | null;
 
 export interface RenditeUi {
+  /** frase del sensale di piazza alle rendite */
+  sensaleSay?: string;
   key: string;
   draft: Rates;
   advisor: string;
@@ -238,7 +240,7 @@ function moodRows(p: Player): string {
     </table>`;
 }
 
-export function renderRendite(g: Game, ui: RenditeUi, badges?: RateBadges): string {
+export function renderRendite(g: Game, ui: RenditeUi, badges?: RateBadges, before = ''): string {
   const p = g.player, sc = g.state.scalars;
   const notes = badges?.(g, ui.draft) ?? null;
   const y = yieldPerPoint(p, sc);
@@ -254,7 +256,7 @@ export function renderRendite(g: Game, ui: RenditeUi, badges?: RateBadges): stri
       <div class="rate-foot">≈ ${y[k] >= 1 ? n(y[k]) : y[k].toFixed(2)} scudi per punto · ora <b id="rc-${k}">${n(contribution(pv, k))}</b>${ui.draft[k] !== currentRates(p)[k] ? ` <span class="was">(in vigore ${currentRates(p)[k]}%)</span>` : ''}</div>
       ${notes ? `<div class="rate-note" id="rn-${k}">${notes[k] ?? ''}</div>` : ''}
     </div>`).join('');
-  return `${speechBox(BONIFACIO, ui.advisor)}
+  return `${speechBox(BONIFACIO, ui.advisor)}${before}
     <div class="chips">${presets(p, sc).map(x => `<button class="chip" data-act="rPreset" data-preset="${x.id}">${x.label} <small>${x.rates.bevere}/${x.rates.macina}/${x.rates.commerzio}</small></button>`).join('')}</div>
     <div class="rate-cards">${cards}</div>
     <div id="rendite-live">${renderLive(g, ui.draft)}</div>

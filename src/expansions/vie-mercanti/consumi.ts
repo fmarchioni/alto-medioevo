@@ -83,7 +83,7 @@ export const festaDi = (g: Game, st: ConsumiState, i: number) => {
 
 const open = (g: Game): ActionResult | null => {
   const k = g.state.phase.kind;
-  return k === 'commercio' || k === 'investimenti' ? null : { ok: false, reason: 'si festeggia nella Delibera o nei dispendimenti' };
+  return k === 'signori' || k === 'investimenti' ? null : { ok: false, reason: 'si festeggia fra signori o nei dispendimenti' };
 };
 
 /** Consuma merci per prestigio (e umore del popolo, se c'è la riforma delle gabelle). */

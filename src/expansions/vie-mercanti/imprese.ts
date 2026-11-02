@@ -112,7 +112,7 @@ export function expireImprese(g: Game, st: ImpreseState, i: number): ImpresaMerc
 
 const open = (g: Game): ActionResult | null => {
   const k = g.state.phase.kind;
-  return k === 'commercio' || k === 'investimenti' ? null : { ok: false, reason: 'si gioca nella Delibera o nei dispendimenti' };
+  return k === 'signori' || k === 'investimenti' ? null : { ok: false, reason: 'si gioca fra signori o nei dispendimenti' };
 };
 
 /** Toglie la carta giocata dalla mano. */

@@ -220,6 +220,11 @@ function factionChoice(c: Ctx, level: BotLevel, f: FactionId): FactionOption {
 function event(c: Ctx, level: BotLevel): void {
   const { g, rnd, log } = c;
   g.continueAfterFeeding();
+  // affari fra signori dell'espansione, chiuso il mercato del grano
+  if (g.state.phase.kind === 'signori') {
+    g.rules?.botSignori?.({ g, level, rnd, log });
+    g.continueAfterSignori();
+  }
   const ph = g.state.phase;
   if (ph.kind !== 'evento') return;
   if (ph.awaitingChoice && ph.faction) {
@@ -305,7 +310,7 @@ function heedSensale(g: Game, r: Rates, level: BotLevel): Rates {
   return out;
 }
 
-/** Il sensale di piazza: il medio lo assolda se il tesoro lo consente, il difficile quasi sempre. */
+/** Il sensale di piazza, alle rendite: il medio lo assolda se il tesoro lo consente, il difficile quasi sempre. */
 function botSensale(c: Ctx, level: BotLevel): void {
   const { g, rnd, log } = c;
   const p = g.player;
@@ -317,6 +322,7 @@ function botSensale(c: Ctx, level: BotLevel): void {
 
 function taxes(c: Ctx, level: BotLevel): void {
   const { g, rnd, log } = c;
+  botSensale(c, level);
   const p = g.player, sc = g.state.scalars;
   const cur = currentRates(p);
   let target = cur;
@@ -481,7 +487,6 @@ export function playBotTurn(g: Game): BotTurnReport {
     c.svista = SVISTE[Math.floor(rng.next() * SVISTE.length)];
     c.log.push(`svista dell'anno: ${c.svista}`);
   }
-  botSensale(c, level);
   trade(c, level);
   event(c, level);
   taxes(c, level);
