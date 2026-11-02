@@ -55,6 +55,8 @@ export interface ExpansionView {
   dispatches(g: Game, animate: boolean): string;
   /** riquadro dopo l'esito di un imprevisto: finché non è null sostituisce il pulsante Prosegui */
   eventPanel?(g: Game): string | null;
+  /** carta del mazzo dell'espansione appena pescata: dove va e come si gioca (assente: testo generico) */
+  cardNote?(g: Game, eventId: number): string;
   /** riga sotto l'etichetta dell'espansione, nella colonna a sinistra */
   aside?(g: Game): string;
   /** seconda riga della barra delle risorse in alto: icona (SVG), valore, etichetta; low: in rosso */

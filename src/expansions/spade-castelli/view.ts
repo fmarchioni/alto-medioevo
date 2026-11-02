@@ -524,6 +524,8 @@ export const view: ExpansionView = {
       <div class="btns brigand-targets">${buttons}</div></div>`;
   },
 
+  cardNote: () => 'Non dovete decidere ora: la carta resta fra le vostre <b>Carte di guerra</b>, nel pannello a sinistra. Potete giocarla nei prossimi anni, una carta per anno.',
+
   aside(g) {
     const st = ss(g), me = g.state.current, ps = g.state.players;
     const band = st.brigands === null ? 'nei boschi' : st.brigands === me ? '<b class="warn">nel vostro feudo</b>' : `a ${FEUDI[ps[st.brigands].feudo]}`;

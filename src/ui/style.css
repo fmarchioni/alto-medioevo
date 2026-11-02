@@ -699,7 +699,7 @@ b, strong { color: var(--gold); }
 .spy p { margin: 0 0 6px; }
 p.spy.on { border-color: var(--gold); color: var(--gold); }
 
-/* ---------- Mercanti e Usurai: giudizio del sensale sulle gabelle ---------- */
+/* ---------- Sensale di piazza: giudizio sulle gabelle ---------- */
 .rate-note { margin-top: 6px; font-size: 12px; min-height: 1.4em; }
 .verdict { display: inline-block; padding: 1px 8px; border-radius: 4px; border: 2px solid currentColor; }
 .verdict.bassa { color: #2e5fa3; }

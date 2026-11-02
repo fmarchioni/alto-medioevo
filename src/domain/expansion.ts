@@ -5,7 +5,8 @@
  * comporta come il listato originale.
  */
 import type { Game } from './turn';
-import type { BotLevel, EventOutcome, GameState } from './types';
+import type { InvestmentKind } from './investments';
+import type { ActionResult, BotLevel, EventOutcome, GameState } from './types';
 
 /** Contesto delle decisioni di un signore del computer. */
 export interface BotCtx {
@@ -35,6 +36,8 @@ export interface ExpansionRules {
   onCard?(g: Game, id: number): void;
   /** dopo un imprevisto: può correggere l'esito (e il signore) prima che sia annotato */
   onEvent?(g: Game, eventId: number, outcome: EventOutcome): void;
+  /** prima di ogni acquisto nei dispendimenti (già verificato): può chiedere altro (merci, scudi) o rifiutarlo */
+  beforeInvest?(g: Game, kind: InvestmentKind): ActionResult;
   /** dopo l'incasso delle rendite del signore di turno (amount = rendita dell'anno) */
   onIncome?(g: Game, amount: number): void;
   /** fine anno del signore di turno, prima di interessi, titoli e tributi */

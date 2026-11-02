@@ -78,7 +78,7 @@ export function applyUsury(p: Player, usura: number): void {
 
 /** Riga 2000: indice di ricchezza ka. */
 export function wealthIndex(p: Player): number {
-  return (p.mercato - 1) * 2000 + (p.opificio - 1) * 5000 + ((p.acri - 500) / 25) * 500 + p.palazzo * 10000 + p.scudi + (p.prestigio ?? 0) + (p.granai ?? 0) * COSTS.granaio;
+  return (p.mercato - 1) * 2000 + (p.opificio - 1) * 5000 + ((p.acri - 500) / 25) * 500 + p.palazzo * 10000 + p.scudi + (p.prestigio ?? 0) + (p.beni ?? 0) + (p.granai ?? 0) * COSTS.granaio;
 }
 
 /**

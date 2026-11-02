@@ -1,4 +1,4 @@
-/** Espansione 1: "Mercanti e Usurai". */
+/** Espansione 1: "Le vie dei mercanti" (già "Mercanti e Usurai"). */
 import type { Expansion } from '../types';
 import { rules } from './rules';
 import { view } from './view';

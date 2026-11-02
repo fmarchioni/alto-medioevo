@@ -22,6 +22,9 @@ import type { Expansion, ExtUi } from '../expansions/types';
 import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
 import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
 import { seizedNotice } from './pignoramenti';
+import { hiredLine, sensaleBadges } from './sensale';
+import { hasSensale, hireSensale, sensaleCost, sensaleNow } from '../domain/sensale';
+import type { RateBadges } from './rendite';
 import { deleteSave, listSaves, loadGame, newSlotId, saveGame, type SaveSlot } from '../persistence/save';
 import { feedingOutcome, greeting, question, reaction, refusal, type TradeMode } from './advisor';
 import { icons, turret } from './art';
@@ -134,6 +137,15 @@ export interface MountOptions {
   rngKind?: RngKind;
   /** false: partite senza fatti del reame (test che non li riguardano) */
   fatti?: boolean;
+}
+
+/** Note accanto alle gabelle: il giudizio del sensale e quelle di un'espansione. */
+function rateBadgesFor(g: Game): RateBadges {
+  const ext = findExpansion(g.state.expansion)?.view.rateBadges;
+  return (game, r) => {
+    const a = sensaleBadges(game, r), b = ext?.(game, r) ?? null;
+    return a || b ? { ...a, ...b } : null;
+  };
 }
 
 export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
@@ -296,22 +308,24 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     if (t.name?.startsWith('r-') && g.state.phase.kind === 'rendite') {
       const kind = t.name.slice(2) as (typeof KINDS)[number];
       ui.rendite.draft = { ...ui.rendite.draft, [kind]: Math.max(0, Math.min(99, Math.floor(Number(t.value) || 0))) };
-      updateLive(root, g, ui.rendite.draft, findExpansion(g.state.expansion)?.view.rateBadges);
+      updateLive(root, g, ui.rendite.draft, rateBadgesFor(g));
       return;
     }
-    if (!g || ui.trade.mode === 'menu' || (t.name !== 'qty' && t.name !== 'qty-range')) return;
-    const max = maxQty(ui.trade.mode, g.player, g.state.scalars);
+    const mode = ui.trade.mode;
+    if (!g || mode === 'menu' || mode === 'sensale' || (t.name !== 'qty' && t.name !== 'qty-range')) return;
+    const max = maxQty(mode, g.player, g.state.scalars);
     const v = Math.max(0, Math.min(max, Math.floor(Number(t.value) || 0)));
     ui.trade.qty = v;
     const other = root.querySelector<HTMLInputElement>(`[name="${t.name === 'qty' ? 'qty-range' : 'qty'}"]`);
     if (other) other.value = String(v);
     const pv = root.querySelector('#trade-preview');
-    if (pv) pv.innerHTML = c64ify(preview(ui.trade.mode, v, g.player, g.state.scalars));
+    if (pv) pv.innerHTML = c64ify(preview(mode, v, g.player, g.state.scalars));
   });
 
   /** Scudi che un pulsante sta per spendere (0: non è un acquisto). */
   const purchaseCost = (g: Game, a: string, data: DOMStringMap, field: (name: string) => number): number => {
     let cost = 0;
+    if (a === 'hireSensale') cost = hasSensale(g) ? 0 : sensaleCost(g.player, sensaleNow(g));
     if (a === 'invest') cost = (COSTS[data.kind as InvestmentKind] ?? 0) * Math.max(1, Number(data.times) || 1);
     else if (a === 'confirmTrade' && ui.trade.mode === 'buy') cost = Math.ceil((field('qty') * g.state.scalars.prezzo) / 1000);
     else if (a === 'ext') cost = findExpansion(g.state.expansion)?.view.cost?.(g, data.op!, data, field) ?? 0;
@@ -466,6 +480,14 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         const start = mode === 'feed' ? Math.min(sc.domanda, p.grano) : 0;
         ui.trade = { ...ui.trade, mode, advisor: question(mode, p, sc), qty: start };
         ui.message = '';
+        return render();
+      }
+      case 'sensaleOpen':
+        ui.trade = { ...ui.trade, mode: 'sensale', advisor: '' };
+        return render();
+      case 'hireSensale': {
+        const r = hireSensale(g!);
+        ui.trade = { ...ui.trade, advisor: r.ok ? hiredLine(g!) : `Non si può, ${g!.player.gender === 1 ? 'Messere' : 'Madonna'}: ${r.reason}.` };
         return render();
       }
       case 'tradeBack':
@@ -822,7 +844,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       } else if (ev.effect.kind === 'carta') {
         // carta del mazzo di un'espansione: va fra le carte in mano, nella colonna a sinistra
         body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
-          <p class="big">Non dovete decidere ora: la carta resta fra le vostre <b>Carte di guerra</b>, nel pannello a sinistra. Potete giocarla nei prossimi anni, una carta per anno.</p>
+          <p class="big">${exp?.view.cardNote?.(g, ev.id) ?? 'Non dovete decidere ora: la carta resta nel pannello a sinistra, e potete giocarla nei prossimi anni.'}</p>
           ${proceed}`;
       } else {
         body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}${effectBadges(out!)}
@@ -834,7 +856,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       body = renderImpresa(ph.id, ph.esito, ph.amount, p);
       break;
     case 'rendite':
-      body = `<h2>Rendite</h2>${renderRendite(g, rendite, exp?.view.rateBadges)}`;
+      body = `<h2>Rendite</h2>${renderRendite(g, rendite, rateBadgesFor(g))}`;
       break;
     case 'reame':
       body = `<h2>Lo reame</h2>

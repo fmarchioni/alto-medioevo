@@ -16,6 +16,7 @@ import { granaryCapacity, MACINA_MOOD_WEIGHT, RIOT_MOOD, SETTLER_MEDIA_PRICE, um
 import { BATTLE_OPTIONS, marriageCost, type FactionId, type FactionOption } from './fazioni';
 import { canInvest, COSTS, type InvestmentKind } from './investments';
 import { scadenza } from './imprese';
+import { hasSensale, hireSensale, SENSALI, sensaleCost, sensaleNow, sensaleOfTurn, sensaleUseful, sensaleVerdict } from './sensale';
 import { RANK_THRESHOLDS, wealthIndex } from './rank';
 import { Mulberry32, type Rng } from './rng';
 import { bestRates, currentRates, KINDS, maxBuyable, previewRates, RATE_SUM_CAP, yieldPerPoint, type Rates } from './strategy';
@@ -254,7 +255,9 @@ function reformRates(c: Ctx, level: BotLevel): Rates {
   const y = yieldPerPoint(p, sc);
   if (level === 'facile') return { bevere: Math.floor(rnd() * 100), macina: Math.floor(rnd() * 100), commerzio: Math.floor(rnd() * 100) };
   // umore e fiducia sono nascosti anche ai bot: li stimano, il difficile con più precisione del medio
-  const guess = (v: number) => Math.min(100, Math.max(0, v + (rnd() * 2 - 1) * GUESS_ERR[level]));
+  // con il sensale la stima è la sua, se è più fine
+  const err = hasSensale(g) ? Math.min(GUESS_ERR[level], SENSALI[sensaleNow(g)].err) : GUESS_ERR[level];
+  const guess = (v: number) => Math.min(100, Math.max(0, v + (rnd() * 2 - 1) * err));
   const umore = guess(umoreOf(p)), fiducia = guess(fiduciaOf(p));
   // l'umore è un bilancio: un punto di bevere ne costa uno, uno di macina mezzo. Il difficile resta
   // sopra la soglia delle rivolte con un margine, il medio va un po' a caso; la fiducia dei mercanti a metà strada
@@ -272,7 +275,44 @@ function reformRates(c: Ctx, level: BotLevel): Rates {
     rest -= r[k];
     mood -= r[k] * cost[k];
   }
-  return r;
+  return heedSensale(g, r, level);
+}
+
+/**
+ * Gabelle ritoccate secondo il sensale: se le giudica inique si abbassano, e il
+ * difficile alza quelle che giudica basse (lascerebbe scudi ai sudditi).
+ */
+function heedSensale(g: Game, r: Rates, level: BotLevel): Rates {
+  const out = { ...r };
+  for (let i = 0; i < 40; i++) {
+    const v = sensaleVerdict(g, out);
+    if (!v) break;
+    let moved = false;
+    if (v.popolo === 'iniqua' && out.bevere + out.macina > 0) {
+      if (out.bevere >= out.macina) out.bevere = Math.max(0, out.bevere - 3);
+      else out.macina = Math.max(0, out.macina - 3);
+      moved = true;
+    } else if (v.popolo === 'bassa' && level === 'difficile' && out.bevere + out.macina + out.commerzio + 3 <= RATE_SUM_CAP && out.bevere < 96) {
+      out.bevere += 3;
+      moved = true;
+    }
+    if (v.mercanti === 'iniqua' && out.commerzio > 0) {
+      out.commerzio = Math.max(0, out.commerzio - 3);
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return out;
+}
+
+/** Il sensale di piazza: il medio lo assolda se il tesoro lo consente, il difficile quasi sempre. */
+function botSensale(c: Ctx, level: BotLevel): void {
+  const { g, rnd, log } = c;
+  const p = g.player;
+  if (!sensaleUseful(g) || hasSensale(g) || level === 'facile') return;
+  const cost = sensaleCost(p, sensaleOfTurn(g));
+  const want = level === 'difficile' ? p.scudi - cost >= 500 : p.scudi - cost >= 1500 && rnd() < 0.5;
+  if (want && hireSensale(g).ok) log.push(`assolda il sensale ${SENSALI[sensaleNow(g)].name} per ${n(cost)} scudi`);
 }
 
 function taxes(c: Ctx, level: BotLevel): void {
@@ -436,6 +476,7 @@ export function playBotTurn(g: Game): BotTurnReport {
     c.svista = SVISTE[Math.floor(rng.next() * SVISTE.length)];
     c.log.push(`svista dell'anno: ${c.svista}`);
   }
+  botSensale(c, level);
   trade(c, level);
   event(c, level);
   taxes(c, level);

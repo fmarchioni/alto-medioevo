@@ -7,6 +7,7 @@ import type { FactionId, FactionOption, Pact } from './fazioni';
 import type { Effetto, FattiState, FattoId, FattoOutcome, Sorte } from './fatti';
 import type { EsitoImpresa, Impresa, ImpresaId } from './imprese';
 import type { Foreclosure } from './pignoramenti';
+import type { SensaleHire, SensaleId } from './sensale';
 
 /** 1 = cavaliere (titoli maschili, finale "re"), 6 = madonna (titoli femminili, finale "regina") [ll(a)] */
 export type Gender = 1 | 6;
@@ -77,6 +78,8 @@ export interface Player {
   effetti?: Effetto[];
   /** prestigio guadagnato (visita del re): conta nella ricchezza [ka] */
   prestigio?: number;
+  /** valore dei beni costruiti in un'espansione (es. i vigneti): conta nella ricchezza come gli altri beni */
+  beni?: number;
   /** mercati e opifici limitati dalle terre: uno ogni 100 acri (solo con `botteghe`, src/domain/investments.ts) */
   botteghe?: true;
   /** granai costruiti (solo con `commercio`) */
@@ -164,6 +167,8 @@ export interface Options {
   palazzoReale?: boolean;
   /** mazzo degli imprevisti: niente caselle vuote, un imprevisto con probabilità fissa, senza doppioni (src/domain/events.ts) */
   mazzo?: boolean;
+  /** sensale di piazza: con la riforma delle gabelle giudica le gabelle in bozza (src/domain/sensale.ts) */
+  sensale?: boolean;
 }
 
 /**
@@ -197,6 +202,7 @@ export const CLASSIC_OPTIONS: Options = {
   pignoramenti: true,
   palazzoReale: true,
   mazzo: true,
+  sensale: true,
 };
 
 export const BALANCED_OPTIONS: Options = {
@@ -215,6 +221,7 @@ export const BALANCED_OPTIONS: Options = {
   pignoramenti: true,
   palazzoReale: true,
   mazzo: true,
+  sensale: true,
 };
 
 export type Phase =
@@ -273,6 +280,8 @@ export interface GameState {
   /** grano già deperito quest'anno (solo con spoilOncePerYear) */
   spoiledThisYear: boolean;
   rngState: number[];
+  /** sensale al servizio di ciascun signore (solo con `sensale`) */
+  sensale?: (SensaleHire | null)[];
   /** signori che quest'anno hanno superato la soglia del trono (solo con `tieBreakWealth`) */
   contenders?: number[];
   /** sorte dei fatti del reame (solo con `options.fatti`) */
@@ -321,6 +330,8 @@ export type ChronicleFact =
   | { t: 'impresa'; id: ImpresaId; esito: EsitoImpresa | 'scaduta'; amount: number }
   /** fatto di un'espansione: la narrazione spetta alla sua vista */
   | { t: 'ext'; kind: string; data: Record<string, number> }
+  /** sensale di piazza assoldato per l'anno */
+  | { t: 'sensale'; who: SensaleId; cost: number }
   | {
       t: 'yearEnd';
       usury: number;

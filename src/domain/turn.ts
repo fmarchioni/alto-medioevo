@@ -643,6 +643,8 @@ export class Game {
     if (!check.ok) return check;
     let servi = 0;
     for (let i = 0; i < times; i++) {
+      const extra = this.rules?.beforeInvest?.(this, kind);
+      if (extra && !extra.ok) return extra;
       const r = invest(this.player, kind);
       if (!r.ok) return r;
       this.log(`investe in ${kind}`);

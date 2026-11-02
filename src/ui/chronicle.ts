@@ -13,6 +13,7 @@ import { factionSentence } from './fazioni';
 import { annualSentence, fattoSentence } from './fatti';
 import { impresaSentence } from './imprese';
 import { seizedSentence } from './pignoramenti';
+import { sensaleSentence } from './sensale';
 import { realmScene } from './realm';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
@@ -121,6 +122,9 @@ function story(py: PlayerYear, players: Player[], view: ExpansionView | null): s
       ? `Le gabelle fruttarono ${n(income.amount)} scudi${income.tribute ? `, e i vassalli gli versarono ${n(income.tribute)} scudi di tributo` : ''}.`
       : `Le gabelle non fruttarono nulla${income.tribute ? `, ma i vassalli gli versarono ${n(income.tribute)} scudi di tributo` : ''}.`);
   }
+
+  // il sensale di piazza
+  for (const x of py.of('sensale')) s.push(sensaleSentence(x.who, x.cost));
 
   // costruzioni
   const count = (k: string) => py.of('build').filter(b => b.kind === k).length;

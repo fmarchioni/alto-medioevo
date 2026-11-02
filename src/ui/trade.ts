@@ -10,12 +10,14 @@ import type { Player, Scalars } from '../domain/types';
 import type { ExtCard } from '../expansions/types';
 import { ANSELMO, question, ruleNote, type TradeMode } from './advisor';
 import { cardArt } from './art';
+import { renderSensale, sensaleCard } from './sensale';
 import { speechBox } from './speaker';
 
 export interface TradeUi {
   /** giocatore+anno a cui si riferisce lo stato, per azzerarlo al cambio turno */
   key: string;
-  mode: 'menu' | TradeMode;
+  /** sensale: pannello del sensale di piazza (src/ui/sensale.ts) */
+  mode: 'menu' | 'sensale' | TradeMode;
   advisor: string;
   qty: number;
 }
@@ -115,6 +117,7 @@ export function renderExtCards(cards: ExtCard[], title = 'Fra signori'): string 
 
 export function renderTrade(g: Game, t: TradeUi, extras?: TradeExtras): string {
   const p = g.player, sc = g.state.scalars;
+  if (t.mode === 'sensale') return renderSensale(g, t.advisor);
   if (t.mode === 'menu') {
     const card = (mode: TradeMode, title: string, sub: string) => {
       const disabled = mode === 'buy' && maxQty('buy', p, sc) === 0 ? 'disabled' : '';
@@ -127,7 +130,7 @@ export function renderTrade(g: Game, t: TradeUi, extras?: TradeExtras): string {
         ${card('buy', 'Comprare grano', `${sc.prezzo} scudi ogni mille`)}
         ${card('sell', 'Vendere grano', sc.prezzoVendita !== undefined ? `a ${sc.prezzoVendita} scudi · granaio ${n(p.grano)}` : `granaio: ${n(p.grano)}`)}
         ${card('feed', 'Nutrire il popolo', 'chiude il mercato')}
-      </div>${ext}`;
+      </div>${sensaleCard(g)}${ext}`;
   }
   const mode = t.mode;
   const max = maxQty(mode, p, sc);
