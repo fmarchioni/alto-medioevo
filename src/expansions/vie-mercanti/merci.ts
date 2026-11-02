@@ -3,7 +3,7 @@
  *
  * - Vigneti: si piantano nei dispendimenti su 25 acri del feudo, che smettono
  *   di dare grano al raccolto. Ogni anno danno vino, più nelle annate buone.
- *   Il vino non sfama e in cantina ne va perduto un poco ogni anno.
+ *   Il vino non sfama e in magazzino ne va perduto un poco ogni anno.
  * - Opifici: oltre alla gabella sul commerzio, producono manufatti, più se gli
  *   artigiani sono contenti. I manufatti non si guastano.
  * - Mercanti di passaggio: ogni anno comprano qualunque quantità, pagando
@@ -34,7 +34,7 @@ export const ACRI_GRANO_MIN = 250;
 export const VINO_PER_VIGNETO = 40;
 /** Pezzi di manufatti di un opificio in un anno, con gli artigiani contenti. */
 export const MANUFATTI_PER_OPIFICIO = 120;
-/** Vino che si guasta in cantina ogni anno. */
+/** Vino che si guasta in magazzino ogni anno. */
 export const VINO_GUASTO = 0.02;
 /** Prezzi dei mercanti di passaggio (scudi l'unità): da min a max, secondo l'anno. */
 export const PREZZO_PASSAGGIO: Record<Merce, { min: number; max: number }> = { vino: { min: 4, max: 6 }, manufatti: { min: 4, max: 6 } };
@@ -130,7 +130,7 @@ export function produce(g: Game, c: Cantina): void {
   c.prodotto = { q: g.state.q, vino, manufatti };
 }
 
-/** Fine anno: in cantina un po' di vino si guasta. */
+/** Fine anno: in magazzino un po' di vino si guasta. */
 export function spoilWine(c: Cantina): number {
   const lost = Math.ceil(c.vino * VINO_GUASTO);
   c.vino -= lost;

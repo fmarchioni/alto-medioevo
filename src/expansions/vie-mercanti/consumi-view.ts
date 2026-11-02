@@ -89,7 +89,7 @@ export function festePanel(g: Game, st: ConsumiState): string {
       <button data-act="ext" data-op="fulfil" data-req="${r.id}" ${ok ? '' : 'disabled'}>Offrite</button></li>`;
   }).join('');
   const next = palaceNeeds(p, c, committed(st as FieraState, me, 'manufatti'));
-  return `<p>In cantina: ${n(c.vino)} botti di vino e ${n(c.manufatti)} pezzi di manufatti. Ciò che consumate non si vende più, ma il prestigio conta nella ricchezza, come la visita del re.</p>
+  return `<p>In magazzino: ${n(c.vino)} botti di vino e ${n(c.manufatti)} pezzi di manufatti. Ciò che consumate non si vende più, ma il prestigio conta nella ricchezza, come la visita del re.</p>
     <h3>Banchetto</h3>${done ? "<p class=\"hint\">Quest'anno avete già dato un banchetto.</p>" : ''}<div class="btns">${banq}</div>
     ${festa}
     ${reqs ? `<h3>Richieste</h3><ul class="ext-ledger">${reqs}</ul>` : ''}

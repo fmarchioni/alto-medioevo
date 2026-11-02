@@ -1,6 +1,6 @@
 /**
  * Vista dell'espansione "Le vie dei mercanti": il banchiere Ser Iacopo guida
- * cantina, fondaco, vigne, fiera e banco dei prestiti. Solo presentazione: le
+ * magazzino, fondaco, vigne, fiera e banco dei prestiti. Solo presentazione: le
  * regole sono in rules.ts, merci.ts, fiera.ts e geografia.ts.
  */
 import { FEUDI } from '../../domain/rank';
@@ -75,7 +75,7 @@ const bancoArt = svg(`<rect x="6" y="26" width="52" height="16" fill="#6b4a2c"/>
 
 const cantinaArt = svg(`<path d="M4 44 h56" stroke="#6b4a2c" stroke-width="2"/>
     <ellipse cx="20" cy="32" rx="12" ry="11" fill="#8a5a34" stroke="#4a3424"/><path d="M10 26 h20 M10 38 h20" stroke="#4a3424" stroke-width="2"/><circle cx="20" cy="32" r="2.5" fill="#4a3424"/>
-    <rect x="36" y="24" width="20" height="20" fill="#c9a86a" stroke="#6b4a2c"/><path d="M36 30 h20 M46 24 v20" stroke="#6b4a2c"/>`, 'cantina e magazzino');
+    <rect x="36" y="24" width="20" height="20" fill="#c9a86a" stroke="#6b4a2c"/><path d="M36 30 h20 M46 24 v20" stroke="#6b4a2c"/>`, 'magazzino');
 const fondacoArt = svg(`<rect x="6" y="18" width="52" height="26" fill="#8a5a34"/><path d="M2 20 L32 4 L62 20z" fill="#7a1f2b"/>
     <path d="M14 44 v-12 h10 v12z" fill="#3e2617"/>
     <ellipse cx="42" cy="37" rx="7" ry="6" fill="#7a2a3a" stroke="#4a1a24"/><rect x="48" y="32" width="9" height="10" fill="#c9a86a" stroke="#6b4a2c"/>`, 'fondaco');
@@ -217,7 +217,7 @@ function cantina(g: Game): string {
     </tr>`).join('');
   return `<table class="ext-table"><thead><tr><th>Merce</th><th>In magazzino</th><th>Prodotti quest'anno</th><th>Mercanti di passaggio</th><th>Vendere</th></tr></thead><tbody>${rows}</tbody></table>
     <ul class="ext-ledger">
-      <li><b>Vino</b>: ogni vigneto dà circa ${VINO_PER_VIGNETO} botti l'anno, di più nelle annate buone. Avete ${c.vigneti} ${c.vigneti === 1 ? 'vigneto' : 'vigneti'}. Il vino non sfama il popolo, e in cantina se ne guasta il ${Math.round(VINO_GUASTO * 100)}% l'anno.</li>
+      <li><b>Vino</b>: ogni vigneto dà circa ${VINO_PER_VIGNETO} botti l'anno, di più nelle annate buone. Avete ${c.vigneti} ${c.vigneti === 1 ? 'vigneto' : 'vigneti'}. Il vino non sfama il popolo, e in magazzino se ne guasta il ${Math.round(VINO_GUASTO * 100)}% l'anno.</li>
       <li><b>Manufatti</b>: ogni opificio ne fa fino a ${MANUFATTI_PER_OPIFICIO} pezzi l'anno, meno se gli artigiani sono scontenti. Avete ${p.opificio - 1} ${p.opificio - 1 === 1 ? 'opificio' : 'opifici'}. I manufatti non si guastano.</li>
       <li><b>Mercanti di passaggio</b>: comprano tutto e pagano subito, ma poco; il prezzo cambia ogni anno. Al fondaco si vende meglio, ma si incassa all'arrivo della carovana.</li>
       <li><b>Prestigio mercantile</b>: ${n(prestigeOf(g))} su 100 (${prestigeName(prestigeOf(g))}). Sale con le carovane puntuali (${signed(PRESTIGIO.consegna)}), i prestiti resi al banco (${signed(PRESTIGIO.prestitoReso)}) e i mercati (${signed(PRESTIGIO.mercati)} l'anno ogni ${MERCATI_PER_PUNTO}, al più ${signed(MERCATI_MAX)}); scende con ritardi e merce perduta (${signed(PRESTIGIO.ritardo)}) e con i pignoramenti (${signed(PRESTIGIO.pignoramento)}). Alla fiera i mercanti forestieri preferiscono chi ne ha di più.</li>
@@ -273,7 +273,7 @@ function vigne(g: Game): string {
 }
 
 const PANELS: Record<string, { title: string; render: (g: Game, st: MercantiState) => string }> = {
-  cantina: { title: 'Cantina e magazzino', render: g => cantina(g) },
+  cantina: { title: 'Il magazzino', render: g => cantina(g) },
   fondaco: { title: 'Il fondaco delle merci', render: fondaco },
   vigne: { title: 'Le vigne', render: g => vigne(g) },
   fiera: { title: 'La fiera dei mercanti forestieri', render: fieraPanel },
@@ -302,7 +302,7 @@ export const view: ExpansionView = {
     const offers = st.offers.filter(o => o.lender !== me).length;
     const lots = st.lots.filter(l => l.seller !== me).length;
     const cards: ExtCard[] = [
-      { panel: 'cantina', title: 'Cantina', sub: `${n(c.vino)} botti, ${n(c.manufatti)} pezzi`, art: cantinaArt },
+      { panel: 'cantina', title: 'Magazzino', sub: `${n(c.vino)} botti, ${n(c.manufatti)} pezzi`, art: cantinaArt },
       { panel: 'fondaco', title: 'Fondaco', sub: lots ? `${lots} ${lots === 1 ? 'banco aperto' : 'banchi aperti'}` : 'vendete agli altri signori', art: fondacoArt },
     ];
     cards.push({ panel: 'fiera', title: 'Fiera', sub: fairCardSub(g, st), art: fieraArt });

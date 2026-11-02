@@ -589,7 +589,7 @@ export const rules: ExpansionRules = {
     produce(g, st.cantine[me]);
   },
 
-  // i prestiti si rendono prima di interessi e pignoramenti degli usurai; in cantina un po' di vino si guasta
+  // i prestiti si rendono prima di interessi e pignoramenti degli usurai; in magazzino un po' di vino si guasta
   beforeYearEnd(g) {
     deadlines(fairCtx(g));
     settleLoans(g);
