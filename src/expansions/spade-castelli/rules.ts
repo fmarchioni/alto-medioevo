@@ -213,7 +213,13 @@ export type Dispatch =
   | { k: 'lifted'; by: number }
   /** all'assalitore: il feudo di `by` è sotto la tregua di Dio; siege: l'assedio non ha dato l'assalto */
   | { k: 'truce'; by: number; siege: boolean }
-  | { k: 'brigandsIn'; by: number };
+  | { k: 'brigandsIn'; by: number }
+  /** a chi ha proposto la pace: accettata (fino all'anno `fino`), respinta, o decaduta senza risposta */
+  | { k: 'treatyAnswer'; by: number; ok: boolean; anni: number; dono: number; fino?: number; scaduta?: boolean }
+  /** l'esercito in marcia contro il nuovo alleato torna indietro */
+  | { k: 'treatyRecall'; target: number; n: number }
+  /** il trattato con `with` è scaduto */
+  | { k: 'treatyEnd'; with: number };
 
 /** Una schiera di ritorno da una campagna. */
 export interface March {
@@ -301,6 +307,9 @@ export interface SpadeState {
   serpi?: { owner: number; until: number }[];
   /** anno (q) della tregua di Dio di ciascun signore */
   tregue?: number[];
+  /** trattati di pace fra signori e proposte in attesa di risposta (assenti nei salvataggi vecchi) */
+  trattati?: Trattato[];
+  proposte?: PropostaTrattato[];
   wars: WarResult[];
   mail: { to: number; d: Dispatch }[];
   inbox: Dispatch[];
@@ -382,6 +391,16 @@ export function defenseOf(p: Player, soldati: number, mura: number, cat = 0): nu
 
 /** La guerra è in vista: un esercito nemico marcia verso il feudo (in piazza se ne parla, torri o no) o lo assedia. */
 export const warLooms = (g: Game, i: number) => incomingOf(g, i).length > 0 || siegesOn(ss(g), i).length > 0;
+
+/** Usura di guerra: rincaro per il feudo minacciato o assediato e per chi ha l'esercito in campo; sconto in pace. */
+export const USURA_MINACCIA = 10;
+export const USURA_CAMPAGNA = 5;
+export const USURA_PACE = -5;
+export function warUsury(g: Game, i: number): number {
+  const st = ss(g), inField = campaignsBy(st, i).length > 0 || siegesBy(st, i).length > 0;
+  const war = (warLooms(g, i) ? USURA_MINACCIA : 0) + (inField ? USURA_CAMPAGNA : 0);
+  return war || USURA_PACE;
+}
 
 /** Arruolati quest'anno dal signore `i`. */
 const levyOf = (g: Game, i: number) => {
@@ -643,6 +662,9 @@ export function declareWar(g: Game, target: number, sent: number, goal: WarGoal,
   const st = ss(g), me = g.state.current, p = g.player;
   if (st.lastWar[me] === g.state.q) return { ok: false, reason: 'si muove guerra una sola volta l\'anno' };
   if (target === me || !g.state.players[target] || !alive(g, target)) return { ok: false, reason: 'scegliete il feudo di un altro signore' };
+  const tr = treatyOf(g, me, target);
+  if (tr) return { ok: false, reason: `avete un trattato di pace con ${g.state.players[target].name} fino al ${900 + tr.fino}` };
+  if ((st.proposte ?? []).some(x => x.from === me && x.to === target)) return { ok: false, reason: `avete proposto la pace a ${g.state.players[target].name}: attendete la sua risposta` };
   if (!Number.isInteger(merc) || merc < 0 || merc > mercsOf(g, st, me)) return { ok: false, reason: 'non avete tanti mercenari nel fortino' };
   if (!Number.isInteger(sent) || sent < 0 || sent > st.soldati[me]) return { ok: false, reason: 'non avete tanti soldati nel fortino' };
   if (sent + merc < WAR_MIN) return { ok: false, reason: `servono almeno ${WAR_MIN} uomini` };
@@ -652,6 +674,8 @@ export function declareWar(g: Game, target: number, sent: number, goal: WarGoal,
   if (!canSpend(p, sent * CAMPAIGN_COST)) return { ok: false, reason: 'non potete pagare la campagna' };
   const siege = siegesBy(st, me).find(s => s.target === target);
   if (siege && goal !== 'distruzione') return { ok: false, reason: 'quel feudo è già sotto il vostro assedio: mandate rinforzi per la distruzione' };
+  // chi muove guerra respinge la pace che il nemico gli aveva proposto
+  for (const x of (st.proposte ?? []).filter(y => y.from === target && y.to === me)) settleTreaty(g, x, false);
   p.scudi -= sent * CAMPAIGN_COST;
   st.lastWar[me] = g.state.q;
   st.soldati[me] -= sent;
@@ -840,6 +864,191 @@ function settlePeace(g: Game, s: Siege, accept: boolean): void {
   s.rifiuto = g.state.q;
   send(st, s.target, { k: 'peaceAnswer', by: s.owner, ok: false, scudi: price });
   note(g, s.target, 'peaceRefused', { attacker: s.owner, scudi: price });
+}
+
+// ---------------------------------------------------------------- trattati di pace
+
+/** Durata dei trattati di pace, in anni (compreso quello in cui si firmano). */
+export const TRATTATO_MIN = 2;
+export const TRATTATO_MAX = 5;
+/** Dono minimo che ripara un'offesa non vendicata, se il bottino è stato poco. */
+export const RIPARAZIONE_MIN = 1000;
+
+/** Un trattato di pace fra `a` e `b`, dall'anno `dal` all'anno `fino` compreso. */
+export interface Trattato { a: number; b: number; dal: number; fino: number }
+/** Una proposta di pace, con il dono già uscito dalle casse di chi propone. */
+export interface PropostaTrattato { from: number; to: number; anni: number; dono: number; q: number }
+
+const isPair = (x: number, y: number, i: number, j: number) => (x === i && y === j) || (x === j && y === i);
+/** Il trattato in vigore fra i e j, se c'è. */
+export const treatyOf = (g: Game, i: number, j: number) => (ss(g).trattati ?? []).find(t => isPair(t.a, t.b, i, j) && t.fino >= g.state.q);
+/** Trattati in vigore del signore i. */
+export const treatiesOf = (g: Game, i: number) => (ss(g).trattati ?? []).filter(t => (t.a === i || t.b === i) && t.fino >= g.state.q);
+/** Proposte di pace in attesa fra i e j (in un senso o nell'altro). */
+export const treatyOfferBetween = (st: SpadeState, i: number, j: number) => (st.proposte ?? []).find(x => isPair(x.from, x.to, i, j));
+export const treatyOffersTo = (st: SpadeState, i: number) => (st.proposte ?? []).filter(x => x.to === i);
+export const treatyOffersBy = (st: SpadeState, i: number) => (st.proposte ?? []).filter(x => x.from === i);
+
+/** Assalti aperti da `a` contro `b` (un assedio conta una volta) e il bottino che ne ha portato via. */
+function offese(st: SpadeState, a: number, b: number): { n: number; bottino: number } {
+  const ws = st.wars.filter(w => w.attacker === a && w.defender === b);
+  return { n: ws.filter(w => (w.round ?? 1) === 1).length, bottino: ws.reduce((s, w) => s + w.scudi + INT(w.grano * 0.03), 0) };
+}
+
+/**
+ * Il conto delle offese visto da `i` verso `j`: quanti assalti di `j` sono
+ * rimasti senza risposta (positivo: `i` cerca vendetta; negativo: è `j` a
+ * cercarla; zero: conti pari, nessuno ha assalito o il colpo è stato reso).
+ * `bottino`: quanto gli assalti di `j` hanno portato via a `i`, se il conto è a suo sfavore.
+ */
+export function feud(g: Game, i: number, j: number): { conto: number; da: number; a: number; bottino: number } {
+  const st = ss(g), da = offese(st, j, i), a = offese(st, i, j);
+  const conto = da.n - a.n;
+  return { conto, da: da.n, a: a.n, bottino: conto > 0 ? Math.max(0, da.bottino - a.bottino) : 0 };
+}
+
+/** Dono che ripara le offese non vendicate di `j` verso `i` (0 a conti pari). */
+export const reparation = (g: Game, i: number, j: number) => {
+  const f = feud(g, i, j);
+  return f.conto > 0 ? Math.max(RIPARAZIONE_MIN * f.conto, f.bottino) : 0;
+};
+
+/** Si può proporre la pace a `target`? (null: sì, altrimenti il motivo) */
+export function treatyBlock(g: Game, target: number): string | null {
+  const st = ss(g), me = g.state.current, ps = g.state.players;
+  if (target === me || !ps[target] || !alive(g, target)) return 'scegliete il feudo di un altro signore';
+  const t = treatyOf(g, me, target);
+  if (t) return `siete già in pace con ${ps[target].name} fino al ${900 + t.fino}`;
+  const x = treatyOfferBetween(st, me, target);
+  if (x) return x.from === me ? `la vostra proposta attende la risposta di ${ps[target].name}` : `${ps[target].name} vi ha già proposto la pace: rispondetegli`;
+  if ((st.assedi ?? []).some(s => isPair(s.owner, s.target, me, target))) return "c'è un assedio fra voi: la pace si tratta al campo dell'assedio";
+  return null;
+}
+
+/**
+ * Propone a `target` un trattato di `anni` anni, con un dono in scudi che esce
+ * subito dalle casse (e torna se la proposta è respinta). Un signore del
+ * computer risponde subito, un giocatore nel suo turno.
+ */
+export function proposeTreaty(g: Game, target: number, anni: number, dono: number): ActionResult & { answered?: boolean; accepted?: boolean } {
+  const no = phaseIs(g, 'commercio', 'investimenti');
+  if (no) return no;
+  const block = treatyBlock(g, target);
+  if (block) return { ok: false, reason: block };
+  if (!Number.isInteger(anni) || anni < TRATTATO_MIN || anni > TRATTATO_MAX) return { ok: false, reason: `un trattato dura da ${TRATTATO_MIN} a ${TRATTATO_MAX} anni` };
+  const st = ss(g), me = g.state.current, p = g.player;
+  if (!Number.isInteger(dono) || dono < 0) return { ok: false, reason: 'dono non valido' };
+  if (dono > Math.max(0, p.scudi)) return { ok: false, reason: 'si dona solo il denaro che si possiede' };
+  p.scudi -= dono;
+  const x: PropostaTrattato = { from: me, to: target, anni, dono, q: g.state.q };
+  (st.proposte ??= []).push(x);
+  note(g, me, 'treatyOffer', { target, anni, dono });
+  const bot = g.state.players[target].bot;
+  if (!bot) return { ok: true, answered: false };
+  const yes = botAcceptsTreaty(g, x, bot, roll(st));
+  settleTreaty(g, x, yes);
+  return { ok: true, answered: true, accepted: yes };
+}
+
+/** Il signore di turno risponde alla proposta di pace di `from`. */
+export function answerTreaty(g: Game, from: number, accept: boolean): ActionResult & { fino?: number } {
+  const st = ss(g), me = g.state.current;
+  const x = (st.proposte ?? []).find(y => y.from === from && y.to === me);
+  if (!x) return { ok: false, reason: 'nessuna proposta di pace da quel signore' };
+  settleTreaty(g, x, accept);
+  const t = accept ? treatyOf(g, me, from) : undefined;
+  return { ok: true, ...(t ? { fino: t.fino } : {}) };
+}
+
+/**
+ * Pace accettata: il dono passa a chi l'accetta, il trattato vale per `anni`
+ * anni da quest'anno, e gli eserciti in marcia fra i due tornano indietro.
+ * Respinta: il dono torna a chi l'ha offerto.
+ */
+function settleTreaty(g: Game, x: PropostaTrattato, accept: boolean): void {
+  const st = ss(g), ps = g.state.players, q = g.state.q;
+  st.proposte = (st.proposte ?? []).filter(y => y !== x);
+  if (!accept || !alive(g, x.to)) {
+    ps[x.from].scudi += x.dono;
+    send(st, x.from, { k: 'treatyAnswer', by: x.to, ok: false, anni: x.anni, dono: x.dono });
+    note(g, x.from, 'treatyRefused', { target: x.to, dono: x.dono });
+    return;
+  }
+  ps[x.to].scudi += x.dono;
+  const fino = q + x.anni - 1;
+  (st.trattati ??= []).push({ a: x.from, b: x.to, dal: q, fino });
+  for (const c of (st.campagne ?? []).filter(k => isPair(k.owner, k.target, x.from, x.to))) {
+    const anni = Math.max(1, q - c.q);
+    (st.marcia ??= []).push({ owner: c.owner, n: c.n, cat: c.cat, back: q + 1 + Math.max(0, q - c.q), anni, from: c.target });
+    send(st, c.owner, { k: 'treatyRecall', target: c.target, n: c.n });
+  }
+  st.campagne = (st.campagne ?? []).filter(k => !isPair(k.owner, k.target, x.from, x.to));
+  // un traditore mandato contro il nuovo alleato non ha più nulla da fare
+  st.traditori = (st.traditori ?? []).filter(t => !isPair(t.owner, t.target, x.from, x.to));
+  send(st, x.from, { k: 'treatyAnswer', by: x.to, ok: true, anni: x.anni, dono: x.dono, fino });
+  note(g, x.from, 'treaty', { other: x.to, fino: 900 + fino, dono: x.dono, gave: 1 });
+  note(g, x.to, 'treaty', { other: x.from, fino: 900 + fino, dono: x.dono, gave: 0 });
+}
+
+/**
+ * Risposta di un signore del computer. Chi è stato assalito senza rendere il
+ * colpo vuole vendetta: accetta solo un dono che ripari. A conti pari la pace
+ * piace a tutti, tanto più con chi è forte; chi ha l'esercito in marcia contro
+ * chi propone torna indietro solo se il dono vale il bottino, e il capofila
+ * che corre troppo avanti non si lascia in pace per poco.
+ */
+function botAcceptsTreaty(g: Game, x: PropostaTrattato, level: string, rnd: () => number): boolean {
+  const st = ss(g), me = x.to, ps = g.state.players;
+  const f = feud(g, me, x.from), loot = lootOf(g, ps[x.from]);
+  if (f.conto > 0) return level === 'facile' ? x.dono > 0 && rnd() < 0.5 : x.dono >= reparation(g, me, x.from);
+  if (level === 'facile') return rnd() < 0.7;
+  if (campaignsBy(st, me).some(c => c.target === x.from)) return x.dono >= loot * (level === 'difficile' ? 0.8 : 0.5);
+  if (wealthIndex(ps[x.from]) > wealthIndex(ps[me]) * RIVAL_LEAD) return x.dono >= loot * 0.5;
+  // chi propone e ha subito un'offesa senza renderla perdona: un buon affare
+  if (f.conto < 0) return true;
+  const strong = guessSoldiers(g, me, x.from) >= st.soldati[me] * 0.8;
+  return level === 'medio' ? strong || x.dono > 0 || rnd() < 0.6 : strong || x.dono >= loot * 0.2;
+}
+
+/**
+ * Inizio del turno: le proposte rimaste senza risposta decadono (il dono
+ * torna), i trattati scaduti l'anno scorso si annunciano a entrambi.
+ */
+function treatyTurn(g: Game): void {
+  const st = ss(g), me = g.state.current, q = g.state.q;
+  for (const x of treatyOffersBy(st, me).filter(y => y.q < q)) {
+    g.player.scudi += x.dono;
+    st.proposte = (st.proposte ?? []).filter(y => y !== x);
+    st.inbox.push({ k: 'treatyAnswer', by: x.to, ok: false, anni: x.anni, dono: x.dono, scaduta: true });
+  }
+  for (const t of (st.trattati ?? []).filter(k => (k.a === me || k.b === me) && k.fino === q - 1)) st.inbox.push({ k: 'treatyEnd', with: t.a === me ? t.b : t.a });
+  st.trattati = (st.trattati ?? []).filter(t => t.fino >= q - 1);
+}
+
+/** Signori del computer: con un esercito più forte in arrivo, il medio e il difficile propongono la pace, se non cercano vendetta. */
+function botTreaty(c: BotCtx): void {
+  const { g, level, log } = c;
+  if (level === 'facile') return;
+  const st = ss(g), me = g.state.current, p = g.player;
+  for (const foe of [...new Set(incomingOf(g, me).map(k => k.owner))]) {
+    if (treatyBlock(g, foe) || feud(g, me, foe).conto > 0) continue;
+    // l'esercito in marcia è segreto: si stima come per le difese, dai soldati noti e da quelli lontani
+    const force = guessSoldiers(g, me, foe) + awayOf(st, foe) * 0.5;
+    if (defenseOf(p, st.soldati[me], st.mura[me]) >= force * 1.2) continue;
+    const dono = Math.floor(Math.min(Math.max(0, p.scudi) * 0.4, lootOf(g, p) * 0.8) / 50) * 50;
+    const r = proposeTreaty(g, foe, 3, dono);
+    if (r.ok) log.push(`propone la pace a ${g.state.players[foe].name} per 3 anni${dono ? ` con un dono di ${dono} scudi` : ''}${r.answered ? (r.accepted ? ': accettata' : ': respinta') : ''}`);
+  }
+}
+
+/** Signori del computer: una proposta di pace ricevuta da un giocatore (rimasta in sospeso) ha subito risposta. */
+function botAnswerTreaties(c: BotCtx): void {
+  const { g, level, rnd, log } = c;
+  for (const x of treatyOffersTo(ss(g), g.state.current)) {
+    const yes = botAcceptsTreaty(g, x, level, rnd);
+    settleTreaty(g, x, yes);
+    log.push(yes ? `accetta la pace di ${g.state.players[x.from].name}` : `respinge la pace di ${g.state.players[x.from].name}`);
+  }
 }
 
 // ---------------------------------------------------------------- carte di guerra (carte.ts)
@@ -1190,7 +1399,9 @@ function botWar(c: BotCtx): void {
   const leader = live.reduce((a, i) => (wealthIndex(ps[i]) > wealthIndex(ps[a]) ? i : a), live[0]);
   const army = st.soldati[me] + awayOf(st, me);
   const room = maxArmy(p, army) - awayOf(st, me);
-  const busy = new Set([...siegesBy(st, me).map(s => s.target), ...campaignsBy(st, me).map(c => c.target)]);
+  // in pace con chi ha un trattato, o con chi attende la risposta a una proposta
+  const busy = new Set([...siegesBy(st, me).map(s => s.target), ...campaignsBy(st, me).map(c => c.target),
+    ...live.filter(i => treatyOf(g, me, i) || treatyOfferBetween(st, me, i)?.from === me)]);
   // catapulte: quelle nel fortino, più quelle che si possono costruire quest'anno
   const catHome = catapultsOf(st, me);
   const catBuy = (mura: number) => level === 'facile' ? 0 : Math.max(0, Math.min(catNeeded(mura) - catHome, CATAPULT_MAX - catHome - catAwayOf(st, me)));
@@ -1341,6 +1552,7 @@ export const rules: ExpansionRules = {
     for (const id of expireCards(g, st, me)) note(g, me, 'cardLost', { card: CARTE_ID.indexOf(id) });
     st.inbox = st.mail.filter(m => m.to === me).map(m => m.d);
     st.mail = st.mail.filter(m => m.to !== me);
+    treatyTurn(g);
     // le schiere che arrivano a casa: la malattia ne ha portati via fino al 5% per anno di viaggio
     const home = (st.marcia ?? []).filter(m => m.owner === me && m.back <= g.state.q);
     if (home.length) {
@@ -1375,6 +1587,9 @@ export const rules: ExpansionRules = {
   },
 
   // contro le orde delle fazioni un soldato vale tre nemici (sei servi), ogni cerchia di mura +20% di difesa
+  // in guerra il denaro costa di più
+  usuryExtra: g => warUsury(g, g.state.current),
+
   factionDefense(g) {
     const st = ss(g), me = g.state.current;
     return { soldati: (st.soldati[me] + mercsOf(g, st, me)) * SOLDIER_VS_HORDE, mura: 1 + WALL_VS_HORDE * st.mura[me] };
@@ -1408,9 +1623,11 @@ export const rules: ExpansionRules = {
   botBeforeTrade: botBrigands,
 
   botBeforeInvest(c) {
+    botAnswerTreaties(c);
     botCards(c);
     botBrigands(c);
     botSpy(c);
+    botTreaty(c);
     botUnderSiege(c);
     botDefend(c);
     botSiege(c);

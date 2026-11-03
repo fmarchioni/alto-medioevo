@@ -37,6 +37,9 @@ export function startOfTurn(p: Player, sc: Scalars, rng: Rng, annata?: AnnataKin
   sc.usura = INT(ratio * 40);
 }
 
+/** Usura minima (con l'opzione `usuraMinima`): nessuno presta denaro gratis. */
+export const USURA_MIN = 3;
+
 /** Righe 475-500: acquisto di grano dal raccolto. */
 export function buyGrain(p: Player, sc: Scalars, qty: number): ActionResult {
   if (p.scudi < -p.credito) return { ok: false, reason: 'debito oltre il credito concesso' };

@@ -10,7 +10,9 @@
  * - Gara al ribasso, a buste chiuse: ogni signore offre un prezzo l'unità.
  *   Conta per il 90% la convenienza del prezzo e per il 10% il prestigio
  *   mercantile. Al prezzo base l'offerta è sempre accettata; sopra il prezzo
- *   base i mercanti accettano di rado, e mai oltre la metà in più.
+ *   base i mercanti accettano di rado, e mai oltre la metà in più. A parità
+ *   di prezzo e di prestigio la commessa si divide in parti uguali (arrotondate
+ *   per eccesso) fra i signori che i mercanti accettano.
  * - Il vincitore spedisce la merce entro uno o due anni (alla fine dell'anno
  *   di scadenza la carovana parte da sola con quello che c'è in magazzino).
  *   Si incassa all'arrivo: chi arriva in ritardo è pagato un decimo in meno,
@@ -146,8 +148,9 @@ const exclude = (st: FieraState, players: number, i: number, until: number) => {
 /** Notizie della fiera per un signore. */
 export type FieraDispatch =
   | { k: 'fieraAperta'; q: number; n: number }
-  | { k: 'fieraVinta'; c: Contratto; price: number; entro: number; rivali: number }
-  | { k: 'fieraPersa'; c: Contratto; price: number; winner: number; winPrice: number }
+  /** soci: gli altri signori con cui si divide la commessa (stesso prezzo e stesso prestigio) */
+  | { k: 'fieraVinta'; c: Contratto; price: number; entro: number; rivali: number; soci?: number[] }
+  | { k: 'fieraPersa'; c: Contratto; price: number; winner: number; soci?: number[]; winPrice: number }
   | { k: 'fieraRifiutata'; c: Contratto; price: number }
   | { k: 'fieraSpedita'; c: Contratto; qty: number; arrive: number }
   | { k: 'fieraPagata'; c: Contratto; qty: number; perse: number; gain: number; ritardo: boolean; evento?: EventoViaggio; prestigio: number }
@@ -300,21 +303,30 @@ export function resolveFair(c: FairCtx, nextId: () => number): Impegno[] {
     }
     if (!bids.length) continue;
     const min = Math.min(...bids.map(b => b.price));
-    const ranked = bids.map(b => ({ b, s: bidScore(b.price, min, st.prestigio[b.player] ?? 0), t: rnd() })).sort((a, b) => b.s - a.s || a.t - b.t);
-    let win: Offerta | null = fixed;
+    const pr = (b: Offerta) => st.prestigio[b.player] ?? 0;
+    const ranked = bids.map(b => ({ b, s: bidScore(b.price, min, pr(b)), t: rnd() })).sort((a, b) => b.s - a.s || a.t - b.t);
+    // a parità di prezzo e di prestigio la commessa si divide fra quelli che i mercanti accettano
+    let wins: Offerta[] = fixed ? [fixed] : [];
     const refused = new Set<Offerta>();
-    for (const { b } of ranked) {
-      if (win) break;
-      if (rnd() < acceptAbove(b.price, k.base)) { win = b; break; }
-      refused.add(b);
-      c.tell(b.player, { k: 'fieraRifiutata', c: k, price: b.price });
+    for (let i = 0; i < ranked.length && !wins.length;) {
+      const head = ranked[i].b;
+      const tied = ranked.slice(i).map(x => x.b).filter(b => b.price === head.price && pr(b) === pr(head));
+      i += tied.length;
+      for (const b of tied) {
+        if (rnd() < acceptAbove(b.price, k.base)) wins.push(b);
+        else { refused.add(b); c.tell(b.player, { k: 'fieraRifiutata', c: k, price: b.price }); }
+      }
     }
-    if (!win) continue;
-    const imp: Impegno = { id: nextId(), player: win.player, c: k, price: win.price, entro: f.q + k.tempo };
-    out.push(imp);
-    c.tell(win.player, { k: 'fieraVinta', c: k, price: win.price, entro: imp.entro, rivali: bids.length - 1 });
-    c.note(win.player, 'fairWin', { good: MERCI.indexOf(k.good), qty: k.qty, price: win.price, piazza: PIAZZE.findIndex(x => x.id === k.piazza), speciale: k.speciale ? 1 : 0 });
-    for (const b of bids) if (b !== win && !refused.has(b)) c.tell(b.player, { k: 'fieraPersa', c: k, price: b.price, winner: win.player, winPrice: win.price });
+    if (!wins.length) continue;
+    const share: Contratto = wins.length > 1 ? { ...k, qty: Math.ceil(k.qty / wins.length) } : k;
+    const soci = wins.map(w => w.player);
+    for (const win of wins) {
+      const imp: Impegno = { id: nextId(), player: win.player, c: share === k ? k : { ...share }, price: win.price, entro: f.q + k.tempo };
+      out.push(imp);
+      c.tell(win.player, { k: 'fieraVinta', c: share, price: win.price, entro: imp.entro, rivali: bids.length - wins.length, soci: soci.filter(x => x !== win.player) });
+      c.note(win.player, 'fairWin', { good: MERCI.indexOf(k.good), qty: share.qty, price: win.price, piazza: PIAZZE.findIndex(x => x.id === k.piazza), speciale: k.speciale ? 1 : 0, diviso: wins.length });
+    }
+    for (const b of bids) if (!wins.includes(b) && !refused.has(b)) c.tell(b.player, { k: 'fieraPersa', c: k, price: b.price, winner: wins[0].player, soci: soci.slice(1), winPrice: wins[0].price });
   }
   st.impegni.push(...out);
   st.fiera = undefined;

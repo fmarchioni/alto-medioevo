@@ -4,7 +4,10 @@
  *
  * - Banco: un signore offre un prestito (somma, interesse, durata). Chi lo
  *   accetta lo restituisce alla scadenza, a fine anno; se non può, il creditore
- *   pignora terre, mercati, opifici e piani di palazzo al loro prezzo.
+ *   pignora terre, mercati, opifici e piani di palazzo al loro prezzo. Se
+ *   nessun signore lo prende, lo prendono i mercanti di passaggio quando
+ *   l'interesse annuo non supera l'usura dell'anno: rendono alla scadenza, a
+ *   inizio turno, ma qualcuno fallisce e ne rende solo la metà.
  *
  * - Merci (merci.ts): vigneti e vino, manufatti degli opifici, mercanti di
  *   passaggio e fondaco fra signori, con le carovane.
@@ -30,7 +33,7 @@ import type { Game } from '../../domain/turn';
 import type { ActionResult, Player } from '../../domain/types';
 import {
   buyLot as buyLotOf, emptyCantina, yearlyOutput, PREZZO_PASSAGGIO, MERCI, maxVigneti, passingPrices, plantVineyard, postLot as postLotOf, produce, sellToPassing, settleCaravans, spoilWine, UNITA, VIGNETO_COST,
-  sellerShare, withdrawLot as withdrawLotOf, type Merce,
+  sellerShare, sellUnsold, withdrawLot as withdrawLotOf, type Merce,
 } from './merci';
 import { bonusOf } from './geografia';
 import { late, type EventoViaggio } from './carovane';
@@ -56,13 +59,29 @@ export const LOAN_MIN = 500;
 export const LOAN_MAX_RATE = 60;
 export const LOAN_MAX_YEARS = 3;
 
-export interface LoanOffer { id: number; lender: number; amount: number; rate: number; years: number }
+/** Prestito offerto al banco; q e usura: anno dell'offerta e usura di quell'anno (assenti nei salvataggi vecchi). */
+export interface LoanOffer { id: number; lender: number; amount: number; rate: number; years: number; q?: number; usura?: number }
 export interface Loan { id: number; lender: number; debtor: number; principal: number; due: number; dueQ: number }
+/** Prestito ai mercanti di passaggio: lo rendono all'inizio del turno del prestatore nell'anno dueQ. */
+export interface MerchantLoan { id: number; lender: number; principal: number; due: number; dueQ: number; years: number }
+
+/** Probabilità, per ogni anno di prestito, che il mercante di passaggio fallisca; e quanto si recupera allora. */
+export const MERCANTI_FALLIMENTO = 0.05;
+export const FALLIMENTO_RESO = 0.5;
+/** I mercanti di passaggio prendono il prestito se l'interesse annuo non supera l'usura dell'anno in cui è offerto. */
+export const merchantsTake = (o: { rate: number; years: number; usura?: number }) => o.usura !== undefined && o.rate / o.years <= o.usura;
 
 /** Notizie per un signore, lette all'inizio del suo turno. */
 export type Dispatch =
   | { k: 'offerTaken'; debtor: number; amount: number; due: number; dueQ: number }
-  | { k: 'offerBack'; amount: number }
+  /** prestito che nessuno ha preso; usura: quella dell'anno, se i mercanti di passaggio l'hanno trovato troppo caro */
+  | { k: 'offerBack'; amount: number; usura?: number; yearly?: number }
+  /** prestito preso dai mercanti di passaggio */
+  | { k: 'offerMerchants'; amount: number; due: number; dueQ: number }
+  /** prestito reso dai mercanti di passaggio (fallito: ne rendono solo una parte) */
+  | { k: 'merchantsRepaid'; principal: number; amount: number; fallito: boolean }
+  /** merce invenduta del fondaco presa dai mercanti di passaggio */
+  | { k: 'lotPassing'; good: Merce; qty: number; gain: number }
   | { k: 'repaid'; debtor: number; amount: number }
   | { k: 'seized'; debtor: number; cash: number; acri: number; mercati: number; opifici: number; palazzo: number; unpaid: number }
   /** al debitore: prestito reso */
@@ -90,6 +109,8 @@ export interface MercantiState extends FieraState, ConsumiState, ImpreseState {
   rng: number[];
   offers: LoanOffer[];
   loans: Loan[];
+  /** prestiti ai mercanti di passaggio (assente nei salvataggi vecchi) */
+  prestitiMercanti?: MerchantLoan[];
   /** notizie non ancora consegnate */
   mail: { to: number; d: Dispatch }[];
   /** notizie consegnate al signore di turno */
@@ -138,7 +159,7 @@ export function postLoan(g: Game, amount: number, rate: number, years: number): 
   if (p.scudi < amount) return { ok: false, reason: 'si presta solo denaro che si possiede' };
   if (st.offers.some(o => o.lender === me)) return { ok: false, reason: 'avete già un prestito offerto al banco' };
   p.scudi -= amount;
-  st.offers.push({ id: st.nextId++, lender: me, amount, rate, years });
+  st.offers.push({ id: st.nextId++, lender: me, amount, rate, years, q: g.state.q, usura: g.state.scalars.usura });
   note(g, me, 'loanOffer', { amount, rate, years });
   return { ok: true };
 }
@@ -237,6 +258,37 @@ function settleLoans(g: Game): void {
     }
     st.loans = st.loans.filter(l => l !== loan);
   }
+}
+
+/**
+ * Inizio del turno del prestatore: il prestito che nessun signore ha preso va
+ * ai mercanti di passaggio, se l'interesse regge, o torna in cassa. Poi i
+ * mercanti rendono i prestiti scaduti (con un anno di prestito si rende
+ * subito: il denaro è uscito l'anno scorso), prima del grano e dei dispendimenti.
+ */
+function merchantLoans(g: Game): void {
+  const st = ms(g), me = g.state.current, p = g.player, q = g.state.q, rnd = roll(st);
+  for (const o of st.offers.filter(x => x.lender === me)) {
+    if (merchantsTake(o)) {
+      const due = loanDue(o.amount, o.rate), dueQ = (o.q ?? q - 1) + o.years;
+      (st.prestitiMercanti ??= []).push({ id: st.nextId++, lender: me, principal: o.amount, due, dueQ, years: o.years });
+      if (dueQ > q) st.inbox.push({ k: 'offerMerchants', amount: o.amount, due, dueQ });
+      note(g, me, 'loanMerchants', { amount: o.amount, due, years: o.years });
+    } else {
+      p.scudi += o.amount;
+      st.inbox.push({ k: 'offerBack', amount: o.amount, ...(o.usura !== undefined ? { usura: o.usura, yearly: Math.round(o.rate / o.years) } : {}) });
+    }
+  }
+  st.offers = st.offers.filter(x => x.lender !== me);
+  const due = (st.prestitiMercanti ?? []).filter(l => l.lender === me && l.dueQ <= q);
+  for (const l of due) {
+    const fallito = rnd() < MERCANTI_FALLIMENTO * l.years;
+    const amount = fallito ? INT(l.principal * FALLIMENTO_RESO) : l.due;
+    p.scudi += amount;
+    st.inbox.push({ k: 'merchantsRepaid', principal: l.principal, amount, fallito });
+    note(g, me, 'merchantsRepaid', { principal: l.principal, amount, fallito: fallito ? 1 : 0 });
+  }
+  st.prestitiMercanti = (st.prestitiMercanti ?? []).filter(l => !due.includes(l));
 }
 
 // ---------------------------------------------------------------- merci
@@ -359,6 +411,8 @@ export function playBankrupt(g: Game): ActionResult & { cost?: number; arrive?: 
 // ---------------------------------------------------------------- signori del computer
 
 const round50 = (v: number) => Math.floor(v / 50) * 50;
+/** Usura da cui il signore difficile presta ai mercanti di passaggio. */
+const BOT_USURA_MERCANTI = 15;
 
 function botBorrow(c: BotCtx): void {
   const { g, level, rnd } = c;
@@ -595,14 +649,16 @@ function botLend(c: BotCtx): void {
   const { g, level, rnd } = c;
   const st = ms(g), me = g.state.current, p = g.player;
   if (st.offers.some(o => o.lender === me)) return;
-  // si presta solo se c'è chi può chiedere: il difficile aspetta che qualcuno sia in rosso
+  // si presta a chi può chiedere: il difficile aspetta che qualcuno sia in rosso, o che l'usura sia alta per i mercanti di passaggio
   const others = g.state.players.filter((x, i) => i !== me && x.caduto === undefined);
-  if (!others.length || (level === 'difficile' && !others.some(x => x.scudi < 0))) return;
+  const usura = g.state.scalars.usura, debtors = others.some(x => x.scudi < 0);
+  if (level === 'difficile' ? !debtors && usura < BOT_USURA_MERCANTI : !others.length) return;
   let offer: { amount: number; rate: number; years: number } | null = null;
   if (level === 'difficile') {
-    // presta un terzo di ciò che avanza oltre la riserva per il grano dell'anno prossimo
+    // presta un terzo di ciò che avanza oltre la riserva per il grano dell'anno prossimo; all'usura dell'anno lo prendono anche i mercanti
     const reserve = Math.max(800, (p.acri * 75 * 0.5 * 35) / 1000);
-    if (p.scudi > reserve + 2000) offer = { amount: round50(Math.min(5000, (p.scudi - reserve) / 3)), rate: 15 + Math.floor(rnd() * 10), years: 1 };
+    const rate = usura >= BOT_USURA_MERCANTI ? usura : 15 + Math.floor(rnd() * 10);
+    if (p.scudi > reserve + 2000) offer = { amount: round50(Math.min(5000, (p.scudi - reserve) / 3)), rate, years: 1 };
   } else if (level === 'medio') {
     if (p.scudi > 4000 && rnd() < 0.5) offer = { amount: round50(1000 + rnd() * 1000), rate: 25, years: 2 };
   } else if (p.scudi > 2000 && rnd() < 0.15) {
@@ -640,13 +696,14 @@ export const rules: ExpansionRules = {
     if (isFairYear(g.state.q) && st.fiera) send(st, me, { k: 'fieraAperta', q: g.state.q, n: st.fiera.contratti.length });
     st.inbox = st.mail.filter(m => m.to === me).map(m => m.d);
     st.mail = st.mail.filter(m => m.to !== me);
-    // il denaro che nessuno ha voluto torna in cassa
-    for (const o of st.offers.filter(x => x.lender === me)) {
-      p.scudi += o.amount;
-      st.inbox.push({ k: 'offerBack', amount: o.amount });
+    // il denaro che nessun signore ha voluto: ai mercanti di passaggio o in cassa; i mercanti rendono i prestiti scaduti
+    merchantLoans(g);
+    // la merce invenduta del fondaco la prendono i mercanti di passaggio, se il prezzo regge
+    for (const l of sellUnsold(st, p, me)) {
+      st.inbox.push({ k: 'lotPassing', good: l.good, qty: l.qty, gain: l.qty * l.price });
+      note(g, me, 'passing', { good: MERCI.indexOf(l.good), qty: l.qty, gain: l.qty * l.price });
     }
-    st.offers = st.offers.filter(x => x.lender !== me);
-    // carovane arrivate e merce invenduta del fondaco
+    // carovane arrivate e merce che torna dal fondaco
     const { received, cashed, back } = settleCaravans(g, st, me);
     for (const c of received) st.inbox.push({ k: 'caravanIn', from: c.seller, good: c.good, qty: c.qty, perse: c.perse, refund: c.paid - sellerShare(c), ...(c.evento ? { evento: c.evento } : {}) });
     for (const c of cashed) {

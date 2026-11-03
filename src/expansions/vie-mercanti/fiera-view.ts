@@ -40,8 +40,8 @@ export function fairDispatchText(d: FieraDispatch, st: GameState): string {
   const P = (i: number) => who(st.players[i]);
   switch (d.k) {
     case 'fieraAperta': return `È tempo di fiera! I mercanti forestieri hanno portato ${d.n} contratti di vino e manufatti. Pagate la quota d'ingresso e fate le vostre offerte prima della fine dell'anno.`;
-    case 'fieraVinta': return `Avete vinto il contratto: ${contractLine(d.c)}, a <b>${d.price} scudi l'unità</b>${d.rivali ? ` (battuti ${d.rivali} ${d.rivali === 1 ? 'rivale' : 'rivali'})` : ''}. Spedite la merce entro la fine del ${yearOf(d.entro)}: incasserete <b>${n(d.price * d.c.qty)} scudi</b> all'arrivo a ${piazzaName(d.c)}.`;
-    case 'fieraPersa': return `Il contratto di ${contractLine(d.c)} è andato a ${P(d.winner)}, che ha chiesto ${d.winPrice} scudi l'unità. Voi ne chiedevate ${d.price}.`;
+    case 'fieraVinta': return `Avete vinto il contratto: ${contractLine(d.c)}, a <b>${d.price} scudi l'unità</b>${d.rivali ? ` (battuti ${d.rivali} ${d.rivali === 1 ? 'rivale' : 'rivali'})` : ''}.${d.soci?.length ? ` ${d.soci.map(P).join(' e ')} ha${d.soci.length > 1 ? 'nno' : ''} chiesto lo stesso prezzo con lo stesso prestigio: la commessa è divisa, e questa è la vostra parte.` : ''} Spedite la merce entro la fine del ${yearOf(d.entro)}: incasserete <b>${n(d.price * d.c.qty)} scudi</b> all'arrivo a ${piazzaName(d.c)}.`;
+    case 'fieraPersa': return `Il contratto di ${contractLine(d.c)} è andato a ${[d.winner, ...(d.soci ?? [])].map(P).join(' e ')}, che ${d.soci?.length ? 'se lo dividono e hanno' : 'ha'} chiesto ${d.winPrice} scudi l'unità. Voi ne chiedevate ${d.price}.`;
     case 'fieraRifiutata': return `I mercanti hanno trovato troppo cara la vostra offerta per ${contractLine(d.c)}: ${d.price} scudi l'unità, oltre il prezzo base di ${d.c.base}.`;
     case 'fieraSpedita': return `Scaduto il tempo, la carovana per ${piazzaName(d.c)} è partita con ${qtyOf(d.c.good, d.qty)}. Arriverà nel ${yearOf(d.arrive)}.`;
     case 'fieraPagata': {
@@ -152,7 +152,7 @@ export function fairChronicle(kind: string, d: Record<string, number>): string |
   const good = MERCI[d.good], piazza = PIAZZE[d.piazza]?.name;
   switch (kind) {
     case 'fairJoin': return `Pagò ${n(d.fee)} scudi per avere ${QUOTE[d.tier].name} alla fiera dei mercanti forestieri.`;
-    case 'fairWin': return `Vinse alla fiera ${d.speciale ? 'il contratto speciale' : 'un contratto'}: ${qtyOf(good, d.qty)} per ${piazza}, a ${d.price} scudi l'unità.`;
+    case 'fairWin': return `Vinse alla fiera ${d.diviso > 1 ? `una parte ${d.speciale ? 'del contratto speciale' : 'di un contratto'}, diviso in ${d.diviso}` : d.speciale ? 'il contratto speciale' : 'un contratto'}: ${qtyOf(good, d.qty)} per ${piazza}, a ${d.price} scudi l'unità.`;
     case 'fairShip': return `Spedì a ${piazza} ${qtyOf(good, d.qty)}.`;
     case 'fairPaid': return `Da ${piazza} giunse il pagamento di ${qtyOf(good, d.qty)}: ${n(d.gain)} scudi.`;
     case 'fairFail': return `Mancò alla parola data ai mercanti forestieri: ${qtyOf(good, d.manca)} mai spediti, ${n(d.penale)} scudi di penale.`;
@@ -165,6 +165,8 @@ export function fairNews(state: GameState, year: number): string[] {
   const wins = (state.chronicle ?? []).filter(e => e.year === year && e.fact.t === 'ext' && e.fact.kind === 'fairWin');
   if (!wins.length) return [];
   const value = wins.reduce((a, e) => a + (e.fact.t === 'ext' ? e.fact.data.qty * e.fact.data.price : 0), 0);
-  return [`Alla fiera del ${year} i mercanti forestieri assegnarono ${wins.length} ${wins.length === 1 ? 'contratto' : 'contratti'}, per ${n(value)} scudi.`];
+  // un contratto diviso compare una volta per ciascun socio
+  const count = Math.round(wins.reduce((a, e) => a + (e.fact.t === 'ext' ? 1 / (e.fact.data.diviso || 1) : 0), 0));
+  return [`Alla fiera del ${year} i mercanti forestieri assegnarono ${count} ${count === 1 ? 'contratto' : 'contratti'}, per ${n(value)} scudi.`];
 }
 

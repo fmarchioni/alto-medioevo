@@ -46,6 +46,8 @@ export interface ExpansionRules {
   beforeYearEnd?(g: Game): void;
   /** fazioni: forza dei soldati e moltiplicatore delle mura del signore di turno (assente: nessuno) */
   factionDefense?(g: Game): { soldati: number; mura: number };
+  /** rincaro (o sconto, se negativo) dell'usura in punti percentuali per il signore di turno, sommato a inizio turno a quella del raccolto, mai sotto zero (assente: 0) */
+  usuryExtra?(g: Game): number;
   /** moltiplicatore dell'usura per il signore di turno (assente: 1) */
   usuryScale?(g: Game): number;
   /** tutti i signori hanno giocato l'anno 900 + q (prima che q avanzi) */

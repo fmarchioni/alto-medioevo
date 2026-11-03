@@ -10,10 +10,10 @@ import { dispatchScrolls } from '../../ui/scrolls';
 import { pick, speechBox, type Speaker } from '../../ui/speaker';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
 import {
-  banquet, bid, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
+  banquet, bid, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, MERCANTI_FALLIMENTO, merchantsTake, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
 } from './rules';
 import {
-  ACRI_GRANO_MIN, caravansFrom, caravansTo, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
+  ACRI_GRANO_MIN, caravansFrom, caravansTo, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, passingTakes, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
 } from './merci';
 import { specialitaText, SPECIALITA, travelYears, ZONA_FEUDO, ZONA_NOME } from './geografia';
 import { VIAGGIO, type EventoViaggio } from './carovane';
@@ -135,7 +135,12 @@ function dispatchText(d: Dispatch, st: GameState): string {
     case 'caravanPaid': return `La vostra carovana è arrivata da ${P(d.to)}: incassate <b>${n(d.gain)} scudi</b> per ${qtyOf(d.good, d.qty - d.perse)}.${journeyWords(d.evento, d.perse, d.good)} Prestigio mercantile ${signed(d.prestigio)}.`;
     case 'disonore': return `Si è sparsa la voce del pignoramento dei vostri beni: i mercanti si fidano meno di voi. Prestigio mercantile ${signed(d.prestigio)}.`;
     case 'offerTaken': return `${P(d.debtor)} ha accettato il vostro prestito di ${n(d.amount)} scudi: ve ne renderà <b>${n(d.due)}</b> alla fine dell'anno ${900 + d.dueQ}.`;
-    case 'offerBack': return `Nessuno ha voluto il vostro prestito: tornano in cassa ${n(d.amount)} scudi.`;
+    case 'offerBack': return `Nessuno ha voluto il vostro prestito: tornano in cassa ${n(d.amount)} scudi.${d.usura !== undefined ? ` I mercanti di passaggio lo hanno trovato caro: chiedevate il ${d.yearly}% l'anno, e l'usura era al ${d.usura}%.` : ''}`;
+    case 'offerMerchants': return `Nessun signore ha voluto il vostro prestito, ma i mercanti di passaggio sì: hanno preso ${n(d.amount)} scudi e ve ne renderanno <b>${n(d.due)}</b> all'inizio del ${yearOf(d.dueQ)}.`;
+    case 'merchantsRepaid': return d.fallito
+      ? `Il mercante a cui avevate prestato ${n(d.principal)} scudi è fallito: dai suoi beni recuperate solo <b>${n(d.amount)} scudi</b>.`
+      : `I mercanti di passaggio vi rendono il prestito di ${n(d.principal)} scudi con gli interessi: <b>+${n(d.amount)}</b> scudi in cassa.`;
+    case 'lotPassing': return `Nessun signore ha comprato al fondaco ${qtyOf(d.good, d.qty)}: li hanno presi i mercanti di passaggio, che pagano subito <b>${n(d.gain)} scudi</b>.`;
     case 'repaid': return `${P(d.debtor)} ha restituito il prestito: <b>+${n(d.amount)}</b> scudi.`;
     case 'seized': {
       const goods = seizedList(d);
@@ -163,6 +168,9 @@ function dispatchHead(d: Dispatch): { from: string; title: string } {
     case 'disonore': return { from: 'dalle piazze', title: 'Prestigio perduto' };
     case 'offerTaken': return { from: 'dal banco', title: 'Prestito accettato' };
     case 'offerBack': return { from: 'dal banco', title: 'Prestito non richiesto' };
+    case 'offerMerchants': return { from: 'dal banco', title: 'Prestito ai mercanti' };
+    case 'merchantsRepaid': return { from: 'dal banco', title: d.fallito ? 'Mercante fallito' : 'Prestito reso dai mercanti' };
+    case 'lotPassing': return { from: 'dal fondaco', title: 'Merce ai mercanti di passaggio' };
     case 'repaid': return { from: 'dal banco', title: 'Prestito restituito' };
     case 'seized': return { from: 'dal banco', title: 'Pignoramento a vostro favore' };
     case 'paid': return { from: 'dal banco', title: 'Debito saldato' };
@@ -196,7 +204,7 @@ function banco(g: Game, st: MercantiState): string {
     : '<p class="hint">Nessun signore offre denaro, per ora.</p>';
   const mine = st.offers.find(o => o.lender === me);
   const lend = mine
-    ? `<p>Offrite <b>${n(mine.amount)}</b> scudi al ${mine.rate}% per ${mine.years} ${mine.years === 1 ? 'anno' : 'anni'}.</p>
+    ? `<p>Offrite <b>${n(mine.amount)}</b> scudi al ${mine.rate}% per ${mine.years} ${mine.years === 1 ? 'anno' : 'anni'}. ${merchantsTake(mine) ? 'Se nessun signore lo prende, lo prenderanno i mercanti di passaggio.' : 'I mercanti di passaggio lo trovano caro: se nessun signore lo prende, tornerà in cassa.'}</p>
        <div class="btns"><button data-act="ext" data-op="withdrawLoan">Ritira l'offerta</button></div>`
     : `<div class="ext-form">
         <label>Somma <input type="number" name="loan-amount" min="${LOAN_MIN}" step="100" value="${Math.max(LOAN_MIN, Math.min(2000, Math.floor(p.scudi / 2 / 100) * 100))}" inputmode="numeric"></label>
@@ -204,9 +212,12 @@ function banco(g: Game, st: MercantiState): string {
         <label>Anni <input type="number" name="loan-years" min="1" max="${LOAN_MAX_YEARS}" value="1" inputmode="numeric"></label>
         <button data-act="ext" data-op="postLoan" ${p.scudi < LOAN_MIN ? 'disabled' : ''}>Offri al banco</button>
       </div>
-      <p class="hint">La somma esce subito dalle casse; se nessuno la prende, torna al vostro prossimo turno. Il banco è aperto anche durante i dispendimenti, quando le rendite sono in cassa.</p>`;
+      <p class="hint">La somma esce subito dalle casse. Gli altri signori hanno la precedenza; se nessuno la prende, al vostro prossimo turno la prendono i mercanti di passaggio, purché l'interesse annuo (l'interesse diviso per gli anni) non superi l'usura di quest'anno, il <b>${sc.usura}%</b>. I mercanti rendono all'inizio del vostro turno, alla scadenza, prima del grano e dei dispendimenti; ma uno su ${Math.round(1 / MERCANTI_FALLIMENTO)} l'anno fallisce e ne rende solo la metà. Altrimenti la somma torna in cassa. Il banco è aperto anche durante i dispendimenti, quando le rendite sono in cassa.</p>`;
   const debts = st.loans.filter(l => l.debtor === me).map(l => `<li>Dovete <b>${n(l.due)}</b> scudi a ${P(l.lender)} a fine ${900 + l.dueQ}.</li>`);
-  const credits = st.loans.filter(l => l.lender === me).map(l => `<li>${P(l.debtor)} vi deve ${n(l.due)} scudi a fine ${900 + l.dueQ}.</li>`);
+  const credits = [
+    ...st.loans.filter(l => l.lender === me).map(l => `<li>${P(l.debtor)} vi deve ${n(l.due)} scudi a fine ${900 + l.dueQ}.</li>`),
+    ...(st.prestitiMercanti ?? []).filter(l => l.lender === me).map(l => `<li>I mercanti di passaggio vi devono ${n(l.due)} scudi all'inizio del ${900 + l.dueQ}.</li>`),
+  ];
   const ledger = debts.length || credits.length ? `<h3>Il libro dei conti</h3><ul class="ext-ledger">${debts.join('')}${credits.join('')}</ul>` : '';
   return `<h3>Prestiti offerti</h3>${table}${ledger}<h3>Prestare</h3>${lend}
     <p class="hint">Gli usurai lombardi chiedono quest'anno il ${sc.usura}% sui debiti, e a fine anno pignorano i beni di chi deve loro oltre il credito concesso. Chi non rende un prestito fra signori si vede pignorare i beni dal creditore, al loro prezzo pieno.</p>`;
@@ -253,7 +264,7 @@ function fondaco(g: Game, st: MercantiState): string {
   const c = cantinaOf(g);
   const mine = MERCI.map(good => {
     const lot = st.lots.find(l => l.seller === me && l.good === good);
-    if (lot) return `<p>Al vostro banco: <b>${qtyOf(good, lot.qty)}</b> a <b>${lot.price}</b> scudi l'unità. <button data-act="ext" data-op="withdrawLot" data-good="${good}">Ritira</button></p>`;
+    if (lot) return `<p>Al vostro banco: <b>${qtyOf(good, lot.qty)}</b> a <b>${lot.price}</b> scudi l'unità. ${passingTakes(lot) ? 'Se nessun signore la compra, la prenderanno i mercanti di passaggio.' : 'Ai mercanti di passaggio costa troppo: se nessun signore la compra, tornerà in magazzino.'} <button data-act="ext" data-op="withdrawLot" data-good="${good}">Ritira</button></p>`;
     return `<div class="ext-form"><b>${NOME[good][0].toUpperCase()}${NOME[good].slice(1)}</b>
         <label>Quantità <input type="number" name="lot-qty-${good}" min="1" max="${c[good]}" value="${c[good]}" inputmode="numeric"></label>
         <label>Prezzo l'unità <input type="number" name="lot-price-${good}" min="1" max="${LOT_MAX_PRICE[good]}" value="${prices[good] + 2}" inputmode="numeric"></label>
@@ -265,7 +276,7 @@ function fondaco(g: Game, st: MercantiState): string {
   ].join('');
   return `<h3>Merci in vendita</h3>${table}${going ? `<h3>Carovane in viaggio</h3><ul class="ext-ledger">${going}</ul>` : ''}
     <h3>Il vostro banco</h3>${mine}
-    <p class="hint">Chi compra paga subito; la merce viaggia con una carovana e il venditore incassa al suo arrivo. Il viaggio dura un anno nella stessa zona, due in una zona vicina, tre a due zone di distanza e quattro fra il Nord e le Isole; un anno in meno da o per un porto. Il vostro feudo è nella zona ${ZONA_NOME[ZONA_FEUDO[p.feudo]]}. La merce invenduta torna al vostro prossimo turno.</p>
+    <p class="hint">Chi compra paga subito; la merce viaggia con una carovana e il venditore incassa al suo arrivo. Il viaggio dura un anno nella stessa zona, due in una zona vicina, tre a due zone di distanza e quattro fra il Nord e le Isole; un anno in meno da o per un porto. Il vostro feudo è nella zona ${ZONA_NOME[ZONA_FEUDO[p.feudo]]}. Gli altri signori hanno la precedenza; la merce che nessuno compra, al vostro prossimo turno, la prendono i mercanti di passaggio e la pagano subito, se non chiedete più di quanto pagano loro quest'anno (${prices.vino} scudi la botte di vino, ${prices.manufatti} il pezzo di manufatti). Altrimenti torna in magazzino.</p>
     <p class="hint">Per strada può succedere di tutto: briganti e botti rotte portano via fino a un decimo del carico (${Math.round((VIAGGIO.briganti.p + VIAGGIO.rotture.p) * 100)}% dei viaggi), temporali e ponti crollati fanno ritardare di un anno (${Math.round((VIAGGIO.temporali.p + VIAGGIO.ponte.p) * 100)}%), a volte si arriva prima. La merce perduta non si paga. Chi vende risponde della carovana: consegna puntuale e intatta ${signed(PRESTIGIO.consegna)} di prestigio mercantile, ritardo o merce perduta ${signed(PRESTIGIO.ritardo)}.</p>`;
 }
 
@@ -297,10 +308,10 @@ export const view: ExpansionView = {
   miniature,
   summary: [
     'Vino e manufatti: piantate vigneti al posto del grano, e gli opifici producono manufatti. Si vendono ai mercanti di passaggio, che pagano subito ma poco, o agli altri signori al fondaco.',
-    'Carovane: la merce venduta al fondaco viaggia da uno a quattro anni secondo la distanza, e si incassa al suo arrivo.',
+    'Carovane: la merce venduta al fondaco viaggia da uno a quattro anni secondo la distanza, e si incassa al suo arrivo. La merce che nessun signore compra la prendono i mercanti di passaggio, se non chiedete più di loro.',
     'Specialità: ogni feudo ha la sua (più vino, più manufatti, più grano, un porto, più prestigio).',
-    'Banco: prestate denaro agli altri signori o prendetelo in prestito; chi non rende subisce il pignoramento.',
-    `Fiera: ogni ${FIERA_OGNI} anni i mercanti forestieri offrono grandi contratti; vince chi chiede meno, e a parità di prezzo chi ha più prestigio mercantile.`,
+    `Banco: prestate denaro agli altri signori o prendetelo in prestito; chi non rende subisce il pignoramento. Il denaro che nessun signore prende va ai mercanti di passaggio, se l'interesse annuo non supera l'usura dell'anno: più è cattivo il raccolto, più rende fare l'usuraio (ma uno su ${Math.round(1 / MERCANTI_FALLIMENTO)} l'anno fallisce).`,
+    `Fiera: ogni ${FIERA_OGNI} anni i mercanti forestieri offrono grandi contratti; vince chi chiede meno, e a parità di prezzo chi ha più prestigio mercantile; a parità di entrambi la commessa si divide.`,
     'Prestigio mercantile: sale con le consegne puntuali e i prestiti resi, scende con ritardi, penali e pignoramenti.',
     "Imprese: il vino annacquato, il contrabbando del Corno d'Oro, il console comprato e il mercante fallito. Grandi guadagni, e grandi rischi.",
     'Feste: il vino si consuma in banchetti e nozze, i manufatti arredano il palazzo e le cattedrali; danno prestigio, che conta nella ricchezza.',
@@ -496,6 +507,8 @@ export const view: ExpansionView = {
       case 'lotPost': return `Portò al fondaco ${qtyOf(MERCI[d.good], d.qty)}, a ${d.price} scudi l'unità.`;
       case 'lotBuy': return `Comprò al fondaco ${qtyOf(MERCI[d.good], d.qty)} dal banco di ${P(d.seller)}, a ${d.price} scudi l'unità.`;
       case 'loanOffer': return `Offrì al banco un prestito di ${n(d.amount)} scudi al ${d.rate}%.`;
+      case 'loanMerchants': return `Prestò ${n(d.amount)} scudi ai mercanti di passaggio, che si impegnarono a renderne ${n(d.due)}.`;
+      case 'merchantsRepaid': return d.fallito ? `Il mercante a cui aveva prestato ${n(d.principal)} scudi fallì: ne recuperò solo ${n(d.amount)}.` : `I mercanti di passaggio gli resero ${n(d.amount)} scudi per un prestito di ${n(d.principal)}.`;
       case 'loanTake': return `Prese in prestito ${n(d.amount)} scudi da ${P(d.lender)}, con l'impegno di renderne ${n(d.due)}.`;
       case 'loanRepay': return `Restituì a ${P(d.lender)} ${n(d.amount)} scudi, come pattuito.`;
       case 'seize': {

@@ -10,7 +10,9 @@
  *   subito ma poco (il prezzo cambia di anno in anno).
  * - Fondaco: ogni signore mette in vendita vino o manufatti al prezzo che
  *   vuole. Chi compra paga subito; la merce parte con una carovana e il
- *   venditore incassa solo quando la carovana arriva.
+ *   venditore incassa solo quando la carovana arriva. La merce che nessun
+ *   signore compra la prendono i mercanti di passaggio, se il prezzo chiesto
+ *   non supera il loro; altrimenti torna in magazzino.
  */
 import { INT } from '../../domain/economy';
 import { livelloMid, livelloOf, umoreOf, workFactor } from '../../domain/gabelle';
@@ -49,7 +51,8 @@ export interface Cantina {
   prodotto?: { q: number; vino: number; manufatti: number };
 }
 
-export interface Lot { id: number; seller: number; good: Merce; qty: number; price: number }
+/** Merce al fondaco; q: anno in cui è stata portata (assente nei salvataggi vecchi). */
+export interface Lot { id: number; seller: number; good: Merce; qty: number; price: number; q?: number }
 
 /** Una carovana del fondaco: la merce arriva al compratore, il denaro al venditore, nell'anno `arrive`. */
 export interface Carovana {
@@ -182,8 +185,23 @@ export function postLot(g: Game, st: MerciState, good: Merce, qty: number, price
   if (qty > c[good]) return { ok: false, reason: `non avete tante ${UNITA[good][1]}` };
   if (st.lots.some(l => l.seller === me && l.good === good)) return { ok: false, reason: 'avete già un banco per questa merce' };
   c[good] -= qty;
-  st.lots.push({ id: st.nextId++, seller: me, good, qty, price });
+  st.lots.push({ id: st.nextId++, seller: me, good, qty, price, q: g.state.q });
   return { ok: true };
+}
+
+/** I mercanti di passaggio prendono la merce invenduta se il prezzo chiesto non supera il loro dell'anno in cui fu portata. */
+export const passingTakes = (l: Lot) => l.q !== undefined && l.price <= passingPrices(l.q)[l.good];
+
+/**
+ * Inizio del turno del venditore: la merce che nessun signore ha comprato la
+ * prendono i mercanti di passaggio, al prezzo chiesto, se regge (passingTakes).
+ * Pagano subito; il resto torna in magazzino con settleCaravans.
+ */
+export function sellUnsold(st: MerciState, p: Player, i: number): Lot[] {
+  const sold = st.lots.filter(l => l.seller === i && passingTakes(l));
+  for (const l of sold) p.scudi += l.qty * l.price;
+  st.lots = st.lots.filter(l => !sold.includes(l));
+  return sold;
 }
 
 /** Ritira la propria merce dal fondaco. */

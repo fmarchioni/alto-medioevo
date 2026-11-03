@@ -105,6 +105,8 @@ export interface Scalars {
   domanda: number;
   /** usura % [us] */
   usura: number;
+  /** parte dell'usura dovuta alla guerra (positiva) o alla pace (negativa), già compresa in `usura` (solo con un'espansione che la cambia) */
+  usuraGuerra?: number;
   /** ultimo valore della scalare s (buy/sell/nutrimento) [s] */
   s: number;
   /** servi prima del nutrimento [s1] */
@@ -171,6 +173,8 @@ export interface Options {
   sensale?: boolean;
   /** bancarotta: chi chiude l'anno con DEBITO_ARRESTO scudi di debito o più è arrestato ed esce dalla partita */
   bancarotta?: boolean;
+  /** usura minima: gli usurai non prestano mai sotto USURA_MIN %, nemmeno nelle annate piene o in pace (src/domain/economy.ts) */
+  usuraMinima?: boolean;
 }
 
 /**
@@ -207,6 +211,7 @@ export const GAME_OPTIONS: Options = {
   mazzo: true,
   sensale: true,
   bancarotta: true,
+  usuraMinima: true,
 };
 
 export type Phase =

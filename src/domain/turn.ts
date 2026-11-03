@@ -3,7 +3,7 @@
  * L'ordine delle chiamate a RND è identico al listato: questo permette di
  * confrontare una partita con l'originale in VICE usando C64Rnd.
  */
-import { buyGrain, collectRendite, computeRendite, feedServants, INT, type RateKind, sellGrain, setRate, spoilGrain, startOfTurn } from './economy';
+import { buyGrain, collectRendite, computeRendite, feedServants, INT, type RateKind, sellGrain, setRate, spoilGrain, startOfTurn, USURA_MIN } from './economy';
 import { annataOf, initAnnate } from './annate';
 import { granaryCapacity, SETTLER_MEDIA_PRICE, settlersFor, storeGrain } from './gabelle';
 import {
@@ -163,6 +163,14 @@ export class Game {
     if (st.options.annate) st.annate ??= initAnnate(st);
     const annata = st.annate ? annataOf(st.annate, st.current, st.q) : undefined;
     startOfTurn(this.player, st.scalars, this.rng, annata);
+    // la guerra rincara il denaro, la pace lo fa scendere: l'usura del raccolto più quella dell'espansione, mai sotto il minimo
+    const base = st.scalars.usura, extra = this.rules?.usuryExtra?.(this) ?? 0;
+    const usura = Math.max(st.options.usuraMinima ? USURA_MIN : 0, base + extra);
+    st.scalars.usura = usura;
+    // la parte dovuta a guerra o pace (lo sconto si ferma al minimo)
+    const war = extra > 0 ? usura - base : extra < 0 ? Math.min(0, usura - base) : 0;
+    if (war) st.scalars.usuraGuerra = war;
+    else delete st.scalars.usuraGuerra;
     this.applyReformToTurn();
     this.applyPactsToTurn();
     if (st.options.granai) st.scalars.capienza = granaryCapacity(this.player);

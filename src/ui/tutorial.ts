@@ -12,6 +12,7 @@ import { realmScene } from './realm';
 import { crest } from './fazioni';
 import type { FactionId } from '../domain/fazioni';
 import { pick, speechBox, type Speaker } from './speaker';
+import { VERSION, versionDateText } from '../version';
 
 export const LAPO: Speaker = { name: 'Messer Lapo', role: 'mercante girovago', portrait: merchantPortrait };
 
@@ -196,6 +197,7 @@ export function welcomeText(): string {
 export function renderWelcome(text: string): string {
   return `<h1>Alto Medioevo</h1>
     <p class="sub">Cronache di un feudo, anno 900 circa.</p>
+    <p class="version">versione ${VERSION} del ${versionDateText()}</p>
     ${speechBox(LAPO, text)}
     <div class="action-cards two">
       <button class="action-card" data-act="tutorialStart"><span class="card-emblem" aria-hidden="true">📜</span><span class="card-title">Sì, insegnatemi</span><span class="card-sub">sei pagine illustrate</span></button>

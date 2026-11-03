@@ -758,7 +758,7 @@ function resourceBar(g: Game, exp: Expansion | null): string {
     ${sc.annata ? item(icons.grano, '', ANNATA_LABEL[sc.annata], `annata-${sc.annata}`) : ''}
     ${item(icons.prezzo, 'prezzo per 1000', String(sc.prezzo))}
     ${item(icons.domanda, 'domanda', fmt(sc.domanda))}
-    ${item(icons.usura, 'usura', `${sc.usura}%`)}
+    ${item(icons.usura, !sc.usuraGuerra ? 'usura' : sc.usuraGuerra > 0 ? `usura (+${sc.usuraGuerra} per la guerra)` : `usura (−${-sc.usuraGuerra} per la pace)`, `${sc.usura}%`, (sc.usuraGuerra ?? 0) > 0 ? 'low' : '')}
     ${extra.length ? `<span class="rb-break"></span>${extra.map(x => item(x.ico, x.label, x.value, x.low ? 'low' : '')).join('')}` : ''}
   </div>`;
 }
