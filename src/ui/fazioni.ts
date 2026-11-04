@@ -180,7 +180,9 @@ export interface OptionText {
 }
 
 /** Etichetta e conseguenze di una scelta, con i numeri del feudo. */
-export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0.5): OptionText {
+/** cap: inizio mite, scudi massimi che tributo e riscatto possono costare (Game.luckCap) */
+export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0.5, cap = Infinity): OptionText {
+  const tribute = Math.min(cap, tributeCost(p, f));
   const chance = pct(winP);
   const fight = (label: string, risk: string) => ({ label, emblem: '⚔', sub: `vittoria ${chance} circa: bottino e meno attacchi per 6 anni. Se perdete: ${risk}` });
   const yrs = (k: PactKind) => ({ respinti: 6, tributari: 5, matrimonio: 8, vassallo: 8, protettorato: 8, corrotti: 4, accordi: 8, devastati: 3 }[k]);
@@ -193,7 +195,7 @@ export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0
     case 'rifiutare': return fight('Rifiutare: guerra', 'un mercato, un opificio e qualche servo');
     case 'difendere': return fight('Difendere il porto', 'servi portati via come schiavi e un mercato');
     case 'tributo':
-      return { label: 'Pagare tributo', emblem: '⚖', sub: `${n(tributeCost(p, f))} scudi, nessun rischio. Ma chi paga attira nuove richieste per ${yrs('tributari')} anni.` };
+      return { label: 'Pagare tributo', emblem: '⚖', sub: `${n(tribute)} scudi, nessun rischio. Ma chi paga attira nuove richieste per ${yrs('tributari')} anni.` };
     case 'matrimonio':
       return { label: 'Matrimonio dinastico', emblem: '♥', sub: `dote di ${n(marriageCost(p))} scudi in contanti: niente Franchi per ${yrs('matrimonio')} anni e un nuovo piano del palazzo.` };
     case 'mura':
@@ -207,7 +209,7 @@ export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0
     case 'corrompere':
       return { label: 'Corrompere il governatore', emblem: '✉', sub: `${n(bribeCost(p))} scudi subito, nessuna guerra, e per ${yrs('corrotti')} anni il governatore chiude un occhio.` };
     case 'riscatto':
-      return { label: 'Pagare un riscatto', emblem: '⚖', sub: p.scudi >= tributeCost(p, f) ? `${n(tributeCost(p, f))} scudi, nessun rischio. Torneranno più facilmente.` : `il tesoro non basta: un quarto del grano. Torneranno più facilmente.` };
+      return { label: 'Pagare un riscatto', emblem: '⚖', sub: p.scudi >= tributeCost(p, f) ? `${n(tribute)} scudi, nessun rischio. Torneranno più facilmente.` : `il tesoro non basta: un quarto del grano. Torneranno più facilmente.` };
     case 'saccheggio':
       return { label: 'Lasciare saccheggiare', emblem: '⚐', sub: 'nessun morto, ma bruciano un mercato e un opificio (o il 30% del grano, se non ne avete).' };
     case 'accordi':

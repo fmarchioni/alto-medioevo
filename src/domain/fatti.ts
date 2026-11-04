@@ -208,6 +208,8 @@ export function fattoOptionOk(p: Player, id: FattoId, opt: string): boolean {
 export function resolveFatto(
   p: Player, sc: { raccolto: number; prezzo: number; prezzoVendita?: number; prezzoBase?: number },
   id: FattoId, opt: string | undefined, q: number, rnd: () => number,
+  /** inizio mite: scudi massimi che la sorte sposta (l'eredità, il furto); le spese scelte restano intere */
+  cap = Infinity,
 ): FattoOutcome {
   const out: FattoOutcome = { id, ...(opt ? { option: opt } : {}), scudi: 0, servi: 0, grano: 0 };
   const scudi = (v: number) => { v = INT(v); p.scudi += v; out.scudi += v; };
@@ -268,7 +270,7 @@ export function resolveFatto(
         p.opificio += 1;
         out.opifici = 1;
       } else {
-        scudi(share(p.scudi, 0.1, 500));
+        scudi(Math.min(cap, share(p.scudi, 0.1, 500)));
       }
       break;
     }
@@ -286,7 +288,7 @@ export function resolveFatto(
       break;
     }
     case 'ciambellano': {
-      const stolen = theftAmount(p, rnd());
+      const stolen = Math.min(cap, theftAmount(p, rnd()));
       scudi(-stolen);
       out.furto = stolen;
       if (opt === 'processare') {

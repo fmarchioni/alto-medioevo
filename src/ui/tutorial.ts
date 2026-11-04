@@ -178,6 +178,7 @@ const PAGES: Page[] = [
     text: [
       'Ogni anno ciascun signore attraversa sei tempi: la delibera sul grano, l\'imprevisto (se capita), le rendite, i dispendimenti in terre e botteghe, la veduta del reame con quanto avete costruito, e infine la chiusura dell\'anno.',
       'A volte, prima della delibera, l\'araldo vi porta una notizia dal reame.',
+      'Nei primi tre anni la sorte è mite: imprevisti, notizie del reame e tributi pretesi dalle fazioni non tolgono né danno più di 200 scudi. Le spese che scegliete voi e le imprese temerarie restano intere.',
       'Quando tutti i signori hanno giocato, cala il sipario e il cronista scrive nel libro delle cronache le gesta di ciascuno. Poi la ruota riparte.',
     ],
     quip: 'E ora basta chiacchiere: il mercato apre all\'alba!',

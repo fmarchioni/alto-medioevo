@@ -18,6 +18,7 @@ import { GAME_OPTIONS, type BotLevel, type Gender, type Player } from '../domain
 import { playBotTurn } from '../domain/bots';
 import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
+import { dinastiaAside, renderDinastiaEnd, renderObiettivi, renderSuccessione, type Obiettivo } from './dinastia';
 import type { Expansion, ExtCard, ExtUi } from '../expansions/types';
 import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
 import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
@@ -52,7 +53,7 @@ interface UiState {
   slot: string | null;
   rngKind: RngKind;
   message: string;
-  setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; expansion: string | null };
+  setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; expansion: string | null; obiettivo: Obiettivo };
   /** pannelli dell'espansione nella Delibera */
   ext: ExtUi;
   trade: TradeUi;
@@ -157,7 +158,7 @@ function rateBadgesFor(g: Game): RateBadges {
 export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   const startRng: RngKind = opts.rngKind ?? 'mulberry';
   const ui: UiState = {
-    game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], expansion: null },
+    game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], expansion: null, obiettivo: 'regno' },
     ext: { key: '', panel: null, say: '' },
     trade: { key: '', mode: 'menu', advisor: '', qty: 0 },
     rendite: { key: '', draft: { bevere: 0, macina: 0, commerzio: 0 }, advisor: '' },
@@ -195,7 +196,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     const ph = g?.state.phase;
     if (g && ph?.kind === 'evento') {
       const key = `${turnKey(g)}-${ph.eventId}`;
-      if (ui.comic.key !== key) ui.comic = { key, event: comicText(ph.eventId, g.player) };
+      if (ui.comic.key !== key) ui.comic = { key, event: comicText(ph.eventId, g.player, ph.outcome?.scudi) };
       if (ph.outcome?.choice && !ph.faction && !ui.comic.outcome) ui.comic.outcome = outcomeText(ph.outcome, g.player);
       // attacco di una fazione: dopo la scelta la vignetta racconta l'esito, non più l'arrivo
       if (ph.faction && ph.outcome && !ph.awaitingChoice && !ui.comic.outcome) ui.comic.outcome = factionOutcomeText(ph.outcome, g.player);
@@ -211,7 +212,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     // signori del computer: giocano in silenzio finché tocca a loro; il racconto è nel libro delle cronache
     if (g && !ui.realmReview && !ui.interlude && ui.chronicleYear === null && !ui.tutorial) {
       const q0 = g.state.q;
-      while ((g.state.phase.kind === 'commercio' || g.state.phase.kind === 'fatto' || g.state.phase.kind === 'impresa' || g.state.phase.kind === 'arresto') && g.player.bot && g.state.q === q0) playBotTurn(g);
+      while ((g.state.phase.kind === 'commercio' || g.state.phase.kind === 'fatto' || g.state.phase.kind === 'impresa' || g.state.phase.kind === 'arresto' || g.state.phase.kind === 'successione') && g.player.bot && g.state.q === q0) playBotTurn(g);
     }
     // fine dell'anno (tutti i signori hanno giocato): cala il sipario
     if (g && !ui.realmReview && ui.chronicleYear === null) {
@@ -398,7 +399,8 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         ui.rngKind = ui.setup.rngKind;
         const exp = findExpansion(ui.setup.expansion);
         const rules = GAME_OPTIONS;
-        ui.game = Game.create(players, makeRng(ui.rngKind), opts.fatti === false ? rules : { ...rules, fatti: ui.setup.sorte }, exp?.rules ?? null);
+        const chosen = opts.fatti === false ? rules : { ...rules, fatti: ui.setup.sorte };
+        ui.game = Game.create(players, makeRng(ui.rngKind), ui.setup.obiettivo === 'dinastia' ? { ...chosen, dinastia: true } : chosen, exp?.rules ?? null);
         ui.slot = newSlotId();
         ui.message = '';
         return render();
@@ -423,6 +425,13 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'expansion':
         ui.setup.expansion = btn.dataset.id || null;
         return render();
+      case 'obiettivo':
+        ui.setup.obiettivo = btn.dataset.id === 'dinastia' ? 'dinastia' : 'regno';
+        return render();
+      case 'successione': {
+        const nome = root.querySelector<HTMLInputElement>('[name="erede"]')?.value;
+        return act(() => g!.continueAfterSuccessione(nome));
+      }
       case 'extOpen': {
         const exp = findExpansion(g!.state.expansion);
         const panel = btn.dataset.panel!;
@@ -655,7 +664,7 @@ function renderSaves(saves: SaveSlot[]): string {
     const st = s.state;
     const lords = st.players.map(p => `${esc(p.name)}${p.bot ? ` <small>(computer, ${p.bot})</small>` : ''}`).join(', ');
     const exp = findExpansion(st.expansion);
-    const rules = [exp ? exp.view.title : '', st.options.fatti ? `sorte: ${st.options.fatti}` : ''].filter(Boolean).join(' · ');
+    const rules = [exp ? exp.view.title : '', st.options.dinastia ? `Dinastia (fino al ${st.dinastia?.fine ?? 962})` : '', st.options.fatti ? `sorte: ${st.options.fatti}` : ''].filter(Boolean).join(' · ');
     return `<li class="save-slot"><div class="save-info"><b>Anno ${900 + st.q}</b> · ${lords}<br><small>${rules} · salvata ${when(s.savedAt)}</small></div>
       <div class="save-btns"><button data-act="resume" data-slot="${esc(s.id)}" class="primary">Riprendi</button><button data-act="deleteSave" data-slot="${esc(s.id)}" class="ghost">Elimina</button></div></li>`;
   }).join('');
@@ -691,6 +700,7 @@ function renderSetup(ui: UiState): string {
       </select></label>
       ${table}
       ${renderExpansions(ui.setup.expansion)}
+      ${renderObiettivi(ui.setup.obiettivo)}
       <button data-act="start" class="primary">Inizia</button>
     </form>
   </section>`;
@@ -778,6 +788,7 @@ function resources(g: Game): string {
 
 function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi, comic: ComicUi, cantiere: CantiereUi, theme: Theme, realmText: string, exp: Expansion | null, ext: ExtUi): string {
   const p = g.player, st = g.state, ph = st.phase, sc = st.scalars;
+  if (ph.kind === 'fine' && st.dinastia) return renderDinastiaEnd(g, ph.winner);
   if (ph.kind === 'fine') {
     const w = st.players[ph.winner];
     const fallen = st.players.filter(x => x.caduto !== undefined && x.arrestato === undefined);
@@ -837,7 +848,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
         if (ph.awaitingChoice) {
           const winP = g.factionWinChance();
           const cards = g.factionOptions().map(o => {
-            const t = optionText(p, f, o.id, winP);
+            const t = optionText(p, f, o.id, winP, g.luckCap());
             return `<button class="action-card" data-act="faction" data-opt="${o.id}" ${o.ok ? '' : 'disabled'}><span class="card-emblem" aria-hidden="true">${t.emblem}</span>
               <span class="card-title">${t.label}</span><span class="card-sub">${o.ok ? t.sub : 'non avete abbastanza scudi in contanti'}</span></button>`;
           }).join('');
@@ -851,9 +862,9 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
         body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
           <div class="action-cards two">
             <button class="action-card" data-act="pugna"><span class="card-emblem" aria-hidden="true">⚔</span><span class="card-title">Pugna</span>
-              <span class="card-sub">bottino fra −799 e +800 scudi, servi fra −49 e +50</span></button>
+              <span class="card-sub">bottino fra −${fmt(Math.min(799, g.luckCap()))} e +${fmt(Math.min(800, g.luckCap()))} scudi, servi fra −49 e +50</span></button>
             <button class="action-card" data-act="riscatto"><span class="card-emblem" aria-hidden="true">⚖</span><span class="card-title">Riscatto</span>
-              <span class="card-sub">da 0 a 800 scudi, nessun rischio per i servi</span></button>
+              <span class="card-sub">da 0 a ${fmt(Math.min(800, g.luckCap()))} scudi, nessun rischio per i servi</span></button>
           </div>`;
       } else if (out?.choice) {
         body = `<h2>Accadimento: ${ev.title}</h2>${renderOutcomeComic(out, comic.outcome!)}${effectBadges(out)}
@@ -875,6 +886,9 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     }
     case 'impresa':
       body = renderImpresa(ph.id, ph.esito, ph.amount, p);
+      break;
+    case 'successione':
+      body = renderSuccessione(g, ph.s);
       break;
     case 'arresto':
       body = `<h2>Arrestato!</h2>${ph.motivo === 'debiti'
@@ -915,7 +929,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     <button data-act="new" class="ghost">Nuova partita</button></header>
   ${resourceBar(g, exp)}${pactsStrip(g.player)}${effettiStrip(g.player)}
   <div class="layout">
-    <aside class="card">${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${exp ? `${exp.view.imprese?.(g) ?? ''}${g.player.impresa ? impreseAside(g) : ''}` : impreseAside(g)}</aside>
+    <aside class="card">${st.dinastia ? dinastiaAside(g) : ''}${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${exp ? `${exp.view.imprese?.(g) ?? ''}${g.player.impresa ? impreseAside(g) : ''}` : impreseAside(g)}</aside>
     <section class="card phase castle">${battlements}${message ? `<p class="msg">${esc(message)}</p>` : ''}${body}</section>
   </div>
   <details class="card log"><summary>Cronache</summary><ol>${st.log.slice(-30).reverse().map(l => `<li>${esc(l)}</li>`).join('')}</ol></details>`;

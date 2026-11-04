@@ -58,6 +58,7 @@
  * la sequenza RND del gioco base non cambia.
  */
 import { INT } from '../../domain/economy';
+import { RISCHIO_BATTAGLIA } from '../../domain/dinastia';
 import type { BotCtx, ExpansionRules } from '../../domain/expansion';
 import { borders } from '../../domain/geography';
 import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI } from '../../domain/investments';
@@ -616,6 +617,9 @@ function fight(g: Game, attacker: number, target: number, n: number, cat: number
 function publish(g: Game, w: WarResult): void {
   const st = ss(g);
   st.wars.push(w);
+  // Dinastia: i due signori rischiano la vita in battaglia (di più chi la perde)
+  g.pericolo(w.attacker, 'battaglia', w.win ? RISCHIO_BATTAGLIA.vinta : RISCHIO_BATTAGLIA.persa);
+  g.pericolo(w.defender, 'battaglia', w.win ? RISCHIO_BATTAGLIA.persa : RISCHIO_BATTAGLIA.vinta);
   send(st, w.defender, { k: 'attacked', war: w });
   const data = { target: w.defender, win: w.win ? 1 : 0, goal: w.goal === 'distruzione' ? 1 : 0, sent: w.sent, lost: w.attackerLost, scudi: w.scudi, grano: w.grano, acri: w.acri, round: w.round ?? 1, fell: w.fell ? 1 : 0, cat: w.cat ?? 0 };
   note(g, w.attacker, 'war', data);

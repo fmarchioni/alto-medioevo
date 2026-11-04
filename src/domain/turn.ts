@@ -12,7 +12,7 @@ import {
 } from './fatti';
 import { abitudineOf, DEBT_SPOIL_MAX, FAMINE_MAX_DEATHS, FIDUCIA_START, grainPrices, LEAVE_CHANCE, livelloOf, MERCHANT_CHANCE, MOOD_DRIFT, stepCapriccio, tolleranzaMercanti, tolleranzaServi, nextAbitudine, nextFiducia, nextUmore, ricarico, riotSlots, umoreOf, UMORE_START } from './gabelle';
 import type { ExpansionRules, MacinaRule } from './expansion';
-import { applyFixedEvent, ATTACK, EVENTS, drawEvent, resolveChoice, rollEvent } from './events';
+import { applyFixedEvent, ATTACK, capLuck, EVENTS, drawEvent, luckCap, resolveChoice, rollEvent } from './events';
 import {
   attackSlots, defenseFrom, expirePacts, FACTION_EVENT, FACTION_OPTIONS, harvestFactor, hasPact, hordeSize, optionAvailable, pickFaction, PROTETTORATO_TRIBUTE,
   resolveFaction, winChance, type Defense, type FactionOption,
@@ -20,7 +20,9 @@ import {
 import { Mulberry32 } from './rng';
 import { canInvestTimes, invest, roomFor, type InvestmentKind } from './investments';
 import { bottino, cartaInMano, COMPLICE_CHANCE, IMPRESA_SUCCESSO, impresaOfEvent, multa, scadenza, silenzioDal } from './imprese';
-import { DEBITO_ARRESTO, endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
+import { calculateVassalTribute, DEBITO_ARRESTO, endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
+import { addPericolo, annotaRango, candidaAlTrono, casataVincitrice, eleggiRe, initDinastia, rinominaErede, RISCHIO_BATTAGLIA, RISCHIO_RIVOLTA, rollMorte, signoreOf, succedi, type Pericolo, type Successione } from './dinastia';
+import { RIOT_EVENT } from './gabelle';
 import type { Rng } from './rng';
 import type { ActionResult, BotLevel, ChronicleFact, GameState, Gender, Options, Player, Strategia } from './types';
 import { GAME_OPTIONS } from './types';
@@ -108,6 +110,7 @@ export class Game {
     };
     if (state.options.annate) state.annate = initAnnate(state);
     if (state.options.fatti) state.fatti = initFatti(state, state.options.fatti);
+    if (state.options.dinastia) state.dinastia = initDinastia(state);
     if (rules) {
       state.expansion = rules.id;
       state.ext = rules.init(state);
@@ -154,12 +157,27 @@ export class Game {
     return fed <= cap ? fed : cap + INT((fed - cap) * beyond);
   }
 
+  /** Inizio mite: scudi massimi che la sorte può togliere o dare quest'anno (Infinity: nessun limite). */
+  luckCap(): number {
+    return luckCap(this.state.options, this.state.q);
+  }
+
+  /** Riporta l'esito della sorte entro il limite dell'inizio mite, correggendo il tesoro. */
+  private tame(o: { scudi: number }): void {
+    const c = capLuck(o.scudi, this.luckCap());
+    if (c === o.scudi) return;
+    this.player.scudi += c - o.scudi;
+    o.scudi = c;
+  }
+
   private expect(kind: GameState['phase']['kind']): void {
     if (this.state.phase.kind !== kind) throw new Error(`azione non valida nella fase ${this.state.phase.kind}`);
   }
 
   private beginPlayerTurn(): void {
     const st = this.state;
+    // Dinastia: il signore può morire prima di cominciare l'anno; l'erede gioca il turno con quello che gli resta
+    const succ = this.deathAtTurnStart();
     if (st.options.annate) st.annate ??= initAnnate(st);
     const annata = st.annate ? annataOf(st.annate, st.current, st.q) : undefined;
     startOfTurn(this.player, st.scalars, this.rng, annata);
@@ -190,10 +208,65 @@ export class Game {
       this.sync();
       return;
     }
+    if (succ) {
+      this.state.phase = { kind: 'successione', s: succ };
+      this.sync();
+      return;
+    }
     this.state.phase = { kind: 'commercio' };
     // un complice che parla viene prima di tutto; poi il fatto del reame, se tocca a questo signore, prima della Delibera
     if (!this.impresaAtTurnStart()) this.applyFattiToTurn();
     this.sync();
+  }
+
+  // ---------- dinastia (src/domain/dinastia.ts)
+
+  /** Tiro della morte all'inizio del turno: se il signore muore, l'erede gli succede subito. */
+  private deathAtTurnStart(): Successione | null {
+    const st = this.state, d = st.dinastia;
+    if (!d) return null;
+    const causa = rollMorte(d, st.current, this.player, st.q);
+    if (!causa) return null;
+    const s = succedi(st, d, st.current, causa);
+    this.record({ t: 'successione', morto: s.morto, causa, eta: s.eta, anni: s.anni, erede: s.erede, cadetti: s.eredita.cadetti, scudi: s.eredita.scudi, acri: s.eredita.acri, corona: s.corona });
+    this.log(`muore ${s.morto} (${causa}): gli succede ${s.erede}`);
+    return s;
+  }
+
+  /** Il signore corre un pericolo (battaglia, rivolta): il rischio di morte cresce fino al prossimo tiro. Senza Dinastia non fa nulla. */
+  pericolo(i: number, kind: Pericolo, rischio: number): void {
+    if (this.state.dinastia) addPericolo(this.state.dinastia, i, kind, rischio);
+  }
+
+  /** Dopo la successione comincia il turno dell'erede; il giocatore può dargli un altro nome. */
+  continueAfterSuccessione(nome?: string): ActionResult {
+    this.expect('successione');
+    const st = this.state, d = st.dinastia!;
+    if (nome !== undefined && nome.trim() && nome.trim() !== signoreOf(d, st.current).nome) {
+      if (!rinominaErede(st, d, st.current, nome)) return { ok: false, reason: 'il nome deve avere da 1 a 12 lettere' };
+      const e = [...(st.chronicle ?? [])].reverse().find(x => x.player === st.current && x.fact.t === 'successione');
+      if (e?.fact.t === 'successione') e.fact.erede = this.player.name;
+    }
+    st.phase = { kind: 'commercio' };
+    if (!this.impresaAtTurnStart()) this.applyFattiToTurn();
+    this.sync();
+    return { ok: true };
+  }
+
+  /** Fine anno con il trono vacante: i grandi del regno eleggono il re fra i candidati. */
+  private electKing(): void {
+    const re = eleggiRe(this.state, this.state.dinastia!);
+    if (re === null) return;
+    this.note(re, { t: 'corona' });
+    this.state.log.push(`${this.year} · ${this.state.players[re].name}: è eletto re d'Italia`);
+  }
+
+  /** Il 962: vince la casata con più prestigio. */
+  private endDinastia(): void {
+    const st = this.state;
+    const winner = casataVincitrice(st, st.dinastia!);
+    st.current = winner;
+    st.phase = { kind: 'fine', winner };
   }
 
   // ---------- imprese temerarie (src/domain/imprese.ts)
@@ -244,6 +317,7 @@ export class Game {
     const p = this.player;
     p.arrestato = this.state.q;
     p.caduto ??= this.state.q;
+    if (this.state.dinastia?.re === this.state.current) this.state.dinastia.re = null;
     this.log('è arrestato');
   }
 
@@ -297,7 +371,7 @@ export class Game {
     expireEffetti(p, st.q);
     st.scalars.raccolto = INT(st.scalars.raccolto * fattiHarvestFactor(p));
     if (hasEffetto(p, 'ciambellano') && fattiRandom(f) < CIAMBELLANO_THEFT_CHANCE) {
-      const amount = theftAmount(p, fattiRandom(f));
+      const amount = Math.min(this.luckCap(), theftAmount(p, fattiRandom(f)));
       if (amount > 0) {
         p.scudi -= amount;
         this.record({ t: 'fattoAnnuo', kind: 'furto', amount });
@@ -309,7 +383,7 @@ export class Game {
     if (fattoOptions(p, id).length) {
       st.phase = { kind: 'fatto', id, awaitingChoice: true };
     } else {
-      const outcome = resolveFatto(p, st.scalars, id, undefined, st.q, () => fattiRandom(f));
+      const outcome = resolveFatto(p, st.scalars, id, undefined, st.q, () => fattiRandom(f), this.luckCap());
       this.record({ t: 'fatto', o: outcome });
       this.log(`fatto del reame: ${id}`);
       st.phase = { kind: 'fatto', id, awaitingChoice: false, outcome };
@@ -330,7 +404,7 @@ export class Game {
     if (!c) return { ok: false, reason: 'scelta non prevista' };
     if (!c.ok) return { ok: false, reason: 'scelta non possibile ora' };
     const f = this.state.fatti!;
-    const outcome = resolveFatto(this.player, this.state.scalars, ph.id, option, this.state.q, () => fattiRandom(f));
+    const outcome = resolveFatto(this.player, this.state.scalars, ph.id, option, this.state.q, () => fattiRandom(f), this.luckCap());
     this.record({ t: 'fatto', o: outcome });
     this.log(`fatto del reame: ${ph.id} (${option})`);
     this.state.phase = { ...ph, awaitingChoice: false, outcome };
@@ -500,7 +574,9 @@ export class Game {
       this.state.phase = { kind: 'evento', eventId: ev.id, awaitingChoice: true };
     } else {
       const outcome = applyFixedEvent(this.player, ev);
+      if (ev.id === RIOT_EVENT) this.pericolo(this.state.current, 'rivolta', RISCHIO_RIVOLTA);
       this.rules?.onEvent?.(this, ev.id, outcome);
+      this.tame(outcome);
       this.log(`evento: ${ev.title}`);
       this.record({ t: 'event', id: ev.id, scudi: outcome.scudi, servi: outcome.servi, ...(outcome.grano ? { grano: outcome.grano } : {}) });
       this.state.phase = { kind: 'evento', eventId: ev.id, awaitingChoice: false, outcome };
@@ -536,9 +612,14 @@ export class Game {
     if (!opt.ok) return { ok: false, reason: 'scelta non possibile ora' };
     const difesa = this.factionDefense().total, nemici = ph.nemici ?? hordeSize(ph.faction, this.state.q, 0.5);
     const outcome = resolveFaction(this.player, ph.faction, option, this.rng, this.state.q, winChance(difesa, nemici));
-    if (outcome.win !== undefined) Object.assign(outcome, { nemici, difesa });
+    if (outcome.win !== undefined) {
+      Object.assign(outcome, { nemici, difesa });
+      this.pericolo(this.state.current, 'battaglia', outcome.win ? RISCHIO_BATTAGLIA.vinta : RISCHIO_BATTAGLIA.persa);
+    }
     this.sync();
     this.rules?.onEvent?.(this, ph.eventId, outcome);
+    // dote e corruzione sono spese scelte, con i loro vantaggi: restano intere
+    if (option !== 'matrimonio' && option !== 'corrompere') this.tame(outcome);
     this.log(`fazione ${ph.faction}: ${option}${outcome.win === undefined ? '' : outcome.win ? ' (vittoria)' : ' (sconfitta)'}`);
     const { faction, win, mercati, opifici, palazzo, grano } = outcome;
     this.record({
@@ -554,7 +635,9 @@ export class Game {
     if (ph.kind !== 'evento' || !ph.awaitingChoice || ph.faction) throw new Error('nessuna scelta in sospeso');
     const outcome = resolveChoice(this.player, choice, this.rng, this.state.options);
     this.sync();
+    if (choice === 'pugna') this.pericolo(this.state.current, 'battaglia', outcome.scudi >= 0 ? RISCHIO_BATTAGLIA.vinta : RISCHIO_BATTAGLIA.persa);
     this.rules?.onEvent?.(this, ph.eventId, outcome);
+    this.tame(outcome);
     this.log(`evento: ${EVENTS.find(e => e.id === ph.eventId)!.title} (${choice})`);
     this.record({ t: 'event', id: ph.eventId, scudi: outcome.scudi, servi: outcome.servi, choice });
     this.state.phase = { ...ph, awaitingChoice: false, outcome };
@@ -620,11 +703,11 @@ export class Game {
     const p = this.player;
     if (!p.effetti) return;
     if (hasEffetto(p, 'decima') && totale > 0) {
-      const amount = INT(totale * DECIMA);
+      const amount = Math.min(this.luckCap(), INT(totale * DECIMA));
       p.scudi -= amount;
       this.record({ t: 'fattoAnnuo', kind: 'decima', amount });
     }
-    const pilgrims = pilgrimIncome(p);
+    const pilgrims = Math.min(this.luckCap(), pilgrimIncome(p));
     if (pilgrims > 0) {
       p.scudi += pilgrims;
       this.record({ t: 'fattoAnnuo', kind: 'pellegrini', amount: pilgrims });
@@ -717,6 +800,16 @@ export class Game {
     }
     this.rules?.beforeYearEnd?.(this);
     const end = endOfPlayerYear(st.players, st.current, st.scalars, this.rules?.usuryScale?.(this) ?? 1, !!st.options.pignoramenti, victoryRule(st.options));
+    // Dinastia: il trono non chiude la partita; chi ne ha le condizioni, a trono vacante, è candidato all'elezione di fine anno
+    const din = st.dinastia;
+    if (din) {
+      annotaRango(din, st.current, p);
+      if (end.won) {
+        end.won = false;
+        end.tribute = calculateVassalTribute(st.players, st.current);
+        candidaAlTrono(din, st.current);
+      }
+    }
     // con più signori chi supera la soglia attende la fine dell'anno: se sono più d'uno, vince il più ricco
     const wait = end.won && st.options.tieBreakWealth && st.players.length > 1;
     this.record({ t: 'yearEnd', usury: end.usury, titleBefore, titleAfter: p.title, tribute: end.tribute, scudi: p.scudi, servi: p.servi, won: end.won && !wait, ...(end.seized ? { seized: end.seized } : {}) });
@@ -746,6 +839,7 @@ export class Game {
     const st = this.state;
     // nessun signore resta in gioco (un signore solo, arrestato): la partita finisce senza re
     if (st.players.every(x => x.caduto !== undefined)) {
+      if (st.dinastia) return this.endDinastia();
       st.phase = { kind: 'fine', winner: -1 };
       return;
     }
@@ -756,7 +850,10 @@ export class Game {
         if (st.contenders?.length) return this.crown(st.contenders);
         st.current = 0;
         this.rules?.onYearClose?.(this);
+        if (st.dinastia) this.electKing();
         st.q += 1;
+        // Dinastia: nel 962 il Regno d'Italia passa all'Impero
+        if (st.dinastia && this.year >= st.dinastia.fine) return this.endDinastia();
       }
     } while (st.players[st.current].caduto !== undefined);
     if (this.lastStanding()) return;
@@ -771,6 +868,7 @@ export class Game {
     const p = this.state.players[i];
     if (p.caduto !== undefined) return;
     p.caduto = this.state.q;
+    if (this.state.dinastia?.re === i) this.state.dinastia.re = null;
     this.note(i, { t: 'ext', kind: 'fallen', data: { q: this.state.q } });
   }
 
@@ -781,6 +879,10 @@ export class Game {
     const humans = st.players.some(p => !p.bot);
     const noHuman = humans && !alive.some(i => !st.players[i].bot);
     if (st.players.length < 2 || (alive.length > 1 && !noHuman)) return false;
+    if (st.dinastia) {
+      this.endDinastia();
+      return true;
+    }
     const winner = alive.reduce((a, b) => (wealthIndex(st.players[b]) > wealthIndex(st.players[a]) ? b : a));
     st.current = winner;
     st.phase = { kind: 'fine', winner };

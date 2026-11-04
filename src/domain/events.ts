@@ -134,6 +134,19 @@ export function drawEvent(rng: Rng, ctx: DrawCtx): RandomEvent | null {
   return (deck.find(c => (x -= c.w) < 0) ?? deck[deck.length - 1]).ev;
 }
 
+/**
+ * Inizio mite (opzione `inizioMite`): nei primi INIZIO_MITE_ANNI anni la sorte
+ * (imprevisti, battaglie con le fazioni, tributi imposti, fatti del reame) non
+ * toglie né dà più di INIZIO_MITE_SCUDI scudi per volta. Non vale per le spese
+ * scelte (dote, corruzione, mulino, ricostruzione, processo, visita del re)
+ * né per le imprese temerarie, che si giocano a discrezione.
+ */
+export const INIZIO_MITE_ANNI = 3;
+export const INIZIO_MITE_SCUDI = 200;
+/** Scudi massimi che la sorte può spostare quest'anno (Infinity: nessun limite). */
+export const luckCap = (o: Options, q: number) => (o.inizioMite && q < INIZIO_MITE_ANNI ? INIZIO_MITE_SCUDI : Infinity);
+export const capLuck = (v: number, cap: number) => Math.max(-cap, Math.min(cap, v));
+
 /** Righe 785-788: effetti immediati degli eventi senza scelta. */
 export function applyFixedEvent(p: Player, ev: RandomEvent): EventOutcome {
   if (ev.effect.kind === 'scudi') {

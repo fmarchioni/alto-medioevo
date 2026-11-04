@@ -3,6 +3,7 @@
  * (classi .a-*), didascalia da fumetto, onomatopea e battuta di un personaggio.
  * Solo presentazione: gli effetti restano in src/domain/events.ts.
  */
+import { EVENTS } from '../domain/events';
 import type { EventOutcome, Player } from '../domain/types';
 import { honorific } from './advisor';
 import { pick } from './speaker';
@@ -58,7 +59,8 @@ export const ground = (c: string) => `<path d="M0 150 Q80 140 160 148 T320 146 V
 
 interface Comic {
   sound: string[];
-  captions: (h: string) => string[];
+  /** s: scudi dell'imprevisto (con l'inizio mite possono essere meno di quelli del listato) */
+  captions: (h: string, s: string) => string[];
   scene: (line: string) => string;
   lines: string[];
 }
@@ -82,8 +84,8 @@ export const COMICS: Record<number, Comic> = {
   2: {
     sound: ['DLIN DLIN!', 'OHHH!'],
     lines: ['Omaggi dal mio signore!', 'Doni d\'oriente per voi!', 'Pace e oro tra noi!'],
-    captions: h => [
-      `Un principe saraceno giunge con il suo seguito e depone ai vostri piedi una regalia di 500 scudi, ${h}.`,
+    captions: (h, s) => [
+      `Un principe saraceno giunge con il suo seguito e depone ai vostri piedi una regalia di ${s} scudi, ${h}.`,
       `Sete, spezie e un forziere colmo: il principe saraceno porta i suoi omaggi al feudo.`,
     ],
     scene: line => `${sky('#f7c96a', '#fbe6b3', 'sk2')}${ground('#d9b86a')}
@@ -115,9 +117,9 @@ export const COMICS: Record<number, Comic> = {
   4: {
     sound: ['VITTORIA!', 'EVVIVA!'],
     lines: ['Il bottino è nostro!', 'Viva il nostro signore!', 'Tornano i prodi!'],
-    captions: h => [
-      `Le vostre schiere tornano trionfanti, ${h}: il nemico è in fuga e il bottino vale 1000 scudi.`,
-      `Fortunata campagna! I carri rientrano carichi d'oro nemico: 1000 scudi per il tesoro.`,
+    captions: (h, s) => [
+      `Le vostre schiere tornano trionfanti, ${h}: il nemico è in fuga e il bottino vale ${s} scudi.`,
+      `Fortunata campagna! I carri rientrano carichi d'oro nemico: ${s} scudi per il tesoro.`,
     ],
     scene: line => `${sky('#8fc0e8', '#dbeefa', 'sk4')}<path d="M0 150 Q90 120 170 145 T320 135 V180 H0z" fill="#7aa35a"/>${ground('#6f8f4e')}
       <g class="a-march-in">
@@ -148,9 +150,9 @@ export const COMICS: Record<number, Comic> = {
   6: {
     sound: ['PUZZA!', 'BLEAH!'],
     lines: ['Che fetore, Messere!', 'Ci vogliono altri scudi!', 'Qui sotto c\'è Roma!'],
-    captions: h => [
-      `La vecchia cloaca romana è crollata e il borgo è invaso dal fetore, ${h}. Ripararla costa 2000 scudi.`,
-      `Gli antichi condotti dei Romani cedono: maestri muratori e badili costano al tesoro 2000 scudi.`,
+    captions: (h, s) => [
+      `La vecchia cloaca romana è crollata e il borgo è invaso dal fetore, ${h}. Ripararla costa ${s} scudi.`,
+      `Gli antichi condotti dei Romani cedono: maestri muratori e badili costano al tesoro ${s} scudi.`,
     ],
     scene: line => `${sky('#b8b49a', '#e2dcc0', 'sk6')}<rect y="140" width="320" height="40" fill="#8a8274"/>
       ${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<rect x="${i * 40}" y="140" width="38" height="12" fill="#a39a88" stroke="#6b6458"/>`).join('')}
@@ -194,9 +196,9 @@ export const COMICS: Record<number, Comic> = {
   8: {
     sound: ['AL LADRO!', 'TLIN TLIN!'],
     lines: ['Addio, signoria!', 'Fermatelo!', 'Al ladro, al ladro!'],
-    captions: h => [
-      `Nella notte il ciambellano ha forzato lo scrigno e fugge con 950 scudi, ${h}. Le guardie arrivano troppo tardi.`,
-      `Il fidato ciambellano non era poi così fidato: scappa dal palazzo con 950 scudi del tesoro.`,
+    captions: (h, s) => [
+      `Nella notte il ciambellano ha forzato lo scrigno e fugge con ${s} scudi, ${h}. Le guardie arrivano troppo tardi.`,
+      `Il fidato ciambellano non era poi così fidato: scappa dal palazzo con ${s} scudi del tesoro.`,
     ],
     scene: line => `${sky('#1c2238', '#3d4a6e', 'sk8')}<circle cx="270" cy="34" r="16" fill="#f3ecc8"/>
       ${[30, 80, 140, 200].map((x, i) => `<circle cx="${x}" cy="${20 + (i % 2) * 14}" r="1.5" fill="#fff" class="a-twinkle" style="animation-delay:${i * 0.3}s"/>`).join('')}
@@ -283,9 +285,12 @@ export interface ComicText {
 }
 
 /** Testi scelti una volta per evento (restano fissi ai ridisegni). */
-export function comicText(eventId: number, p: Player): ComicText {
+export function comicText(eventId: number, p: Player, scudi?: number): ComicText {
   const c = COMICS[eventId];
-  return { caption: pick(c.captions(honorific(p))), sound: pick(c.sound), line: pick(c.lines) };
+  // gli scudi dell'esito, se c'è già; altrimenti quelli dell'imprevisto
+  const ev = EVENTS.find(e => e.id === eventId);
+  const s = scudi ?? (ev?.effect.kind === 'scudi' ? ev.effect.amount : 0);
+  return { caption: pick(c.captions(honorific(p), n(s))), sound: pick(c.sound), line: pick(c.lines) };
 }
 
 export function outcomeText(o: EventOutcome, p: Player): ComicText {

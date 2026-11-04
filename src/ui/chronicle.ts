@@ -15,6 +15,7 @@ import { impresaSentence } from './imprese';
 import { seizedSentence } from './pignoramenti';
 import { sensaleSentence } from './sensale';
 import { realmScene } from './realm';
+import { dinastiaSentences } from './dinastia';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -80,7 +81,8 @@ function story(py: PlayerYear, players: Player[], view: ExpansionView | null): s
   const { p } = py;
   const end = py.of('yearEnd')[0];
   const titleStart = end?.titleBefore ?? p.title;
-  const s: string[] = [];
+  // Dinastia: la morte del signore e l'erede vengono prima del resto dell'anno
+  const s: string[] = dinastiaSentences(py.facts.filter(f => f.t === 'successione'), p);
 
   // grano
   const bought = py.of('buy').reduce((a, f) => a + f.qty, 0);
@@ -102,6 +104,7 @@ function story(py: PlayerYear, players: Player[], view: ExpansionView | null): s
 
   // imprevisti
   for (const f of py.of('event')) s.push(eventSentence(f));
+  s.push(...dinastiaSentences(py.facts.filter(f => f.t === 'corona'), p));
   for (const f of py.of('impresa')) s.push(impresaSentence(f.id, f.esito, f.amount));
   for (const f of py.of('fatto')) s.push(fattoSentence(f.o));
   for (const f of py.of('fattoAnnuo')) s.push(annualSentence(f.kind, f.amount));

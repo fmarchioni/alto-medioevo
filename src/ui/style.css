@@ -639,6 +639,18 @@ b, strong { color: var(--gold); }
 .exp-rules li { margin: 3px 0; }
 .exp-badge { margin: 0 0 10px; border: 2px solid var(--gold); border-radius: 4px; padding: 2px 8px; font-size: 12px; color: var(--gold); text-align: center; }
 
+/* ---------- obiettivo: Regno o Dinastia ---------- */
+.goals { margin-top: 12px; }
+.goal-tile { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 4px; align-items: center; }
+.goal-tile .goal-emblem { grid-row: span 2; }
+.goal-tile .exp-name, .goal-tile .exp-motto { min-width: 0; overflow-wrap: break-word; }
+.goal-emblem { font-size: 30px; color: var(--gold); line-height: 1; }
+.casata .hint { font-size: 12px; margin: 6px 0 0; }
+.casata { margin-bottom: 12px; }
+.heir-form { margin: 12px 0; }
+.end .standings > li { margin: 10px 0; }
+.genealogy { margin: 4px 0 0; padding-left: 1.4em; font-size: 13px; }
+
 /* ---------- espansioni: pannelli nella Delibera ---------- */
 .ext-cards-title { margin: 16px 0 8px; color: var(--gold); font-size: 14px; text-transform: uppercase; font-weight: normal; }
 .ext-panel h3 { margin: 14px 0 6px; color: var(--gold); font-size: 14px; text-transform: uppercase; font-weight: normal; }

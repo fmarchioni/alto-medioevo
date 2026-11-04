@@ -3,6 +3,7 @@
  * listato BASIC originale (vedi docs/fase0-variabili.md).
  */
 import type { AnnateState } from './annate';
+import type { CausaMorte, DinastiaState, Successione } from './dinastia';
 import type { FactionId, FactionOption, Pact } from './fazioni';
 import type { Effetto, FattiState, FattoId, FattoOutcome, Sorte } from './fatti';
 import type { EsitoImpresa, Impresa, ImpresaId } from './imprese';
@@ -175,6 +176,10 @@ export interface Options {
   bancarotta?: boolean;
   /** usura minima: gli usurai non prestano mai sotto USURA_MIN %, nemmeno nelle annate piene o in pace (src/domain/economy.ts) */
   usuraMinima?: boolean;
+  /** inizio mite: nei primi anni la sorte non toglie né dà più di qualche centinaio di scudi (src/domain/events.ts, luckCap) */
+  inizioMite?: boolean;
+  /** obiettivo Dinastia: la partita finisce nel 962, i signori muoiono e succedono gli eredi, vince la casata con più prestigio (src/domain/dinastia.ts) */
+  dinastia?: boolean;
 }
 
 /**
@@ -212,6 +217,7 @@ export const GAME_OPTIONS: Options = {
   sensale: true,
   bancarotta: true,
   usuraMinima: true,
+  inizioMite: true,
 };
 
 export type Phase =
@@ -222,6 +228,8 @@ export type Phase =
   /** il signore è stato arrestato (per una carta di un'espansione, o per bancarotta a fine anno): lascia il posto al seguente */
   | { kind: 'arresto'; motivo?: 'debiti' }
   | { kind: 'esitoNutrimento' }
+  /** Dinastia: all'inizio del turno il signore è morto e gli succede l'erede */
+  | { kind: 'successione'; s: Successione }
   /** chiuso il mercato del grano: gli affari fra signori di un'espansione (`signori`), prima dell'imprevisto */
   | { kind: 'signori' }
   | { kind: 'evento'; eventId: number; awaitingChoice: boolean; outcome?: EventOutcome; faction?: FactionId; nemici?: number }
@@ -289,6 +297,8 @@ export interface GameState {
   expansion?: string;
   /** stato proprio dell'espansione */
   ext?: unknown;
+  /** casate, età e corona (solo con `options.dinastia`) */
+  dinastia?: DinastiaState;
 }
 
 export type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -326,6 +336,10 @@ export type ChronicleFact =
   | { t: 'ext'; kind: string; data: Record<string, number> }
   /** bancarotta: arrestato a fine anno per i debiti */
   | { t: 'bancarotta'; scudi: number }
+  /** Dinastia: morte del signore e successione dell'erede */
+  | { t: 'successione'; morto: string; causa: CausaMorte; eta: number; anni: number; erede: string; cadetti: number; scudi: number; acri: number; corona: boolean }
+  /** Dinastia: incoronato re d'Italia a trono vacante */
+  | { t: 'corona' }
   /** sensale di piazza assoldato per l'anno */
   | { t: 'sensale'; who: SensaleId; cost: number }
   | {

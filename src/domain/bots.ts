@@ -461,6 +461,8 @@ function wantsImpresa(g: Game, level: BotLevel, rnd: () => number): boolean {
 export function playBotTurn(g: Game): BotTurnReport {
   const level = g.player.bot;
   if (!level) throw new Error('il giocatore di turno non è guidato dal computer');
+  // Dinastia: il signore è morto, l'erede comincia il suo primo anno con il nome scelto per lui
+  if (g.state.phase.kind === 'successione') g.continueAfterSuccessione();
   const me = g.player;
   // un complice ha parlato: si paga, o il signore finisce in ceppi e il turno passa
   if (g.state.phase.kind === 'impresa') {
