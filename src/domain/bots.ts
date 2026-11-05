@@ -14,7 +14,7 @@ import { SELL_DEBT_LIMIT, trustFactor, type RateKind } from './economy';
 import { fiduciaOf, livelloMid, livelloOf, MARKET_MULT, OPIFICIO_MULT, workFactor } from './gabelle';
 import { granaryCapacity, MACINA_MOOD_WEIGHT, RIOT_MOOD, SETTLER_MEDIA_PRICE, umoreOf } from './gabelle';
 import { BATTLE_OPTIONS, CITY_WEIGHTS, FACTIONS, marriageCost, type FactionId, type FactionOption } from './fazioni';
-import { etaP, fazioniSposabili, figliDi, nozzeDi, pretendenti, ripudiabili, signoreP, sposabili, type Sposo } from './famiglia';
+import { etaP, fazioniSposabili, figliDi, nozzeDi, pretendenti, prudente, ripudiabili, signoreP, sposabili, type Sposo } from './famiglia';
 import { canInvest, COSTS, type InvestmentKind } from './investments';
 import { scadenza } from './imprese';
 import { hasSensale, hireSensale, SENSALI, sensaleCost, sensaleNow, sensaleOfTurn, sensaleUseful, sensaleVerdict } from './sensale';
@@ -195,23 +195,29 @@ function fatto(g: Game, level: BotLevel, rng: Rng): void {
  * battaglia gli conviene, si fa proteggere se vive di commercio, sposa una
  * franca se la dote è alla sua portata; il medio va a buon senso, il facile a caso.
  */
+/** Dinastia: probabilità di vittoria sotto cui un signore prudente non combatte */
+export const PRUDENZA_VITTORIA = 0.8;
+
 function factionChoice(c: Ctx, level: BotLevel, f: FactionId): FactionOption {
   const { g, rnd } = c;
   const p = g.player;
   const opts = g.factionOptions().filter(o => o.ok).map(o => o.id);
   const has = (o: FactionOption) => opts.includes(o);
   if (level === 'facile') return opts[Math.floor(rnd() * opts.length)];
-  const win = g.factionWinChance();
+  // Dinastia: un signore vecchio, o senza un erede adulto, combatte solo a vittoria quasi certa
+  const careful = prudente(g.state, g.state.current);
+  const win = careful && g.factionWinChance() < PRUDENZA_VITTORIA ? 0 : g.factionWinChance();
   const fight = opts.find(o => BATTLE_OPTIONS.includes(o))!;
   const trade = p.mercato - 1 + (p.opificio - 1);
   if (level === 'medio') {
     if (rnd() < win) return fight;
+    if (careful && f === 'ungari') return p.grano * 0.25 * 30 / 1000 < 1500 ? 'passaggio' : 'mura';
     const peaceful = opts.filter(o => o !== fight);
     return peaceful[Math.floor(rnd() * peaceful.length)];
   }
   switch (f) {
     case 'franchi': return has('matrimonio') && p.palazzo < 11 && marriageCost(p) <= 6000 ? 'matrimonio' : win >= 0.45 ? fight : 'tributo';
-    case 'ungari': return win >= 0.5 ? fight : p.grano * 0.25 * 30 / 1000 < 1500 ? 'passaggio' : fight;
+    case 'ungari': return win >= 0.5 ? fight : p.grano * 0.25 * 30 / 1000 < 1500 ? 'passaggio' : careful ? 'mura' : fight;
     case 'longobardi': return win >= 0.45 ? fight : 'tributo';
     case 'bizantini': return trade >= 6 ? 'protettorato' : win >= 0.45 ? fight : 'corrompere';
     case 'saraceni': return p.mercato - 1 >= 6 ? 'accordi' : win >= 0.45 ? fight : 'riscatto';
@@ -234,7 +240,9 @@ function event(c: Ctx, level: BotLevel): void {
     log.push(`risponde ai ${ph.faction}: ${option}`);
   } else if (ph.awaitingChoice) {
     // la pugna vale in media +0,5 scudi e +0,5 servi; il riscatto costa in media 400 scudi
-    const choice = level === 'difficile' ? 'pugna' : rnd() < (level === 'medio' ? 0.6 : 0.5) ? 'pugna' : 'riscatto';
+    // Dinastia: un signore prudente paga invece di battersi
+    const careful = level !== 'facile' && prudente(g.state, g.state.current);
+    const choice = careful ? 'riscatto' : level === 'difficile' ? 'pugna' : rnd() < (level === 'medio' ? 0.6 : 0.5) ? 'pugna' : 'riscatto';
     g.chooseEvent(choice);
   }
   const out = g.state.phase.kind === 'evento' ? g.state.phase.outcome : undefined;
@@ -254,6 +262,8 @@ function event(c: Ctx, level: BotLevel): void {
  */
 /** errore (in punti) con cui ciascun livello stima umore e fiducia, che nessuno vede */
 const GUESS_ERR: Record<BotLevel, number> = { facile: 25, medio: 12, difficile: 4 };
+/** Dinastia: umore stimato sotto cui i bot alleggeriscono le gabelle per evitare la congiura (sotto 40 il popolo è scontento) */
+const CONGIURA_UMORE = 45;
 
 function reformRates(c: Ctx, level: BotLevel): Rates {
   const { g, rnd } = c;
@@ -268,6 +278,8 @@ function reformRates(c: Ctx, level: BotLevel): Rates {
   // l'umore è un bilancio: un punto di bevere ne costa uno, uno di macina mezzo. Il difficile resta
   // sopra la soglia delle rivolte con un margine, il medio va un po' a caso; la fiducia dei mercanti a metà strada
   let mood = level === 'difficile' ? 38 - Math.max(0, RIOT_MOOD + 5 - umore) : 25 + Math.floor(rnd() * 35);
+  // Dinastia: con il popolo scontento la congiura minaccia la vita del signore: gabelle più miti
+  if (g.state.dinastia && umore < CONGIURA_UMORE) mood -= Math.round((CONGIURA_UMORE - umore) * (level === 'difficile' ? 1 : 0.5));
   const comCap = level === 'difficile' ? 38 : 25 + Math.floor(rnd() * 40);
   const value: Rates = { ...y, commerzio: y.commerzio * (MARKET_MULT * fiducia) / 100 };
   const cost = { bevere: 1, macina: MACINA_MOOD_WEIGHT };

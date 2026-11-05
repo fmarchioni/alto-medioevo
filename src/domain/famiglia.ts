@@ -465,5 +465,20 @@ export function accettaNozze(state: GameState, d: DinastiaState, prop: { da: num
   return prestigio(prop.da) <= prestigio(prop.a) * 1.1 || ricevo ? r < 0.8 : r < 0.15;
 }
 
+/** età da cui un signore del computer non rischia più la vita senza necessità */
+export const ETA_PRUDENTE = 55;
+
+/**
+ * Il signore i ha ragioni per non rischiare la vita: è vecchio, o non ha in
+ * casa un erede adulto (morirebbe lasciando un bambino, o nessuno).
+ */
+export function prudente(state: GameState, i: number): boolean {
+  const d = state.dinastia;
+  if (!d?.persone) return false;
+  const s = signoreP(d, i), q = state.q;
+  if (etaP(s, q) >= ETA_PRUDENTE) return true;
+  return !figliInCasa(d, i).some(x => etaP(x, q) >= ETA_MAGGIORE);
+}
+
 /** Proposte di nozze rivolte alla casata i. */
 export const proposteA = (d: DinastiaState, i: number) => (d.proposte ?? []).filter(x => x.a === i);

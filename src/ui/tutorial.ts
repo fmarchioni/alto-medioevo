@@ -13,6 +13,15 @@ import { crest } from './fazioni';
 import type { FactionId } from '../domain/fazioni';
 import { pick, speechBox, type Speaker } from './speaker';
 import { VERSION, versionDateText } from '../version';
+import { ANNO_FINE, PRESTIGIO_RE } from '../domain/dinastia';
+
+/** Miniatura della Dinastia: l'albero di una casata, dal fondatore ai nipoti. */
+const familyTree = () => `<svg viewBox="0 0 320 180" class="mini-art" role="img" aria-label="l'albero di una casata">
+  <rect width="320" height="180" fill="#f3e7c4"/>
+  <path d="M160 40 V70 M90 70 H230 M90 70 V100 M160 70 V100 M230 70 V100 M160 120 V140 M120 140 H200 M120 140 V150 M200 140 V150" stroke="#6b4f2a" stroke-width="2.5" fill="none"/>
+  ${([[160, 28, '#8b2a1e'], [90, 110, '#2f5b3a'], [160, 110, '#8b2a1e'], [230, 110, '#3b2d4a'], [120, 160, '#8b2a1e'], [200, 160, '#2f5b3a']] as const).map(([x, y, c]) => `<circle cx="${x}" cy="${y}" r="11" fill="${c}" stroke="#d6b25a" stroke-width="2"/>`).join('')}
+  <path d="M150 14 l4 -8 6 6 6 -6 4 8z" fill="#d6b25a"/>
+</svg>`;
 
 export const LAPO: Speaker = { name: 'Messer Lapo', role: 'mercante girovago', portrait: merchantPortrait };
 
@@ -174,6 +183,16 @@ const PAGES: Page[] = [
     },
   },
   {
+    title: `Una dinastia fino al ${ANNO_FINE}`,
+    text: [
+      `Nella schermata iniziale potete scegliere, come obiettivo, la Dinastia: allora il trono non chiude la partita, che dura fino al ${ANNO_FINE}. Il signore invecchia e muore (di malattia, in battaglia, in una rivolta, per una congiura se il popolo è scontento) e regna il primogenito, mentre i fratelli si prendono la loro parte dell'eredità.`,
+      'Nel riquadro della casata si combinano le nozze dei figli: con le altre casate (niente tributi fra parenti, e ci si appoggia all\'elezione del re), con Franchi, Longobardi e Bizantini, o con la nobiltà del luogo. La corona d\'Italia si conquista con un voto dei signori, e alla morte del re si vota di nuovo.',
+      `Vince la casata più illustre: i titoli di ogni generazione, ${PRESTIGIO_RE} per ogni corona, i matrimoni illustri e la ricchezza dell'ultimo signore. Durante la partita Ser Gualtiero, il notaio di corte, vi spiega ogni regola la prima volta che conta.`,
+    ],
+    quip: 'Un mercante pensa al prossimo raccolto; un casato pensa ai nipoti dei nipoti.',
+    art: familyTree,
+  },
+  {
     title: 'L\'anno in sei tempi',
     text: [
       'Ogni anno ciascun signore attraversa sei tempi: la delibera sul grano, l\'imprevisto (se capita), le rendite, i dispendimenti in terre e botteghe, la veduta del reame con quanto avete costruito, e infine la chiusura dell\'anno.',
@@ -201,7 +220,7 @@ export function renderWelcome(text: string): string {
     <p class="version">versione ${VERSION} del ${versionDateText()}</p>
     ${speechBox(LAPO, text)}
     <div class="action-cards two">
-      <button class="action-card" data-act="tutorialStart"><span class="card-emblem" aria-hidden="true">📜</span><span class="card-title">Sì, insegnatemi</span><span class="card-sub">sei pagine illustrate</span></button>
+      <button class="action-card" data-act="tutorialStart"><span class="card-emblem" aria-hidden="true">📜</span><span class="card-title">Sì, insegnatemi</span><span class="card-sub">${PAGES.length} pagine illustrate</span></button>
       <button class="action-card" data-act="skipTutorial"><span class="card-emblem" aria-hidden="true">⚑</span><span class="card-title">No, conosco il mestiere</span><span class="card-sub">si va subito al feudo</span></button>
     </div>`;
 }

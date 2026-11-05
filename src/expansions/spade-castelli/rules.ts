@@ -59,7 +59,7 @@
  */
 import { INT } from '../../domain/economy';
 import { RISCHIO_BATTAGLIA } from '../../domain/dinastia';
-import { legami, ripudiabili } from '../../domain/famiglia';
+import { legami, prudente, ripudiabili } from '../../domain/famiglia';
 import type { BotCtx, ExpansionRules } from '../../domain/expansion';
 import { borders } from '../../domain/geography';
 import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI } from '../../domain/investments';
@@ -1471,7 +1471,9 @@ function botWar(c: BotCtx): void {
   const kin = g.parenti(me, t.i);
   if (kin && !rival(t)) return;
   // si arruola solo se la vittoria è probabile e la campagna si può pagare
-  if (level !== 'facile' && winChance(wanted, t.defense, rnd) < (level === 'difficile' ? 0.75 : 0.6)) return;
+  // Dinastia: un signore vecchio, o senza un erede adulto, attacca solo a vittoria quasi certa
+  const careful = level !== 'facile' && prudente(g.state, me);
+  if (level !== 'facile' && winChance(wanted, t.defense, rnd) < (careful ? 0.9 : level === 'difficile' ? 0.75 : 0.6)) return;
   const need = Math.max(0, wanted - st.soldati[me]);
   if (p.scudi < need * RECRUIT_COST + t.buy * CATAPULT_COST + wanted * CAMPAIGN_COST + (level === 'medio' ? 300 : 500)) return;
   if (t.buy && !buildCatapults(g, t.buy).ok) return;

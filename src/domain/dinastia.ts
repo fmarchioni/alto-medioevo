@@ -218,7 +218,7 @@ export const ACRI_BASE = 500;
 
 /** prestigio: titoli di ogni generazione (rango 1..5), corona, ricchezza finale */
 export const PRESTIGIO_RANGO = [0, 50, 120, 200, 300] as const;
-export const PRESTIGIO_RE = 500;
+export const PRESTIGIO_RE = 400;
 /** la ricchezza conta con la radice quadrata, diviso questo valore: 1 milione vale 250 */
 export const PRESTIGIO_RICCHEZZA = 4;
 
@@ -458,6 +458,10 @@ export function votoDi(state: GameState, d: DinastiaState, i: number, c: number[
   if (!ok.length) return null;
   const a = d.casate[i].appoggio;
   if (a !== undefined && ok.includes(a)) return a;
+  // i signori del computer: il facile vota a caso; il difficile per il candidato con meno prestigio, per non dare la corona a chi è già avanti
+  const bot = state.players[i].bot;
+  if (bot === 'facile') return ok[Math.floor(dinastiaRandom(d) * ok.length)];
+  if (bot === 'difficile') return ok.reduce((x, y) => (prestigioOf(d, y, state.players[y]).totale < prestigioOf(d, x, state.players[x]).totale ? y : x));
   const richest = (xs: number[]) => xs.reduce((x, y) => (wealthIndex(state.players[y]) > wealthIndex(state.players[x]) ? y : x));
   const kin = ok.filter(j => parenti(d, i, j));
   if (kin.length) return richest(kin);
