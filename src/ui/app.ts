@@ -19,6 +19,9 @@ import { playBotTurn } from '../domain/bots';
 import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
 import { dinastiaAside, renderDinastiaEnd, renderObiettivi, renderSuccessione, type Obiettivo } from './dinastia';
+import { nozzeDecision, renderCasata, type CasataUi } from './casata';
+import { notaioNotice } from './notaio';
+import type { Sposo } from '../domain/famiglia';
 import type { Expansion, ExtCard, ExtUi } from '../expansions/types';
 import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
 import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
@@ -56,6 +59,8 @@ interface UiState {
   setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; expansion: string | null; obiettivo: Obiettivo };
   /** pannelli dell'espansione nella Delibera */
   ext: ExtUi;
+  /** Dinastia: pannello della casata */
+  casata: CasataUi;
   trade: TradeUi;
   rendite: RenditeUi;
   comic: ComicUi;
@@ -160,6 +165,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   const ui: UiState = {
     game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], expansion: null, obiettivo: 'regno' },
     ext: { key: '', panel: null, say: '' },
+    casata: { key: '', open: false },
     trade: { key: '', mode: 'menu', advisor: '', qty: 0 },
     rendite: { key: '', draft: { bevere: 0, macina: 0, commerzio: 0 }, advisor: '' },
     comic: { key: '' },
@@ -185,6 +191,8 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     const exp = g ? findExpansion(g.state.expansion) : null;
     // i pannelli dell'espansione valgono solo nella fase (Delibera o dispendimenti) del signore di turno
     if (g && ui.ext.key !== `${turnKey(g)}-${g.state.phase.kind}`) ui.ext = { key: `${turnKey(g)}-${g.state.phase.kind}`, panel: null, say: '' };
+    // il pannello della casata vale nella fase in cui lo si è aperto
+    if (g && ui.casata.key !== `${turnKey(g)}-${g.state.phase.kind}`) ui.casata = { key: `${turnKey(g)}-${g.state.phase.kind}`, open: false };
     // nuovo turno: il consigliere saluta con una frase adatta alla situazione
     if (g && g.state.phase.kind === 'commercio' && ui.trade.key !== turnKey(g)) {
       ui.trade = { key: turnKey(g), mode: 'menu', advisor: greeting(g.player, g.state.scalars, g.year), qty: 0 };
@@ -234,7 +242,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     else if (ui.chronicleYear !== null) page = renderChronicle(g.state, ui.chronicleYear, exp?.view ?? null);
     // sotto il sipario e le scene di fine anno non si vede nulla: l'anno nuovo (e le sue notizie) comincia dopo la cronaca
     else if ((ui.interlude || ui.scenes) && g.state.phase.kind !== 'fine') page = '';
-    else page = renderGame(g, ui.message, ui.trade, ui.rendite, ui.comic, ui.cantiere, ui.theme, ui.realmText.text, exp, ui.ext);
+    else page = renderGame(g, ui.message, ui.trade, ui.rendite, ui.comic, ui.cantiere, ui.theme, ui.realmText.text, exp, ui.ext, ui.casata);
     // la pergamena compare solo durante i dispendimenti
     if (ui.deed && g?.state.phase.kind !== 'investimenti') ui.deed = null;
     const deed = ui.deed && !ui.tutorial && !ui.realmReview ? renderDeed(ui.deed) : '';
@@ -253,7 +261,12 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       const r = exp?.view.reminder?.(g) ?? null;
       if (r && !ui.notice) ui.notice = r;
     }
-    const decision = onTurn ? exp?.view.decision?.(g) ?? null : null;
+    // Dinastia: il notaio di corte spiega una regola la prima volta che conta (una volta sola)
+    if (onTurn && g.state.dinastia && !ui.notice && !ui.confirm) {
+      const a = g.prossimoAvviso();
+      if (a) ui.notice = notaioNotice(a, g);
+    }
+    const decision = onTurn ? nozzeDecision(g) ?? exp?.view.decision?.(g) ?? null : null;
     const modal = !g || ui.tutorial ? '' : ui.confirm ? renderConfirm(ui.confirm) : ui.notice ? renderNotice(ui.notice) : decision ? renderDecision(decision) : '';
     root.innerHTML = c64ify(page + deed + overlay + modal);
     if (modal) root.querySelector<HTMLButtonElement>('.notice .primary')?.focus();
@@ -428,6 +441,39 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'obiettivo':
         ui.setup.obiettivo = btn.dataset.id === 'dinastia' ? 'dinastia' : 'regno';
         return render();
+      case 'casata':
+        ui.casata = { ...ui.casata, open: !btn.dataset.close, membro: undefined, ripudio: undefined, say: undefined };
+        ui.message = '';
+        return render();
+      case 'din': {
+        const op = btn.dataset.op, c = ui.casata;
+        const say = (r: { ok: boolean; reason?: string }, ok: string) => (c.say = r.ok ? ok : r.reason ?? 'non si può');
+        if (op === 'membro') {
+          c.membro = btn.dataset.membro ? Number(btn.dataset.membro) : undefined;
+          c.say = undefined;
+        } else if (op === 'sposa') {
+          const con = JSON.parse(btn.dataset.con!) as Sposo;
+          const r = g!.proponiNozze(Number(btn.dataset.membro), con);
+          say(r, r.answered === false ? "La proposta è partita: l'altro signore risponderà nel suo turno." : r.accepted ? 'Le nozze sono celebrate!' : 'La proposta è stata rifiutata.');
+          if (r.ok) c.membro = undefined;
+        } else if (op === 'ripudio') c.ripudio = Number(btn.dataset.m);
+        else if (op === 'ripudioNo') c.ripudio = undefined;
+        else if (op === 'ripudioSi') {
+          say(g!.ripudia(Number(btn.dataset.m)), 'Il matrimonio è sciolto.');
+          c.ripudio = undefined;
+        } else if (op === 'appoggio') {
+          const v = root.querySelector<HTMLSelectElement>('[name="appoggio"]')?.value ?? '';
+          say(g!.appoggia(v === '' ? undefined : Number(v)), 'Appoggio registrato.');
+        } else if (op === 'nozzeSi' || op === 'nozzeNo') {
+          const r = g!.rispondiNozze(Number(btn.dataset.target), op === 'nozzeSi');
+          ui.message = r.ok ? '' : r.reason ?? '';
+          return render();
+        }
+        ui.message = '';
+        return render();
+      }
+      case 'trasferisci':
+        return act(() => g!.trasferisciErede(Number(btn.dataset.citta)));
       case 'successione': {
         const nome = root.querySelector<HTMLInputElement>('[name="erede"]')?.value;
         return act(() => g!.continueAfterSuccessione(nome));
@@ -786,7 +832,7 @@ function resources(g: Game): string {
   return `<dl class="res">${items.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 }
 
-function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi, comic: ComicUi, cantiere: CantiereUi, theme: Theme, realmText: string, exp: Expansion | null, ext: ExtUi): string {
+function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi, comic: ComicUi, cantiere: CantiereUi, theme: Theme, realmText: string, exp: Expansion | null, ext: ExtUi, casata?: CasataUi): string {
   const p = g.player, st = g.state, ph = st.phase, sc = st.scalars;
   if (ph.kind === 'fine' && st.dinastia) return renderDinastiaEnd(g, ph.winner);
   if (ph.kind === 'fine') {
@@ -804,7 +850,10 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       <button data-act="new" class="primary">Nuova partita</button></section>`;
   }
   let body = '';
-  switch (ph.kind) {
+  // Dinastia: il pannello della casata prende il posto della Delibera o dei dispendimenti
+  const casataOpen = !!casata?.open && !!st.dinastia?.persone && (ph.kind === 'commercio' || ph.kind === 'investimenti');
+  if (casataOpen) body = renderCasata(g, casata!);
+  else switch (ph.kind) {
     case 'fatto': {
       const cards = ph.awaitingChoice
         ? `<div class="action-cards two">${g.fattoChoices().map(o => {
@@ -929,7 +978,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     <button data-act="new" class="ghost">Nuova partita</button></header>
   ${resourceBar(g, exp)}${pactsStrip(g.player)}${effettiStrip(g.player)}
   <div class="layout">
-    <aside class="card">${st.dinastia ? dinastiaAside(g) : ''}${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${exp ? `${exp.view.imprese?.(g) ?? ''}${g.player.impresa ? impreseAside(g) : ''}` : impreseAside(g)}</aside>
+    <aside class="card">${st.dinastia ? dinastiaAside(g, !casataOpen && (ph.kind === 'commercio' || ph.kind === 'investimenti')) : ''}${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${exp ? `${exp.view.imprese?.(g) ?? ''}${g.player.impresa ? impreseAside(g) : ''}` : impreseAside(g)}</aside>
     <section class="card phase castle">${battlements}${message ? `<p class="msg">${esc(message)}</p>` : ''}${body}</section>
   </div>
   <details class="card log"><summary>Cronache</summary><ol>${st.log.slice(-30).reverse().map(l => `<li>${esc(l)}</li>`).join('')}</ol></details>`;

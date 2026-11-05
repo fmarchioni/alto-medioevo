@@ -616,6 +616,12 @@ b, strong { color: var(--gold); }
 .notice .deed-body { font-size: 14px; }
 .notice .btns { justify-content: flex-end; margin-top: 6px; }
 .notice-warn .deed-head { font-size: 16px; }
+/* il notaio di corte: un discorso lungo, con il ritratto */
+.notice-notaio { width: 760px; }
+.notice-notaio .deed-body { max-height: 72vh; overflow-y: auto; }
+.notice-notaio .deed-body::first-letter { color: inherit; font-size: inherit; }
+.notice-notaio .advisor { margin: 4px 0; }
+.notice-notaio .say { font-size: 13px; line-height: 1.6; }
 .deed-close { position: absolute; top: 6px; right: 8px; padding: 0 6px; font-size: 12px; color: #6b5a47; border-color: #c9a46a; background: transparent; }
 @keyframes deed-unroll { from { transform: scaleY(.08); opacity: .4; } to { transform: scaleY(1); opacity: 1; } }
 @keyframes deed-out { to { opacity: 0; transform: translateY(10px); } }
@@ -650,6 +656,13 @@ b, strong { color: var(--gold); }
 .heir-form { margin: 12px 0; }
 .end .standings > li { margin: 10px 0; }
 .genealogy { margin: 4px 0 0; padding-left: 1.4em; font-size: 13px; }
+.casata-btn { width: 100%; margin-top: 8px; }
+.nozze-list { list-style: none; padding: 0; margin: 6px 0 10px; }
+.nozze-list li { margin: 6px 0; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.nozze-list li small { color: var(--muted); flex: 1 1 260px; }
+.famiglia td { padding: 3px 8px 3px 0; vertical-align: top; }
+.famiglia .erede { color: var(--gold); }
+.ripudio-box { border: 2px solid var(--red); border-radius: 6px; padding: 8px 12px; }
 
 /* ---------- espansioni: pannelli nella Delibera ---------- */
 .ext-cards-title { margin: 16px 0 8px; color: var(--gold); font-size: 14px; text-transform: uppercase; font-weight: normal; }

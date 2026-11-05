@@ -59,6 +59,7 @@
  */
 import { INT } from '../../domain/economy';
 import { RISCHIO_BATTAGLIA } from '../../domain/dinastia';
+import { legami, ripudiabili } from '../../domain/famiglia';
 import type { BotCtx, ExpansionRules } from '../../domain/expansion';
 import { borders } from '../../domain/geography';
 import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI } from '../../domain/investments';
@@ -668,6 +669,8 @@ export function declareWar(g: Game, target: number, sent: number, goal: WarGoal,
   if (target === me || !g.state.players[target] || !alive(g, target)) return { ok: false, reason: 'scegliete il feudo di un altro signore' };
   const tr = treatyOf(g, me, target);
   if (tr) return { ok: false, reason: `avete un trattato di pace con ${g.state.players[target].name} fino al ${900 + tr.fino}` };
+  // Dinastia: fra casate imparentate non ci si fa guerra (prima bisogna ripudiare)
+  if (g.parenti(me, target)) return { ok: false, reason: `siete imparentati con ${g.state.players[target].name}: per muovergli guerra dovete prima sciogliere il matrimonio` };
   if ((st.proposte ?? []).some(x => x.from === me && x.to === target)) return { ok: false, reason: `avete proposto la pace a ${g.state.players[target].name}: attendete la sua risposta` };
   if (!Number.isInteger(merc) || merc < 0 || merc > mercsOf(g, st, me)) return { ok: false, reason: 'non avete tanti mercenari nel fortino' };
   if (!Number.isInteger(sent) || sent < 0 || sent > st.soldati[me]) return { ok: false, reason: 'non avete tanti soldati nel fortino' };
@@ -907,6 +910,9 @@ function offese(st: SpadeState, a: number, b: number): { n: number; bottino: num
  */
 export function feud(g: Game, i: number, j: number): { conto: number; da: number; a: number; bottino: number } {
   const st = ss(g), da = offese(st, j, i), a = offese(st, i, j);
+  // Dinastia: un ripudio subito è un'offesa in più da vendicare (e una fatta, per chi ha ripudiato)
+  if (g.casusBelli(i, j)) da.n += 1;
+  if (g.casusBelli(j, i)) a.n += 1;
   const conto = da.n - a.n;
   return { conto, da: da.n, a: a.n, bottino: conto > 0 ? Math.max(0, da.bottino - a.bottino) : 0 };
 }
@@ -1406,6 +1412,10 @@ function botWar(c: BotCtx): void {
   // in pace con chi ha un trattato, o con chi attende la risposta a una proposta
   const busy = new Set([...siegesBy(st, me).map(s => s.target), ...campaignsBy(st, me).map(c => c.target),
     ...live.filter(i => treatyOf(g, me, i) || treatyOfferBetween(st, me, i)?.from === me)]);
+  // Dinastia: un parente si attacca solo dopo aver sciolto tutte le nozze che legano le casate, e solo se tocca a noi scioglierle
+  const din = g.state.dinastia;
+  const breakable = (i: number) => !!din?.persone && level !== 'facile' && legami(din, me, i).every(m => ripudiabili(din, me).includes(m));
+  for (const i of live) if (g.parenti(me, i) && !breakable(i)) busy.add(i);
   // catapulte: quelle nel fortino, più quelle che si possono costruire quest'anno
   const catHome = catapultsOf(st, me);
   const catBuy = (mura: number) => level === 'facile' ? 0 : Math.max(0, Math.min(catNeeded(mura) - catHome, CATAPULT_MAX - catHome - catAwayOf(st, me)));
@@ -1457,6 +1467,9 @@ function botWar(c: BotCtx): void {
     wanted = Math.max(WAR_MIN, Math.floor(p.servi * 0.08));
   }
   if (wanted > room) return;
+  // un parente si attacca solo se è un rivale che corre troppo avanti: vale il ripudio
+  const kin = g.parenti(me, t.i);
+  if (kin && !rival(t)) return;
   // si arruola solo se la vittoria è probabile e la campagna si può pagare
   if (level !== 'facile' && winChance(wanted, t.defense, rnd) < (level === 'difficile' ? 0.75 : 0.6)) return;
   const need = Math.max(0, wanted - st.soldati[me]);
@@ -1473,6 +1486,10 @@ function botWar(c: BotCtx): void {
   if (need && !recruit(g, need).ok) return;
   if (need) log.push(`arruola ${need} soldati`);
   const merc = warLooms(g, me) ? 0 : mercsOf(g, st, me);
+  if (kin && din) {
+    for (const m of legami(din, me, t.i)) g.ripudia(m.id);
+    log.push(`ripudia le nozze con la casata di ${ps[t.i].name} per muovergli guerra`);
+  }
   const r = declareWar(g, t.i, Math.min(wanted, st.soldati[me]), goal, Math.min(t.cat, catapultsOf(st, me)), merc);
   if (r.ok && r.campaign) {
     setPlan(g, me, null);
@@ -1570,6 +1587,25 @@ export const rules: ExpansionRules = {
       }
       st.marcia = st.marcia!.filter(m => !home.includes(m));
     }
+  },
+
+  // Dinastia: l'erede si trasferisce: mura e torri restano ai fratelli, e chi assediava la città vecchia torna a casa
+  onTrasferimento(g, i, da) {
+    const st = ss(g);
+    st.mura[i] = 0;
+    if (st.torri) st.torri[i] = 0;
+    for (const s of siegesOn(st, i)) {
+      goHome(g, st, s.owner, s.n, s.cat, i);
+      send(st, s.owner, { k: 'lifted', by: i });
+    }
+    st.assedi = (st.assedi ?? []).filter(s => s.target !== i);
+    void da;
+  },
+
+  // Dinastia: niente nozze fra signori in guerra (assedio, eserciti in marcia)
+  ostili(g, i, j) {
+    const st = ss(g);
+    return (st.assedi ?? []).some(s => isPair(s.owner, s.target, i, j)) || (st.campagne ?? []).some(c => isPair(c.owner, c.target, i, j));
   },
 
   onEvent(g, eventId, outcome) {

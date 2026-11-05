@@ -10,7 +10,7 @@ import { dispatchScrolls } from '../../ui/scrolls';
 import { pick, speechBox, type Speaker } from '../../ui/speaker';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
 import {
-  banquet, bid, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, MERCANTI_FALLIMENTO, merchantsTake, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
+  banquet, bid, divisibili, divisioniA, splitAnswer, splitOffer, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, MERCANTI_FALLIMENTO, merchantsTake, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
 } from './rules';
 import {
   ACRI_GRANO_MIN, caravansFrom, caravansTo, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, passingTakes, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
@@ -18,7 +18,7 @@ import {
 import { specialitaText, SPECIALITA, travelYears, ZONA_FEUDO, ZONA_NOME } from './geografia';
 import { VIAGGIO, type EventoViaggio } from './carovane';
 import { MERCATI_MAX, MERCATI_PER_PUNTO, PRESTIGIO, prestigeName } from './prestigio';
-import { fairOpen, FIERA_OGNI, impegniOf, QUOTE, type FieraDispatch } from './fiera';
+import { fairOpen, FIERA_OGNI, impegniOf, metaDi, QUOTE, type FieraDispatch } from './fiera';
 import { consumiChronicle, festaTitoloText, festeCardSub, festePanel, palaceLine, requestNote } from './consumi-view';
 import { BANCHETTI, RICHIESTE, type Banchetto, type RichiestaId } from './consumi';
 import { impresaCardNote, impresaChronicle, impresaDispatchHead, impresaDispatchText, impreseAside, smuggleArrestText } from './imprese-view';
@@ -398,9 +398,49 @@ export const view: ExpansionView = {
       <div class="btns"><button data-act="extClose" class="primary">Torna a Fra signori</button></div>`;
   },
 
+  // Dinastia: un contratto conteso solo fra parenti si può dividere; il parente risponde nel suo turno
+  decision(g) {
+    const kind = g.state.phase.kind;
+    if (kind !== 'commercio' && kind !== 'signori' && kind !== 'investimenti') return null;
+    const st = ms(g), me = g.state.current, ps = g.state.players;
+    const offer = divisioniA(st, me)[0];
+    if (offer) {
+      const imp = st.impegni.find(x => x.id === offer.impegno)!;
+      return {
+        title: 'Un contratto da dividere',
+        body: `${esc(ps[offer.da].name)} da ${FEUDI[ps[offer.da].feudo]}, vostro parente, ha vinto alla fiera il contratto di ${contractLine(imp.c)}, che chiedevate anche voi, a ${imp.price} scudi l'unità. Vi offre di dividerlo: <b>${qtyOf(imp.c.good, metaDi(imp.c.qty))}</b> a testa, da spedire entro la fine del ${900 + imp.entro}. Se accettate, la vostra parte la dovete consegnare voi.`,
+        options: [
+          { label: 'Rifiuto', op: 'splitNo', target: imp.id },
+          { label: 'Accetto la mia parte', op: 'splitYes', target: imp.id, primary: true },
+        ],
+      };
+    }
+    const imp = divisibili(st, g)[0];
+    if (!imp) return null;
+    return {
+      title: 'Un contratto conteso fra parenti',
+      body: `Alla fiera avete vinto il contratto di ${contractLine(imp.c)}, a ${imp.price} scudi l'unità, ma lo chiedeva anche ${imp.divisibile!.map(j => `${esc(ps[j].name)} da ${FEUDI[ps[j].feudo]}`).join(' e ')}, vostro parente. Potete offrirgli metà della commessa (${qtyOf(imp.c.good, metaDi(imp.c.qty))} a testa): deciderà nel suo turno. Si decide adesso, prima di spedire.`,
+      options: [
+        { label: 'Tengo tutto il contratto', op: 'splitKeep', target: imp.id },
+        ...imp.divisibile!.map(j => ({ label: `Divido con ${esc(ps[j].name)}`, op: 'splitOffer', target: j, primary: true })),
+      ],
+    };
+  },
+
   act(g, op, data, field): ExtActionResult {
     const p = g.player, st = ms(g);
     switch (op) {
+      case 'splitOffer':
+      case 'splitKeep': {
+        const imp = divisibili(st, g)[0];
+        if (!imp) return { say: '' };
+        const r = splitOffer(g, imp.id, op === 'splitKeep' ? null : Number(data.target));
+        const msg = op === 'splitKeep' ? 'Il contratto resta tutto vostro.' : r.answered === false ? "L'offerta è partita: il vostro parente risponderà nel suo turno." : r.accepted ? 'Il parente ha accettato: la commessa è divisa.' : 'Il parente ha rifiutato: il contratto resta tutto vostro.';
+        return { say: reaction(r, msg, p) };
+      }
+      case 'splitYes':
+      case 'splitNo':
+        return { say: reaction(splitAnswer(g, Number(data.target), op === 'splitYes'), op === 'splitYes' ? 'La vostra parte del contratto è segnata fra i contratti da spedire.' : 'Avete rifiutato la divisione.', p) };
       case 'sellPassing': {
         const good = data.good as Merce, qty = field(`sell-${good}`);
         const r = sellPassing(g, good, qty);

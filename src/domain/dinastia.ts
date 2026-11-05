@@ -12,10 +12,13 @@
  *   e delle terre; città, botteghe e debiti restano all'erede. La parte dei
  *   cadetti cresce con la ricchezza della casata rispetto alle altre: chi è
  *   avanti perde di più, chi è indietro quasi nulla.
- * - La corona d'Italia è elettiva: con il trono vacante, a fine anno i grandi
- *   del regno eleggono il più ricco fra i signori che hanno le condizioni del
- *   trono; la casata dell'ultimo re solo se non c'è nessun altro. Alla morte
- *   del re il trono torna vacante.
+ * - La corona d'Italia è elettiva: con il trono vacante, a fine anno votano
+ *   tutti i signori in gioco, ciascuno con tanti voti quanto il suo rango, fra
+ *   chi ha le condizioni del trono. Ognuno vota per sé, se è candidato; poi
+ *   per chi ha scelto di appoggiare, poi per un parente, poi per il più ricco,
+ *   meglio se non della casata dell'ultimo re; mai per chi l'ha offeso con un
+ *   ripudio. Alla morte del re il trono torna vacante.
+ * - Famiglia e matrimoni: src/domain/famiglia.ts.
  * - Vince la casata con più prestigio: i titoli di ogni generazione, le corone
  *   e la ricchezza dell'ultimo signore.
  *
@@ -24,6 +27,12 @@
  */
 import { INT } from './economy';
 import { livelloOf, UMORE_START, umoreOf } from './gabelle';
+import { dist } from './geography';
+import { FEUDI } from './rank';
+import {
+  casusBelli, erede, etaP, ETA_MAGGIORE, figliInCasa, initFamiglia, muore, nipote, parenti, personaOf,
+  type CasusBelli, type Matrimonio, type Persona, type PropostaNozze,
+} from './famiglia';
 import { rankOf, wealthIndex } from './rank';
 import { Mulberry32 } from './rng';
 import type { GameState, Gender, Player } from './types';
@@ -52,6 +61,10 @@ export interface Generazione {
   re?: true;
   /** fratelli cadetti che hanno avuto parte dell'eredità */
   cadetti?: number;
+  /** la persona (src/domain/famiglia.ts) */
+  persona?: number;
+  /** erede bambino: il consiglio di reggenza governa fino a quest'anno (q) compreso */
+  reggenza?: number;
 }
 
 export interface Casata {
@@ -60,7 +73,17 @@ export interface Casata {
   generazioni: Generazione[];
   /** pericoli corsi dall'ultimo tiro: rischio di morte in più (0..1) */
   pericoli: Partial<Record<Pericolo, number>>;
+  /** prestigio dei matrimoni illustri, meno quello perduto con i ripudi */
+  lustro?: number;
+  /** all'elezione del re la casata appoggia questa casata, se è candidata (assente: sceglie da sé) */
+  appoggio?: number;
+  /** avvisi del notaio di corte già dati (una volta sola per argomento) e quelli da dare */
+  spiegati?: Avviso[];
+  daSpiegare?: Avviso[];
 }
+
+/** Argomenti che il notaio di corte spiega la prima volta che contano. */
+export type Avviso = 'inizio' | 'successione' | 'reggenza' | 'nozze' | 'pericoli' | 'congiura' | 'elezione' | 'ripudiato' | 'trasferimento';
 
 export interface DinastiaState {
   /** anno della fine */
@@ -73,6 +96,12 @@ export interface DinastiaState {
   casaRe?: number;
   /** signori che quest'anno hanno le condizioni del trono (vacante) */
   candidati?: number[];
+  /** famiglia e matrimoni (src/domain/famiglia.ts) */
+  persone?: Persona[];
+  matrimoni?: Matrimonio[];
+  proposte?: PropostaNozze[];
+  casus?: CasusBelli[];
+  nextId?: number;
 }
 
 /** Parte dell'eredità presa dai cadetti, e quello che resta all'erede. */
@@ -86,14 +115,71 @@ export interface Eredita {
 
 export interface Successione {
   morto: string;
+  /** genere del signore morto */
+  gender: Gender;
   causa: CausaMorte;
   eta: number;
   anni: number;
   erede: string;
   etaErede: number;
+  /** l'erede è un figlio o una figlia; nipote: nessun figlio, eredita un parente */
+  rel: 'figlio' | 'figlia' | 'nipote';
+  /** anno (q) di fine della reggenza, se l'erede è un bambino */
+  reggenza?: number;
   eredita: Eredita;
   /** il morto portava la corona: il trono è vacante */
   corona: boolean;
+  /** città libere vicine dove l'erede può trasferirsi, lasciando la città ai fratelli (solo con dei fratelli) */
+  trasferibile?: number[];
+  /** l'erede si è trasferito: la città nuova e ciò che ha lasciato ai fratelli */
+  trasferito?: Trasferimento;
+}
+
+/** L'erede lascia la città ai fratelli e fonda la sua sede in una città libera vicina. */
+export interface Trasferimento {
+  da: number;
+  a: number;
+  acri: number;
+  servi: number;
+  mercati: number;
+  opifici: number;
+  palazzo: number;
+  granai: number;
+}
+
+/** Città libere più vicine fra cui l'erede può scegliere. */
+export const CITTA_VICINE = 2;
+/** Città libere più vicine a quella del signore i (nessun signore in gioco vi risiede). */
+export function cittaLibere(state: GameState, i: number): number[] {
+  const busy = new Set(state.players.filter(p => p.caduto === undefined).map(p => p.feudo));
+  const from = state.players[i].feudo;
+  return FEUDI.map((_, k) => k).filter(k => !busy.has(k)).sort((a, b) => dist(from, a) - dist(from, b)).slice(0, CITTA_VICINE);
+}
+
+/**
+ * L'erede si trasferisce: la città con le sue botteghe, il palazzo, i granai e
+ * le terre oltre le 500 restano ai fratelli; l'erede tiene tutto il tesoro e il
+ * grano (i fratelli rinunciano alla loro parte), e lo seguono i servi delle sue
+ * terre. I debiti restano suoi.
+ */
+export function trasferisci(state: GameState, s: Successione, i: number, citta: number): Trasferimento {
+  const p = state.players[i];
+  p.scudi += s.eredita.scudi;
+  p.grano += s.eredita.grano;
+  const acri = Math.max(0, p.acri - ACRI_BASE);
+  const servi = p.acri > 0 ? INT(Math.max(0, p.servi) * (acri / p.acri)) : 0;
+  const t: Trasferimento = { da: p.feudo, a: citta, acri, servi, mercati: p.mercato - 1, opifici: p.opificio - 1, palazzo: p.palazzo, granai: p.granai ?? 0 };
+  p.acri -= acri;
+  p.servi -= servi;
+  p.mercato = 1;
+  p.opificio = 1;
+  p.palazzo = 0;
+  if (p.granai !== undefined) p.granai = 0;
+  p.feudo = citta;
+  s.eredita = { ...s.eredita, scudi: 0, grano: 0 };
+  s.trasferito = t;
+  delete s.trasferibile;
+  return t;
 }
 
 // ---------------------------------------------------------------- costanti (da tarare con le partite fra bot)
@@ -172,6 +258,7 @@ export function initDinastia(state: GameState): DinastiaState {
     generazioni: [{ nome: p.name, ordinale: 1, nato: state.q - between(d, ETA_FONDATORE), dal: state.q, rango: rankOf(p) }],
     pericoli: {},
   }));
+  initFamiglia(d, state);
   return d;
 }
 
@@ -279,28 +366,61 @@ export function dividiEredita(players: Player[], i: number, cadetti: number): Er
   return { cadetti, scudi, grano, acri, servi };
 }
 
-/** Il signore è morto: gli succede l'erede, che entra subito nel feudo. */
+/** cadetti di un signore morto senza figli: i parenti si contendono l'eredità come due fratelli */
+export const CADETTI_SENZA_FIGLI = 2;
+
+/**
+ * Il signore è morto: gli succede il primogenito rimasto in casa (del genere
+ * del signore, se c'è), o un nipote se non ha figli. Gli altri figli in casa
+ * sono i cadetti che si dividono l'eredità; un erede bambino regna sotto
+ * reggenza fino a 16 anni.
+ */
 export function succedi(state: GameState, d: DinastiaState, i: number, causa: CausaMorte): Successione {
   const p = state.players[i], c = d.casate[i], q = state.q;
   const morto = signoreOf(d, i);
   morto.al = q;
   morto.morte = causa;
   morto.rango = Math.max(morto.rango, rankOf(p));
-  const eta = etaOf(morto, q);
-  const cadetti = cadettiOf(d);
-  morto.cadetti = cadetti;
+  const eta = etaOf(morto, q), gender = p.gender;
   const corona = d.re === i;
   if (corona) d.re = null;
-  const { nome, ordinale } = nomeErede(d, c, p.gender);
-  const etaErede = Math.max(ETA_MIN_EREDE, eta - between(d, DISTACCO_EREDE));
-  const erede: Generazione = { nome, ordinale, nato: q - etaErede, dal: q, rango: rankOf(p) };
-  c.generazioni.push(erede);
+  const famiglia = !!d.persone && morto.persona !== undefined;
+  const figlio = famiglia ? erede(d, i, p.gender) : null;
+  const cadetti = famiglia ? (figlio ? figliInCasa(d, i).length - 1 : CADETTI_SENZA_FIGLI) : cadettiOf(d);
+  morto.cadetti = cadetti;
+  let heir: Generazione, rel: Successione['rel'];
+  if (famiglia) {
+    const x = figlio ?? nipote(d, i, p.gender, q);
+    rel = figlio ? (x.gender === 1 ? 'figlio' : 'figlia') : 'nipote';
+    muore(state, d, morto.persona!);
+    heir = { nome: x.nome, ordinale: ordinaleOf(c, x.nome), nato: x.nato, dal: q, rango: rankOf(p), persona: x.id };
+    // un erede dell'altro genere: i titoli passano al femminile o al maschile
+    if (x.gender !== p.gender) {
+      p.title = rankOf(p) - 1 + x.gender;
+      p.gender = x.gender;
+    }
+    if (etaP(x, q) < ETA_MAGGIORE) heir.reggenza = x.nato + ETA_MAGGIORE - 1;
+  } else {
+    // partite salvate senza famiglia: erede immaginario, come nel passo 1
+    const { nome, ordinale } = nomeErede(d, c, p.gender);
+    heir = { nome, ordinale, nato: q - Math.max(ETA_MIN_EREDE, eta - between(d, DISTACCO_EREDE)), dal: q, rango: rankOf(p) };
+    rel = p.gender === 1 ? 'figlio' : 'figlia';
+  }
+  c.generazioni.push(heir);
   const eredita = dividiEredita(state.players, i, cadetti);
-  p.name = nomeCompleto(erede);
+  // con dei fratelli a cui lasciare la città, l'erede può trasferirsi in una città libera vicina
+  const libere = famiglia && cadetti > 0 && figlio ? cittaLibere(state, i) : [];
+  p.name = nomeCompleto(heir);
   // il popolo spera nel signore nuovo: l'umore torna a metà strada verso quello d'inizio
   if (p.umore !== undefined) p.umore = Math.round((p.umore + UMORE_START) / 2);
-  return { morto: nomeCompleto(morto), causa, eta, anni: q - morto.dal, erede: p.name, etaErede, eredita, corona };
+  return {
+    morto: nomeCompleto(morto), gender, causa, eta, anni: q - morto.dal, erede: p.name, etaErede: q - heir.nato, rel,
+    ...(heir.reggenza !== undefined ? { reggenza: heir.reggenza } : {}), eredita, corona, ...(libere.length ? { trasferibile: libere } : {}),
+  };
 }
+
+/** Il signore regna sotto reggenza quest'anno. */
+export const inReggenza = (d: DinastiaState, i: number, q: number) => (signoreOf(d, i).reggenza ?? -1) >= q;
 
 /** Il giocatore cambia il nome del suo erede (prima di cominciare a regnare). */
 export function rinominaErede(state: GameState, d: DinastiaState, i: number, nome: string): boolean {
@@ -310,6 +430,7 @@ export function rinominaErede(state: GameState, d: DinastiaState, i: number, nom
   c.generazioni.pop();
   const nuovo = { ...g, nome: n, ordinale: ordinaleOf(c, n) };
   c.generazioni.push(nuovo);
+  if (g.persona !== undefined && d.persone) personaOf(d, g.persona).nome = n;
   state.players[i].name = nomeCompleto(nuovo);
   return true;
 }
@@ -330,23 +451,49 @@ export function candidaAlTrono(d: DinastiaState, i: number): boolean {
   return true;
 }
 
-/** Fine anno: i grandi eleggono il più ricco fra i candidati, se possibile di un'altra casata dell'ultimo re. Ritorna l'eletto. */
-export function eleggiRe(state: GameState, d: DinastiaState): number | null {
+/** Per chi vota il signore i fra i candidati c (null: nessuno, se tutti l'hanno offeso con un ripudio). */
+export function votoDi(state: GameState, d: DinastiaState, i: number, c: number[]): number | null {
+  if (c.includes(i)) return i;
+  const ok = c.filter(j => !casusBelli(d, i, j, state.q));
+  if (!ok.length) return null;
+  const a = d.casate[i].appoggio;
+  if (a !== undefined && ok.includes(a)) return a;
+  const richest = (xs: number[]) => xs.reduce((x, y) => (wealthIndex(state.players[y]) > wealthIndex(state.players[x]) ? y : x));
+  const kin = ok.filter(j => parenti(d, i, j));
+  if (kin.length) return richest(kin);
+  const others = ok.filter(j => j !== d.casaRe);
+  return richest(others.length ? others : ok);
+}
+
+export interface Elezione {
+  re: number;
+  /** voti per candidato */
+  voti: Record<number, number>;
+}
+
+/** Fine anno con il trono vacante: votano tutti i signori in gioco, ciascuno con il suo rango. A pari voti, il più ricco. */
+export function eleggiRe(state: GameState, d: DinastiaState): Elezione | null {
   const c = (d.candidati ?? []).filter(i => state.players[i].caduto === undefined);
   delete d.candidati;
   if (d.re !== null || !c.length) return null;
-  const others = c.filter(i => i !== d.casaRe);
-  const pool = others.length ? others : c;
-  const re = pool.reduce((a, b) => (wealthIndex(state.players[b]) > wealthIndex(state.players[a]) ? b : a));
+  const voti: Record<number, number> = Object.fromEntries(c.map(j => [j, 0]));
+  state.players.forEach((p, i) => {
+    if (p.caduto !== undefined) return;
+    const v = votoDi(state, d, i, c);
+    if (v !== null) voti[v] += rankOf(p);
+  });
+  const re = c.reduce((a, b) => (voti[b] > voti[a] || (voti[b] === voti[a] && wealthIndex(state.players[b]) > wealthIndex(state.players[a])) ? b : a));
   d.re = re;
   d.casaRe = re;
   signoreOf(d, re).re = true;
-  return re;
+  return { re, voti };
 }
 
 export interface Prestigio {
   titoli: number;
   corone: number;
+  /** matrimoni illustri, meno i ripudi */
+  nozze: number;
   ricchezza: number;
   totale: number;
 }
@@ -357,7 +504,8 @@ export function prestigioOf(d: DinastiaState, i: number, p: Player): Prestigio {
   const titoli = gens.reduce((a, g, k) => a + PRESTIGIO_RANGO[(k === gens.length - 1 && p.caduto === undefined ? Math.max(g.rango, rankOf(p)) : g.rango) - 1], 0);
   const corone = gens.filter(g => g.re).length * PRESTIGIO_RE;
   const ricchezza = p.caduto === undefined ? Math.round(Math.sqrt(Math.max(0, wealthIndex(p))) / PRESTIGIO_RICCHEZZA) : 0;
-  return { titoli, corone, ricchezza, totale: titoli + corone + ricchezza };
+  const nozze = d.casate[i].lustro ?? 0;
+  return { titoli, corone, nozze, ricchezza, totale: titoli + corone + nozze + ricchezza };
 }
 
 /** Casata con più prestigio (a pari prestigio, la prima). */

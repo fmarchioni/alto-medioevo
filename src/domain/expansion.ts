@@ -50,6 +50,10 @@ export interface ExpansionRules {
   usuryExtra?(g: Game): number;
   /** moltiplicatore dell'usura per il signore di turno (assente: 1) */
   usuryScale?(g: Game): number;
+  /** Dinastia: l'erede del signore i ha lasciato la città `da` ai fratelli (mura, vigneti e assedi restano là) */
+  onTrasferimento?(g: Game, i: number, da: number): void;
+  /** Dinastia: i signori i e j sono in guerra (nessuna nozze fra loro finché dura) */
+  ostili?(g: Game, i: number, j: number): boolean;
   /** tutti i signori hanno giocato l'anno 900 + q (prima che q avanzi) */
   onYearClose?(g: Game): void;
   /** signori del computer: azioni dell'espansione prima della Delibera */

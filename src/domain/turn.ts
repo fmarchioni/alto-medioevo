@@ -20,8 +20,13 @@ import {
 import { Mulberry32 } from './rng';
 import { canInvestTimes, invest, roomFor, type InvestmentKind } from './investments';
 import { bottino, cartaInMano, COMPLICE_CHANCE, IMPRESA_SUCCESSO, impresaOfEvent, multa, scadenza, silenzioDal } from './imprese';
-import { calculateVassalTribute, DEBITO_ARRESTO, endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
-import { addPericolo, annotaRango, candidaAlTrono, casataVincitrice, eleggiRe, initDinastia, rinominaErede, RISCHIO_BATTAGLIA, RISCHIO_RIVOLTA, rollMorte, signoreOf, succedi, type Pericolo, type Successione } from './dinastia';
+import { calculateVassalTribute, DEBITO_ARRESTO, FEUDI, endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
+import {
+  accettaNozze, annoFamiglia, casusBelli, celebra, doteCasata, doteForestiera, nozzeBlock, parenti, personaOf, REGGENZA_QUOTA, ripudia, ripudiabili, signoreP, type Sposo,
+} from './famiglia';
+import { cittaLibere, rischioCongiura, trasferisci, type Avviso } from './dinastia';
+import { sposabili } from './famiglia';
+import { addPericolo, annotaRango, candidaAlTrono, casataVincitrice, eleggiRe, initDinastia, inReggenza, prestigioOf, rinominaErede, RISCHIO_BATTAGLIA, RISCHIO_RIVOLTA, rollMorte, signoreOf, succedi, type Pericolo, type Successione } from './dinastia';
 import { RIOT_EVENT } from './gabelle';
 import type { Rng } from './rng';
 import type { ActionResult, BotLevel, ChronicleFact, GameState, Gender, Options, Player, Strategia } from './types';
@@ -36,7 +41,8 @@ export interface NewPlayer {
   strategia?: Strategia;
 }
 
-export const MAX_PLAYERS = 9;
+/** al più 8 signori: con 9 città ne resta sempre almeno una libera */
+export const MAX_PLAYERS = 8;
 
 /** Riga 80: stato iniziale di ogni signore. */
 export function createPlayer(np: NewPlayer, feudo: number): Player {
@@ -80,7 +86,7 @@ export class Game {
     if (options.fazioni) {
       let h = 2166136261;
       for (const v of [...rng.getState(), players.length, 0xfa210]) h = Math.imul(h ^ v, 16777619) >>> 0;
-      const r = new Mulberry32(h), all = [...Array(MAX_PLAYERS).keys()];
+      const r = new Mulberry32(h), all = [...Array(FEUDI.length).keys()];
       for (let i = all.length - 1; i > 0; i--) {
         const j = Math.floor(r.next() * (i + 1));
         [all[i], all[j]] = [all[j], all[i]];
@@ -110,7 +116,10 @@ export class Game {
     };
     if (state.options.annate) state.annate = initAnnate(state);
     if (state.options.fatti) state.fatti = initFatti(state, state.options.fatti);
-    if (state.options.dinastia) state.dinastia = initDinastia(state);
+    if (state.options.dinastia) {
+      state.dinastia = initDinastia(state);
+      state.players.forEach((_, i) => state.dinastia!.casate[i] && (state.dinastia!.casate[i].daSpiegare = state.players[i].bot ? [] : ['inizio']));
+    }
     if (rules) {
       state.expansion = rules.id;
       state.ext = rules.init(state);
@@ -225,17 +234,190 @@ export class Game {
   private deathAtTurnStart(): Successione | null {
     const st = this.state, d = st.dinastia;
     if (!d) return null;
+    // nascite e lutti in famiglia, prima del tiro del signore
+    if (d.persone) for (const f of annoFamiglia(st, d, st.current)) this.record({ t: 'famiglia', ...f });
+    // il notaio di corte avverte quando una regola della Dinastia comincia a contare
+    if (rischioCongiura(this.player) > 0) this.spiega(st.current, 'congiura');
+    if (d.persone && (sposabili(d, st.current, st.q).length || (d.proposte ?? []).some(x => x.a === st.current))) this.spiega(st.current, 'nozze');
     const causa = rollMorte(d, st.current, this.player, st.q);
     if (!causa) return null;
     const s = succedi(st, d, st.current, causa);
-    this.record({ t: 'successione', morto: s.morto, causa, eta: s.eta, anni: s.anni, erede: s.erede, cadetti: s.eredita.cadetti, scudi: s.eredita.scudi, acri: s.eredita.acri, corona: s.corona });
+    this.record({ t: 'successione', morto: s.morto, gender: s.gender, rel: s.rel, causa, eta: s.eta, anni: s.anni, erede: s.erede, cadetti: s.eredita.cadetti, scudi: s.eredita.scudi, acri: s.eredita.acri, corona: s.corona });
     this.log(`muore ${s.morto} (${causa}): gli succede ${s.erede}`);
+    if (s.reggenza !== undefined) this.record({ t: 'famiglia', k: 'reggenza', chi: s.erede });
+    this.spiega(st.current, 'successione');
+    if (s.trasferibile) this.spiega(st.current, 'trasferimento');
+    if (s.reggenza !== undefined) this.spiega(st.current, 'reggenza');
     return s;
+  }
+
+  // ---------- avvisi del notaio di corte (una volta sola per argomento e per casata)
+
+  /** Mette in coda l'avviso, se la casata è di un giocatore e non l'ha già avuto. */
+  spiega(i: number, a: Avviso): void {
+    const c = this.state.dinastia?.casate[i];
+    if (!c || this.state.players[i].bot || c.spiegati?.includes(a) || c.daSpiegare?.includes(a)) return;
+    (c.daSpiegare ??= []).push(a);
+  }
+
+  /** Il prossimo avviso per il signore di turno; lo segna come dato. */
+  prossimoAvviso(): Avviso | null {
+    const c = this.state.dinastia?.casate[this.state.current];
+    const a = c?.daSpiegare?.shift();
+    if (!c || !a) return null;
+    (c.spiegati ??= []).push(a);
+    return a;
+  }
+
+  /** L'erede lascia la città ai fratelli e si trasferisce in una città libera vicina (nella pagina della successione). */
+  trasferisciErede(citta: number): ActionResult {
+    this.expect('successione');
+    const st = this.state, ph = st.phase as Extract<GameState['phase'], { kind: 'successione' }>;
+    if (!ph.s.trasferibile?.includes(citta) || !cittaLibere(st, st.current).includes(citta)) return { ok: false, reason: 'scegliete una delle città libere vicine' };
+    const t = trasferisci(st, ph.s, st.current, citta);
+    this.rules?.onTrasferimento?.(this, st.current, t.da);
+    this.record({ t: 'famiglia', k: 'trasferimento', chi: this.player.name, citta, da: t.da });
+    this.log(`lascia ${FEUDI[t.da]} ai fratelli e si trasferisce a ${FEUDI[citta]}`);
+    return { ok: true };
+  }
+
+  // ---------- nozze e ripudi (src/domain/famiglia.ts)
+
+  /** Le casate i e j sono imparentate (Dinastia). */
+  parenti(i: number, j: number): boolean {
+    return !!this.state.dinastia?.persone && parenti(this.state.dinastia, i, j);
+  }
+
+  /** La casata i ha un casus belli contro j: j ha ripudiato qualcuno dei suoi (Dinastia). */
+  casusBelli(i: number, j: number): boolean {
+    return !!this.state.dinastia?.persone && casusBelli(this.state.dinastia, i, j, this.state.q);
+  }
+
+  private dinastiaPhase(): ActionResult | null {
+    const d = this.state.dinastia, k = this.state.phase.kind;
+    if (!d?.persone) return { ok: false, reason: 'solo nella Dinastia' };
+    if (k !== 'commercio' && k !== 'investimenti') return { ok: false, reason: 'le nozze si combinano nella Delibera o nei dispendimenti' };
+    return null;
+  }
+
+  /** Perché il membro `membro` della casata di turno non può sposare `con` (null: può). */
+  nozzeBlock(membro: number, con: Sposo): string | null {
+    const d = this.state.dinastia;
+    if (!d?.persone) return 'solo nella Dinastia';
+    const st = this.state, x = personaOf(d, membro);
+    const b = nozzeBlock(st, d, st.current, x, con);
+    if (b) return b;
+    if (con.k === 'casata') {
+      const j = personaOf(d, con.id).casa;
+      if (this.rules?.ostili?.(this, st.current, j)) return `siete in guerra con ${st.players[j].name}: prima fate la pace`;
+    }
+    return null;
+  }
+
+  /**
+   * Nozze: con una fazione o con la nobiltà del luogo si celebrano subito; con
+   * un'altra casata è una proposta, a cui un signore del computer risponde
+   * subito e un giocatore nel suo turno.
+   */
+  proponiNozze(membro: number, con: Sposo): ActionResult & { answered?: boolean; accepted?: boolean } {
+    const no = this.dinastiaPhase();
+    if (no) return no;
+    const b = this.nozzeBlock(membro, con);
+    if (b) return { ok: false, reason: b };
+    const st = this.state, d = st.dinastia!, me = st.current, x = personaOf(d, membro);
+    if (con.k !== 'casata') {
+      const m = celebra(st, d, me, x, con);
+      this.record({ t: 'famiglia', k: 'nozze', chi: x.nome, con: m.nomeCon, ...(con.k === 'fazione' ? { fazione: con.f } : {}), dote: x.gender === 1 ? m.dote : -m.dote });
+      this.log(`${x.nome} sposa ${m.nomeCon}`);
+      return { ok: true, answered: true, accepted: true };
+    }
+    const y = personaOf(d, con.id), j = y.casa;
+    const prop = { id: (d.nextId = (d.nextId ?? 0) + 1), da: me, a: j, mio: x.id, suo: y.id, q: st.q };
+    const other = st.players[j];
+    if (!other.bot) {
+      (d.proposte ??= []).push(prop);
+      this.log(`propone le nozze di ${x.nome} con ${y.nome}`);
+      return { ok: true, answered: false };
+    }
+    const yes = accettaNozze(st, d, prop, other.bot, i => prestigioOf(d, i, st.players[i]).totale);
+    this.settleNozze(prop, yes);
+    return { ok: true, answered: true, accepted: yes };
+  }
+
+  /** Il signore di turno risponde a una proposta di nozze ricevuta. */
+  rispondiNozze(id: number, accetta: boolean): ActionResult {
+    const no = this.dinastiaPhase();
+    if (no) return no;
+    const d = this.state.dinastia!, prop = (d.proposte ?? []).find(x => x.id === id && x.a === this.state.current);
+    if (!prop) return { ok: false, reason: 'nessuna proposta di nozze' };
+    return this.settleNozze(prop, accetta);
+  }
+
+  private settleNozze(prop: { id?: number; da: number; a: number; mio: number; suo: number }, yes: boolean): ActionResult {
+    const st = this.state, d = st.dinastia!;
+    d.proposte = (d.proposte ?? []).filter(x => x.id !== prop.id);
+    const x = personaOf(d, prop.mio), y = personaOf(d, prop.suo);
+    const block = nozzeBlock(st, d, prop.da, x, { k: 'casata', id: y.id }) && 'nozze non più possibili';
+    if (!yes || block || st.players[prop.da].caduto !== undefined || st.players[prop.a].caduto !== undefined) {
+      this.note(prop.da, { t: 'famiglia', k: 'rifiuto', chi: x.nome, con: y.nome, casa: prop.a });
+      return yes && block ? { ok: false, reason: block } : { ok: true };
+    }
+    const m = celebra(st, d, prop.da, x, { k: 'casata', id: y.id });
+    const groomFrom = x.gender === 1 ? prop.da : prop.a;
+    this.note(prop.da, { t: 'famiglia', k: 'nozze', chi: x.nome, con: y.nome, casa: prop.a, dote: groomFrom === prop.da ? m.dote : -m.dote });
+    this.note(prop.a, { t: 'famiglia', k: 'nozze', chi: y.nome, con: x.nome, casa: prop.da, dote: groomFrom === prop.a ? m.dote : -m.dote });
+    st.log.push(`${this.year} · ${st.players[prop.da].name}: ${x.nome} sposa ${y.nome}`);
+    return { ok: true };
+  }
+
+  /** Dote che la casata di turno pagherebbe (o riceverebbe) sposando `con`. */
+  doteNozze(membro: number, con: Sposo): number {
+    const st = this.state, d = st.dinastia!, x = personaOf(d, membro);
+    if (con.k === 'casata') {
+      const j = personaOf(d, con.id).casa;
+      return x.gender === 6 ? -doteCasata(st, st.current) : doteCasata(st, j);
+    }
+    return doteForestiera(con, x, st.q);
+  }
+
+  /** La casata di turno ripudia un matrimonio: dote restituita, prestigio perduto, casus belli all'offeso. */
+  ripudia(matrimonio: number): ActionResult {
+    const no = this.dinastiaPhase();
+    if (no) return no;
+    const st = this.state, d = st.dinastia!, me = st.current;
+    const m = ripudiabili(d, me).find(x => x.id === matrimonio);
+    if (!m) return { ok: false, reason: 'nessun matrimonio da ripudiare' };
+    const r = ripudia(st, d, me, m);
+    this.record({ t: 'famiglia', k: 'ripudio', chi: r.chi, con: r.coniuge, ...(r.offesa !== null ? { casa: r.offesa } : {}), ...(r.fazione ? { fazione: r.fazione } : {}), dote: r.dote });
+    if (r.offesa !== null) {
+      this.note(r.offesa, { t: 'famiglia', k: 'ripudiato', chi: r.coniuge, con: r.chi, casa: me });
+      this.spiega(r.offesa, 'ripudiato');
+    }
+    this.log(`${r.chi} ripudia ${r.coniuge}`);
+    return { ok: true };
+  }
+
+  /** All'elezione del re la casata di turno appoggia la casata j (undefined: sceglie da sé). */
+  appoggia(j: number | undefined): ActionResult {
+    const d = this.state.dinastia;
+    if (!d) return { ok: false, reason: 'solo nella Dinastia' };
+    if (j !== undefined && (j === this.state.current || !this.state.players[j] || this.state.players[j].caduto !== undefined)) return { ok: false, reason: 'scegliete un altro signore in gioco' };
+    if (j === undefined) delete d.casate[this.state.current].appoggio;
+    else d.casate[this.state.current].appoggio = j;
+    return { ok: true };
+  }
+
+  /** Il signore di turno (persona), per le viste. */
+  get signore() {
+    const d = this.state.dinastia;
+    return d?.persone ? signoreP(d, this.state.current) : null;
   }
 
   /** Il signore corre un pericolo (battaglia, rivolta): il rischio di morte cresce fino al prossimo tiro. Senza Dinastia non fa nulla. */
   pericolo(i: number, kind: Pericolo, rischio: number): void {
-    if (this.state.dinastia) addPericolo(this.state.dinastia, i, kind, rischio);
+    if (!this.state.dinastia) return;
+    addPericolo(this.state.dinastia, i, kind, rischio);
+    this.spiega(i, 'pericoli');
   }
 
   /** Dopo la successione comincia il turno dell'erede; il giocatore può dargli un altro nome. */
@@ -255,9 +437,11 @@ export class Game {
 
   /** Fine anno con il trono vacante: i grandi del regno eleggono il re fra i candidati. */
   private electKing(): void {
-    const re = eleggiRe(this.state, this.state.dinastia!);
-    if (re === null) return;
-    this.note(re, { t: 'corona' });
+    const e = eleggiRe(this.state, this.state.dinastia!);
+    if (e === null) return;
+    this.state.players.forEach((_, i) => this.spiega(i, 'elezione'));
+    const re = e.re;
+    this.note(re, { t: 'corona', voti: Object.entries(e.voti).map(([k, v]) => [Number(k), v] as [number, number]) });
     this.state.log.push(`${this.year} · ${this.state.players[re].name}: è eletto re d'Italia`);
   }
 
@@ -685,6 +869,12 @@ export class Game {
     const tribute = this.state.options.vassalTributeCredited ? this.player.vassalli : 0;
     collectRendite(this.player, ph.preview, this.state.options);
     this.record({ t: 'income', amount: ph.preview.totale, tribute });
+    // Dinastia: il consiglio di reggenza di un erede bambino trattiene parte della rendita
+    const din = this.state.dinastia;
+    if (din && inReggenza(din, this.state.current, this.state.q) && ph.preview.totale > 0) {
+      const amount = INT(ph.preview.totale * REGGENZA_QUOTA);
+      this.player.scudi -= amount;
+    }
     this.rules?.onIncome?.(this, ph.preview.totale);
     this.log(`incassa ${ph.preview.totale} scudi di rendita`);
     // protettorato bizantino: una parte della rendita va al governatore imperiale
@@ -799,15 +989,16 @@ export class Game {
       if (lost.over + lost.rot > 0) this.record({ t: 'granaio', ...lost });
     }
     this.rules?.beforeYearEnd?.(this);
-    const end = endOfPlayerYear(st.players, st.current, st.scalars, this.rules?.usuryScale?.(this) ?? 1, !!st.options.pignoramenti, victoryRule(st.options));
+    const kin = st.dinastia?.persone ? (a: number, b: number) => parenti(st.dinastia!, a, b) : undefined;
+    const end = endOfPlayerYear(st.players, st.current, st.scalars, this.rules?.usuryScale?.(this) ?? 1, !!st.options.pignoramenti, victoryRule(st.options), kin);
     // Dinastia: il trono non chiude la partita; chi ne ha le condizioni, a trono vacante, è candidato all'elezione di fine anno
     const din = st.dinastia;
     if (din) {
       annotaRango(din, st.current, p);
       if (end.won) {
         end.won = false;
-        end.tribute = calculateVassalTribute(st.players, st.current);
-        candidaAlTrono(din, st.current);
+        end.tribute = calculateVassalTribute(st.players, st.current, kin);
+        if (candidaAlTrono(din, st.current)) this.spiega(st.current, 'elezione');
       }
     }
     // con più signori chi supera la soglia attende la fine dell'anno: se sono più d'uno, vince il più ricco

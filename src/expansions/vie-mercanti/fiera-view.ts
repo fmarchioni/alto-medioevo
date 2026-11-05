@@ -54,6 +54,9 @@ export function fairDispatchText(d: FieraDispatch, st: GameState): string {
     case 'vinoScoperto': return `A ${piazzaName(d.c)} un mercante ha assaggiato il vostro vino e lo ha trovato annacquato! ${committente(d.c)} non pagano nulla e vi chiedono una multa di <b>${n(d.multa)} scudi</b>. Prestigio mercantile ${signed(d.prestigio)}, e alle fiere non vi vogliono fino al ${yearOf(d.fino)}.`;
     case 'consoleScoperto': return `Si è saputo che avevate comprato il console per il contratto di ${contractLine(d.c)}! Niente contratto, prestigio mercantile ${signed(d.prestigio)}, e alle fiere non vi vogliono fino al ${yearOf(d.fino)}.`;
     case 'consoleFatto': return `Il console ha fatto il suo lavoro: il contratto di ${contractLine(d.c)} è vostro al prezzo base.`;
+    case 'divisioneOfferta': return `${P(d.da)}, vostro parente, ha vinto il contratto di ${contractLine(d.c)} che chiedevate anche voi, e vi offre di dividerlo: ${qtyOf(d.c.good, d.qty)} a testa.`;
+    case 'divisioneFatta': return `Il contratto di ${committente(d.c)} è diviso con ${P(d.con)}: a voi ${qtyOf(d.c.good, d.qty)}, da spedire entro la fine del ${yearOf(d.entro)}.`;
+    case 'divisioneRifiutata': return `${P(d.da)} non ha voluto dividere con voi il contratto di ${contractLine(d.c)}: lo spedite tutto voi.`;
     case 'fieraMancata': return `Non avete consegnato ${qtyOf(d.c.good, d.manca)} promessi a ${committente(d.c)}: pagate una penale di <b>${n(d.penale)} scudi</b>. Prestigio mercantile ${signed(d.prestigio)}.`;
   }
 }
@@ -70,6 +73,9 @@ export function fairDispatchHead(d: FieraDispatch): { from: string; title: strin
     case 'vinoScoperto': return { from: `da ${piazzaName(d.c)}`, title: 'Vino annacquato!' };
     case 'consoleScoperto': return { from: 'dalla fiera', title: 'Il console ha parlato' };
     case 'consoleFatto': return { from: 'dalla fiera', title: 'Il console comprato' };
+    case 'divisioneOfferta': return { from: 'da un parente', title: 'Un contratto da dividere' };
+    case 'divisioneFatta': return { from: 'dalla fiera', title: 'Contratto diviso' };
+    case 'divisioneRifiutata': return { from: 'da un parente', title: 'Divisione rifiutata' };
   }
 }
 
@@ -155,6 +161,7 @@ export function fairChronicle(kind: string, d: Record<string, number>): string |
     case 'fairWin': return `Vinse alla fiera ${d.diviso > 1 ? `una parte ${d.speciale ? 'del contratto speciale' : 'di un contratto'}, diviso in ${d.diviso}` : d.speciale ? 'il contratto speciale' : 'un contratto'}: ${qtyOf(good, d.qty)} per ${piazza}, a ${d.price} scudi l'unità.`;
     case 'fairShip': return `Spedì a ${piazza} ${qtyOf(good, d.qty)}.`;
     case 'fairPaid': return `Da ${piazza} giunse il pagamento di ${qtyOf(good, d.qty)}: ${n(d.gain)} scudi.`;
+    case 'fairSplit': return `${d.gave ? 'Divise con una casata parente il contratto vinto alla fiera' : 'Ebbe da una casata parente metà di un contratto della fiera'}: ${n(d.qty)} unità a testa.`;
     case 'fairFail': return `Mancò alla parola data ai mercanti forestieri: ${qtyOf(good, d.manca)} mai spediti, ${n(d.penale)} scudi di penale.`;
   }
   return null;

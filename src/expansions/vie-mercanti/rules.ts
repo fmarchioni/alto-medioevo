@@ -42,6 +42,7 @@ import { Mulberry32 } from '../../domain/rng';
 import {
   arrivals, bidOf, bribeConsole, committed, CONSOLE_COSTO, FASCE, SPECIALE, deadlines, fairOpen, isFairYear, joinFair as joinFairOf, makeFair, placeBid, promised, QUOTE, resolveFair, ship,
   impegniOf, visibleTo, type FairCtx, type FieraDispatch, type FieraState,
+  answerSplit, divisibili, divisioniA, expireSplits, metaDi, offerSplit, type Divisione, type Impegno,
 } from './fiera';
 import { travelYears } from './geografia';
 import {
@@ -345,6 +346,31 @@ function fairCtx(g: Game): FairCtx {
 export const joinFair = (g: Game, tier: number) => joinFairOf(fairCtx(g), tier);
 export const bid = (g: Game, contract: number, price: number) => placeBid(fairCtx(g), contract, price);
 export const shipContract = (g: Game, id: number, qty: number) => ship(fairCtx(g), id, qty);
+
+/** Un parente guidato dal computer accetta metà del contratto se ha già in magazzino la merce (il facile anche a caso). */
+function botAcceptsSplit(g: Game, d: Divisione, imp: Impegno): boolean {
+  const bot = g.state.players[d.a].bot, have = ms(g).cantine[d.a][imp.c.good];
+  if (have >= metaDi(imp.c.qty)) return true;
+  return bot === 'facile' && roll(ms(g))() < 0.5;
+}
+
+/** Dinastia: il vincitore offre metà del contratto al parente `to` (null: lo tiene tutto). */
+export function splitOffer(g: Game, id: number, to: number | null) {
+  return offerSplit(fairCtx(g), id, to, to !== null && g.state.players[to].bot ? (d, imp) => botAcceptsSplit(g, d, imp) : undefined);
+}
+/** Dinastia: il parente risponde all'offerta di divisione. */
+export const splitAnswer = (g: Game, impegno: number, yes: boolean) => answerSplit(fairCtx(g), impegno, yes);
+export { divisibili, divisioniA };
+
+/** Il vincitore guidato dal computer divide il contratto se da solo non ha merce per tutto, e lo tiene altrimenti. */
+function botSplit(c: BotCtx): void {
+  const { g, log } = c, st = ms(g), cant = cantinaOf(g);
+  for (const imp of divisibili(st, g)) {
+    const to = imp.divisibile![0];
+    const r = splitOffer(g, imp.id, cant[imp.c.good] >= imp.c.qty ? null : to);
+    if (r.ok && r.answered !== undefined) log.push(`offre di dividere il contratto con un parente${r.answered ? (r.accepted ? ': accettato' : ': rifiutato') : ''}`);
+  }
+}
 
 // ---------------------------------------------------------------- consumi
 
@@ -771,14 +797,23 @@ export const rules: ExpansionRules = {
     return { ok: true };
   },
 
+  // Dinastia: l'erede si trasferisce: i vigneti restano ai fratelli, la merce in magazzino lo segue
+  onTrasferimento(g, i) {
+    const c = ms(g).cantine[i], p = g.state.players[i];
+    p.beni = Math.max(0, (p.beni ?? 0) - c.vigneti * VIGNETO_COST);
+    c.vigneti = 0;
+  },
+
   // fine dell'anno di tutti: si chiude la fiera e si bandisce la prossima
   onYearClose(g) {
     const st = ms(g);
+    expireSplits(st, g.state.q);
     resolveFair(fairCtx(g), () => st.nextId++);
     if (isFairYear(g.state.q + 1)) st.fiera = makeFair(roll(st), g.state.q + 1, () => st.nextId++, g.state.players.length);
   },
 
   botSignori(c) {
+    botSplit(c);
     botImprese(c);
     botBorrow(c);
     botShip(c);

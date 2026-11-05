@@ -337,9 +337,14 @@ export type ChronicleFact =
   /** bancarotta: arrestato a fine anno per i debiti */
   | { t: 'bancarotta'; scudi: number }
   /** Dinastia: morte del signore e successione dell'erede */
-  | { t: 'successione'; morto: string; causa: CausaMorte; eta: number; anni: number; erede: string; cadetti: number; scudi: number; acri: number; corona: boolean }
-  /** Dinastia: incoronato re d'Italia a trono vacante */
-  | { t: 'corona' }
+  | { t: 'successione'; morto: string; gender?: Gender; rel?: 'figlio' | 'figlia' | 'nipote'; causa: CausaMorte; eta: number; anni: number; erede: string; cadetti: number; scudi: number; acri: number; corona: boolean }
+  /** Dinastia: eletto re d'Italia a trono vacante; voti: [candidato, voti] */
+  | { t: 'corona'; voti?: [number, number][] }
+  /** Dinastia: fatti della famiglia (nascite, lutti, nozze, ripudi) */
+  | {
+      t: 'famiglia'; k: 'nascita' | 'lutto' | 'nozze' | 'ripudio' | 'ripudiato' | 'rifiuto' | 'reggenza' | 'trasferimento';
+      chi: string; con?: string; casa?: number; fazione?: FactionId; dote?: number; rel?: string; gender?: Gender; citta?: number; da?: number;
+    }
   /** sensale di piazza assoldato per l'anno */
   | { t: 'sensale'; who: SensaleId; cost: number }
   | {

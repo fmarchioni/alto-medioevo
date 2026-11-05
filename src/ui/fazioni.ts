@@ -7,7 +7,7 @@
  */
 import {
   ACCORDI_MARKET_BONUS, bribeCost, DEVASTATION_HARVEST_LOSS, FACTION_EVENT, factionOfEvent, marriageCost, PROTETTORATO_TRADE_BONUS,
-  PROTETTORATO_TRIBUTE, tributeCost, VASSALLO_HARVEST_TAX, type Defense, type FactionId, type FactionOption, type Pact, type PactKind,
+  PACT_YEARS, PROTETTORATO_TRIBUTE, tributeCost, VASSALLO_HARVEST_TAX, type Defense, type FactionId, type FactionOption, type Pact, type PactKind,
 } from '../domain/fazioni';
 import type { ChronicleFact, EventOutcome, Player } from '../domain/types';
 import { honorific } from './advisor';
@@ -185,7 +185,7 @@ export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0
   const tribute = Math.min(cap, tributeCost(p, f));
   const chance = pct(winP);
   const fight = (label: string, risk: string) => ({ label, emblem: '⚔', sub: `vittoria ${chance} circa: bottino e meno attacchi per 6 anni. Se perdete: ${risk}` });
-  const yrs = (k: PactKind) => ({ respinti: 6, tributari: 5, matrimonio: 8, vassallo: 8, protettorato: 8, corrotti: 4, accordi: 8, devastati: 3 }[k]);
+  const yrs = (k: PactKind) => PACT_YEARS[k];
   switch (opt) {
     case 'combattere':
       return f === 'franchi'
@@ -232,6 +232,8 @@ export function pactText(x: Pact): string {
     case 'corrotti': return `Il governatore bizantino è stato comprato (${until})`;
     case 'accordi': return `Accordi con i Saraceni: mercati +${pct(ACCORDI_MARKET_BONUS)}, ma più incursioni (${until})`;
     case 'devastati': return `Campi devastati dagli Ungari: raccolto -${pct(DEVASTATION_HARVEST_LOSS)} (${until})`;
+    case 'parentela': return `Parentela con ${the}: non vi attaccano più, ma le loro rivali vengono più spesso (finché vivono gli sposi)`;
+    case 'vendetta': return `${cap(the)} vendicano il ripudio: attaccano molto più spesso (${until})`;
   }
 }
 

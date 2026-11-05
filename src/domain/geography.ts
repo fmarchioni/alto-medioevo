@@ -15,7 +15,7 @@ export const FEUDO_POS: readonly [number, number][] = [
   [460, 640], // Panormus (in Sicilia)
 ];
 
-const dist = (a: number, b: number) => Math.hypot(FEUDO_POS[a][0] - FEUDO_POS[b][0], FEUDO_POS[a][1] - FEUDO_POS[b][1]);
+export const dist = (a: number, b: number) => Math.hypot(FEUDO_POS[a][0] - FEUDO_POS[b][0], FEUDO_POS[a][1] - FEUDO_POS[b][1]);
 
 /**
  * Confini fra i feudi in gioco: ciascuno confina con i due più vicini fra

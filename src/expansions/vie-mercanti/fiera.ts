@@ -17,6 +17,10 @@
  *   di scadenza la carovana parte da sola con quello che c'è in magazzino).
  *   Si incassa all'arrivo: chi arriva in ritardo è pagato un decimo in meno,
  *   la merce perduta non si paga, e chi non consegna paga una penale.
+ * - Dinastia: un contratto conteso solo fra parenti si può dividere. Il
+ *   vincitore, nel suo primo turno dopo la fiera, può offrire metà della
+ *   commessa a un parente che l'aveva chiesta; l'offerta vale solo se il
+ *   parente gioca dopo di lui (così fa in tempo a spedire), e va accettata.
  */
 import { INT } from '../../domain/economy';
 import type { Game } from '../../domain/turn';
@@ -125,6 +129,8 @@ export interface Impegno {
   price: number;
   /** ultimo anno (q) per spedire */
   entro: number;
+  /** Dinastia: parenti (che giocano dopo il vincitore) con cui si può dividere il contratto, finché il vincitore non decide */
+  divisibile?: number[];
   /** la carovana partita */
   spedito?: { q: number; qty: number; arrive: number; previsti: number; perse: number; evento?: EventoViaggio; annacquato?: boolean };
 }
@@ -137,7 +143,12 @@ export interface FieraState extends MerciState {
   annacqua?: number[];
   /** escluso dalle fiere fino all'anno (q) compreso */
   esclusi?: number[];
+  /** Dinastia: divisioni offerte a un parente, in attesa della risposta (valgono fino alla fine dell'anno) */
+  divisioni?: Divisione[];
 }
+
+/** Il vincitore `da` offre al parente `a` metà del contratto `impegno`. */
+export interface Divisione { impegno: number; da: number; a: number; q: number }
 
 /** Il signore è escluso dalla fiera dell'anno q. */
 export const excluded = (st: FieraState, i: number, q: number) => (st.esclusi?.[i] ?? -1) >= q;
@@ -159,7 +170,11 @@ export type FieraDispatch =
   | { k: 'vinoScoperto'; c: Contratto; multa: number; prestigio: number; fino: number }
   /** il console comprato: si è saputo, o ha fatto il suo lavoro */
   | { k: 'consoleScoperto'; c: Contratto; prestigio: number; fino: number }
-  | { k: 'consoleFatto'; c: Contratto };
+  | { k: 'consoleFatto'; c: Contratto }
+  /** Dinastia: un parente offre di dividere il contratto; la divisione accettata o rifiutata */
+  | { k: 'divisioneOfferta'; c: Contratto; da: number; qty: number }
+  | { k: 'divisioneFatta'; c: Contratto; con: number; qty: number; entro: number }
+  | { k: 'divisioneRifiutata'; c: Contratto; da: number };
 
 /** Ciò che la fiera chiede alle regole dell'espansione. */
 export interface FairCtx {
@@ -320,8 +335,11 @@ export function resolveFair(c: FairCtx, nextId: () => number): Impegno[] {
     if (!wins.length) continue;
     const share: Contratto = wins.length > 1 ? { ...k, qty: Math.ceil(k.qty / wins.length) } : k;
     const soci = wins.map(w => w.player);
+    // Dinastia: conteso solo fra parenti, il contratto si potrà dividere con chi gioca dopo il vincitore
+    const others = bids.filter(b => !wins.includes(b)).map(b => b.player);
+    const kin = wins.length === 1 && others.length && others.every(j => g.parenti(wins[0].player, j)) ? [...new Set(others.filter(j => j > wins[0].player))] : [];
     for (const win of wins) {
-      const imp: Impegno = { id: nextId(), player: win.player, c: share === k ? k : { ...share }, price: win.price, entro: f.q + k.tempo };
+      const imp: Impegno = { id: nextId(), player: win.player, c: share === k ? k : { ...share }, price: win.price, entro: f.q + k.tempo, ...(kin.length ? { divisibile: kin } : {}) };
       out.push(imp);
       c.tell(win.player, { k: 'fieraVinta', c: share, price: win.price, entro: imp.entro, rivali: bids.length - wins.length, soci: soci.filter(x => x !== win.player) });
       c.note(win.player, 'fairWin', { good: MERCI.indexOf(k.good), qty: share.qty, price: win.price, piazza: PIAZZE.findIndex(x => x.id === k.piazza), speciale: k.speciale ? 1 : 0, diviso: wins.length });
@@ -361,6 +379,8 @@ export function ship(c: FairCtx, id: number, qty: number, auto = false): ActionR
   if (!Number.isInteger(qty) || qty < 1 || qty > imp.c.qty) return { ok: false, reason: `si spediscono da 1 a ${imp.c.qty} unità` };
   if (qty > cant[imp.c.good]) return { ok: false, reason: 'non avete tanta merce in magazzino' };
   cant[imp.c.good] -= qty;
+  // spedito tutto da sé: niente più divisione con il parente
+  delete imp.divisibile;
   const previsti = travelYears(g.player.feudo, { piazza: imp.c.piazza });
   const v = rollJourney(rnd, previsti, qty);
   const watered = imp.c.good === 'vino' && (st.annacqua?.[me] ?? -1) >= g.state.q;
@@ -370,6 +390,74 @@ export function ship(c: FairCtx, id: number, qty: number, auto = false): ActionR
   if (qty < imp.c.qty) shortfall(c, imp, imp.c.qty - qty, PRESTIGIO_FIERA.parziale);
   return { ok: true };
 }
+
+// ---------------------------------------------------------------- Dinastia: divisione fra parenti
+
+/** Contratti del signore di turno che può ancora offrire di dividere (solo nel primo anno dopo la fiera). */
+export const divisibili = (st: FieraState, g: Game) =>
+  impegniOf(st, g.state.current).filter(x => x.divisibile?.length && !x.spedito && g.state.q === x.entro - x.c.tempo + 1);
+/** Divisioni offerte al signore i. */
+export const divisioniA = (st: FieraState, i: number) => (st.divisioni ?? []).filter(x => x.a === i);
+/** Parte di ciascuno: metà, arrotondata per eccesso come nelle parità. */
+export const metaDi = (qty: number) => Math.ceil(qty / 2);
+
+/**
+ * Il vincitore offre metà del contratto al parente `to` (o lo tiene, con to = null).
+ * `accetta` decide per un parente guidato dal computer; per un giocatore l'offerta attende il suo turno.
+ */
+export function offerSplit(c: FairCtx, id: number, to: number | null, accetta?: (d: Divisione, imp: Impegno) => boolean): ActionResult & { answered?: boolean; accepted?: boolean } {
+  const { g, st } = c, me = g.state.current;
+  const imp = divisibili(st, g).find(x => x.id === id);
+  if (!imp) return { ok: false, reason: 'nessun contratto da dividere' };
+  if (to === null) {
+    delete imp.divisibile;
+    return { ok: true };
+  }
+  if (!imp.divisibile!.includes(to) || g.state.players[to].caduto !== undefined || !g.parenti(me, to)) return { ok: false, reason: 'si divide solo con un parente che aveva chiesto il contratto' };
+  delete imp.divisibile;
+  const d: Divisione = { impegno: imp.id, da: me, a: to, q: g.state.q };
+  if (accetta) {
+    settleSplit(c, d, accetta(d, imp));
+    return { ok: true, answered: true, accepted: st.impegni.some(x => x.player === to && x.c.id === imp.c.id) };
+  }
+  (st.divisioni ??= []).push(d);
+  c.tell(to, { k: 'divisioneOfferta', c: imp.c, da: me, qty: metaDi(imp.c.qty) });
+  return { ok: true, answered: false };
+}
+
+/** Il parente risponde all'offerta di divisione. */
+export function answerSplit(c: FairCtx, impegno: number, yes: boolean): ActionResult {
+  const { g, st } = c, me = g.state.current;
+  const d = divisioniA(st, me).find(x => x.impegno === impegno);
+  if (!d) return { ok: false, reason: 'nessuna offerta di divisione' };
+  settleSplit(c, d, yes);
+  return { ok: true };
+}
+
+function settleSplit(c: FairCtx, d: Divisione, yes: boolean): void {
+  const { g, st } = c;
+  st.divisioni = (st.divisioni ?? []).filter(x => x !== d);
+  const imp = st.impegni.find(x => x.id === d.impegno);
+  // la carovana del vincitore è già partita, o l'anno è finito: non c'è più nulla da dividere
+  if (!imp || imp.spedito || g.state.q !== d.q) return;
+  if (!yes) {
+    c.tell(d.da, { k: 'divisioneRifiutata', c: imp.c, da: d.a });
+    return;
+  }
+  const qty = metaDi(imp.c.qty);
+  imp.c = { ...imp.c, qty };
+  const mine: Impegno = { id: Math.max(0, ...st.impegni.map(x => x.id)) + 1, player: d.a, c: { ...imp.c }, price: imp.price, entro: imp.entro };
+  st.impegni.push(mine);
+  c.tell(d.da, { k: 'divisioneFatta', c: imp.c, con: d.a, qty, entro: imp.entro });
+  c.tell(d.a, { k: 'divisioneFatta', c: mine.c, con: d.da, qty, entro: mine.entro });
+  c.note(d.da, 'fairSplit', { qty, other: d.a, gave: 1 });
+  c.note(d.a, 'fairSplit', { qty, other: d.da, gave: 0 });
+}
+
+/** Fine dell'anno: le offerte di divisione senza risposta decadono. */
+export const expireSplits = (st: FieraState, q: number) => {
+  if (st.divisioni) st.divisioni = st.divisioni.filter(x => x.q > q);
+};
 
 /** Prestigio di una consegna intera e puntuale. */
 export const deliveryPrestige = (k: Contratto) => PRESTIGIO_FIERA.consegna[k.speciale ? 3 : k.fascia];

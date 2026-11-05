@@ -106,7 +106,9 @@ export type PactKind =
   | 'protettorato' // Bizantini: quasi nessun attacco, commercio più ricco, tributo annuo
   | 'corrotti' // Bizantini: il governatore chiude un occhio
   | 'accordi' // Saraceni: mercati più ricchi, ma più incursioni saracene
-  | 'devastati'; // Ungari: campi devastati, raccolto ridotto
+  | 'devastati' // Ungari: campi devastati, raccolto ridotto
+  | 'parentela' // Dinastia: nozze con una casata della fazione, che non attacca più; le sue rivali vengono più spesso
+  | 'vendetta'; // Dinastia: la fazione si vendica di un ripudio
 
 export interface Pact {
   faction: FactionId;
@@ -116,12 +118,19 @@ export interface Pact {
 }
 
 export const PACT_YEARS: Record<PactKind, number> = {
-  respinti: 6, tributari: 5, matrimonio: 8, vassallo: 8, protettorato: 8, corrotti: 4, accordi: 8, devastati: 3,
+  respinti: 6, tributari: 5, matrimonio: 8, vassallo: 8, protettorato: 8, corrotti: 4, accordi: 8, devastati: 3, parentela: 999, vendetta: 7,
 };
+
+/** Dinastia: le rivali di una fazione imparentata con il signore, che vengono più spesso, e di quanto. */
+export const RIVALI: Partial<Record<FactionId, FactionId[]>> = { franchi: ['ungari'], longobardi: ['bizantini'], bizantini: ['saraceni', 'longobardi'] };
+export const RIVALI_PESO = 1.5;
+/** vendetta per un ripudio: peso della fazione e caselle d'attacco in più */
+export const VENDETTA_PESO = 3;
+export const VENDETTA_SLOTS = 2;
 
 /** Effetto dei patti sul peso della fazione nella scelta di chi attacca. */
 const WEIGHT_MOD: Record<PactKind, number> = {
-  respinti: 0.4, tributari: 1.6, matrimonio: 0, vassallo: 0, protettorato: 0, corrotti: 0.3, accordi: 2, devastati: 1,
+  respinti: 0.4, tributari: 1.6, matrimonio: 0, vassallo: 0, protettorato: 0, corrotti: 0.3, accordi: 2, devastati: 1, parentela: 0, vendetta: VENDETTA_PESO,
 };
 
 export const BASE_ATTACK_SLOTS = 4;
@@ -160,7 +169,7 @@ export function expirePacts(p: Player, q: number): Pact[] {
 /** Caselle (su 32) che diventano un attacco: dipendono dai patti in vigore. */
 export function attackSlots(p: Player): number {
   const ps = pactsOf(p);
-  const extra = Math.min(2, ps.filter(x => x.kind === 'tributari').length) + (hasPact(p, 'accordi') ? 1 : 0);
+  const extra = Math.min(2, ps.filter(x => x.kind === 'tributari').length) + (hasPact(p, 'accordi') ? 1 : 0) + (hasPact(p, 'vendetta') ? VENDETTA_SLOTS : 0);
   let scale = 1;
   if (hasPact(p, 'protettorato')) scale *= PROTETTORATO_SHIELD;
   if (hasPact(p, 'vassallo')) scale *= VASSALLO_SHIELD;
@@ -172,6 +181,7 @@ export function factionWeights(p: Player): Record<FactionId, number> {
   const base = CITY_WEIGHTS[p.feudo] ?? CITY_WEIGHTS[4];
   const w = Object.fromEntries(FACTIONS.map((f, i) => [f, base[i]])) as Record<FactionId, number>;
   for (const x of pactsOf(p)) w[x.faction] *= WEIGHT_MOD[x.kind];
+  for (const x of pactsOf(p).filter(y => y.kind === 'parentela')) for (const r of RIVALI[x.faction] ?? []) w[r] *= RIVALI_PESO;
   return w;
 }
 

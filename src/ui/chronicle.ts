@@ -82,7 +82,7 @@ function story(py: PlayerYear, players: Player[], view: ExpansionView | null): s
   const end = py.of('yearEnd')[0];
   const titleStart = end?.titleBefore ?? p.title;
   // Dinastia: la morte del signore e l'erede vengono prima del resto dell'anno
-  const s: string[] = dinastiaSentences(py.facts.filter(f => f.t === 'successione'), p);
+  const s: string[] = dinastiaSentences(py.facts.filter(f => f.t === 'successione' || f.t === 'famiglia'), p, players);
 
   // grano
   const bought = py.of('buy').reduce((a, f) => a + f.qty, 0);
@@ -104,7 +104,7 @@ function story(py: PlayerYear, players: Player[], view: ExpansionView | null): s
 
   // imprevisti
   for (const f of py.of('event')) s.push(eventSentence(f));
-  s.push(...dinastiaSentences(py.facts.filter(f => f.t === 'corona'), p));
+  s.push(...dinastiaSentences(py.facts.filter(f => f.t === 'corona'), p, players));
   for (const f of py.of('impresa')) s.push(impresaSentence(f.id, f.esito, f.amount));
   for (const f of py.of('fatto')) s.push(fattoSentence(f.o));
   for (const f of py.of('fattoAnnuo')) s.push(annualSentence(f.kind, f.amount));

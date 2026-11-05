@@ -13,7 +13,8 @@
 import { SELL_DEBT_LIMIT, trustFactor, type RateKind } from './economy';
 import { fiduciaOf, livelloMid, livelloOf, MARKET_MULT, OPIFICIO_MULT, workFactor } from './gabelle';
 import { granaryCapacity, MACINA_MOOD_WEIGHT, RIOT_MOOD, SETTLER_MEDIA_PRICE, umoreOf } from './gabelle';
-import { BATTLE_OPTIONS, marriageCost, type FactionId, type FactionOption } from './fazioni';
+import { BATTLE_OPTIONS, CITY_WEIGHTS, FACTIONS, marriageCost, type FactionId, type FactionOption } from './fazioni';
+import { etaP, fazioniSposabili, figliDi, nozzeDi, pretendenti, ripudiabili, signoreP, sposabili, type Sposo } from './famiglia';
 import { canInvest, COSTS, type InvestmentKind } from './investments';
 import { scadenza } from './imprese';
 import { hasSensale, hireSensale, SENSALI, sensaleCost, sensaleNow, sensaleOfTurn, sensaleUseful, sensaleVerdict } from './sensale';
@@ -372,10 +373,69 @@ function opificioYield(p: Player): number {
   return (p.servi * p.rateCommerzio) / 500 * corr * mult;
 }
 
+/**
+ * Dinastia: il signore vedovo si risposa, e ogni anno qualche figlio adulto
+ * si sposa. Il difficile cerca la fazione che minaccia di più la sua città,
+ * poi la casata più ricca; il medio a volte una fazione, poi una casata; il
+ * facile si accontenta di quello che capita. Nessun bot ripudia.
+ */
+/** anni di matrimonio senza figli dopo cui un bot ripudia, ed età oltre la quale non lo fa più */
+export const RIPUDIO_STERILE = { anni: 6, eta: 48 } as const;
+
+/**
+ * Dinastia: quando un bot ripudia. Un signore sposato da anni, senza figli e
+ * ancora giovane, ripudia per risposarsi e avere un erede (il medio a volte,
+ * il difficile quasi sempre); non ripudia una sposa di una fazione, per non
+ * scatenarne la vendetta. Il facile, ogni tanto, ripudia a caso. In Spade e
+ * Castelli si ripudia anche per muovere guerra a un parente (botWar).
+ */
+function ripudi(c: Ctx, level: BotLevel): void {
+  const { g, rnd, log } = c, st = g.state, d = st.dinastia;
+  if (!d?.persone) return;
+  const me = st.current, s = signoreP(d, me), m = nozzeDi(d, s.id);
+  if (m && st.q - m.dal >= RIPUDIO_STERILE.anni && !figliDi(d, me).length && etaP(s, st.q) <= RIPUDIO_STERILE.eta && (m.con.k !== 'fazione' || level === 'facile')) {
+    if (rnd() < (level === 'difficile' ? 0.8 : level === 'medio' ? 0.5 : 0.2) && g.ripudia(m.id).ok) {
+      log.push('ripudia il consorte: in tanti anni nessun figlio');
+      return;
+    }
+  }
+  if (level === 'facile' && rnd() < 0.02) {
+    const all = ripudiabili(d, me);
+    const x = all[Math.floor(rnd() * all.length)];
+    if (x && g.ripudia(x.id).ok) log.push('ripudia un matrimonio, per capriccio');
+  }
+}
+
+function nozze(c: Ctx, level: BotLevel): void {
+  const { g, rnd, log } = c, st = g.state, d = st.dinastia;
+  if (!d?.persone) return;
+  ripudi(c, level);
+  const me = st.current, s = signoreP(d, me);
+  for (const x of sposabili(d, me, st.q)) {
+    if (etaP(x, st.q) < 16 || rnd() > (x.id === s.id ? 0.8 : 0.3)) continue;
+    const ok = (con: Sposo) => !g.nozzeBlock(x.id, con);
+    const w = CITY_WEIGHTS[g.player.feudo] ?? CITY_WEIGHTS[4];
+    const facs = fazioniSposabili(g.player).filter(f => ok({ k: 'fazione', f }));
+    const pret = pretendenti(st, d, me, x).filter(z => ok({ k: 'casata', id: z.p.id }));
+    let con: Sposo | null = null;
+    if (facs.length && (level === 'difficile' || rnd() < 0.3)) {
+      const f = level === 'difficile' ? facs.reduce((a, b) => (w[FACTIONS.indexOf(b)] > w[FACTIONS.indexOf(a)] ? b : a)) : facs[Math.floor(rnd() * facs.length)];
+      con = { k: 'fazione', f };
+    } else if (pret.length && rnd() < 0.7) {
+      const z = level === 'facile' ? pret[Math.floor(rnd() * pret.length)] : pret.reduce((a, b) => (wealthIndex(st.players[b.casa]) > wealthIndex(st.players[a.casa]) ? b : a));
+      con = { k: 'casata', id: z.p.id };
+    } else if (ok({ k: 'locale' })) con = { k: 'locale' };
+    if (!con) continue;
+    const r = g.proponiNozze(x.id, con);
+    if (r.ok) log.push(`nozze per ${x.nome}: ${con.k === 'fazione' ? con.f : con.k}${r.answered === false ? ' (proposta)' : r.accepted ? '' : ' (rifiutate)'}`);
+  }
+}
+
 function invest(c: Ctx, level: BotLevel): void {
   const { g, rnd, log } = c;
   const p = g.player;
   g.rules?.botBeforeInvest?.({ g, level, rnd, log });
+  nozze(c, level);
   const built: Record<InvestmentKind, number> = { terre: 0, mercato: 0, opificio: 0, palazzo: 0, granaio: 0 };
   const buy = (k: InvestmentKind) => {
     if (!g.invest(k).ok) return false;
@@ -461,8 +521,17 @@ function wantsImpresa(g: Game, level: BotLevel, rnd: () => number): boolean {
 export function playBotTurn(g: Game): BotTurnReport {
   const level = g.player.bot;
   if (!level) throw new Error('il giocatore di turno non è guidato dal computer');
-  // Dinastia: il signore è morto, l'erede comincia il suo primo anno con il nome scelto per lui
-  if (g.state.phase.kind === 'successione') g.continueAfterSuccessione();
+  // Dinastia: il signore è morto; l'erede resta o si trasferisce, poi comincia il suo primo anno
+  if (g.state.phase.kind === 'successione') {
+    const s = g.state.phase.s, p = g.player;
+    if (s.trasferibile && p.bot !== 'facile') {
+      // si trasferisce se la parte dei fratelli vale più di ciò che resterebbe a loro nella città
+      const parte = s.eredita.scudi + s.eredita.grano * Math.max(1, g.state.scalars.prezzo) / 1000;
+      const citta = (p.mercato - 1) * COSTS.mercato + (p.opificio - 1) * COSTS.opificio + p.palazzo * COSTS.palazzo + Math.max(0, p.acri - 500) * 20;
+      if (parte > citta * 1.2) g.trasferisciErede(s.trasferibile[0]);
+    }
+    g.continueAfterSuccessione();
+  }
   const me = g.player;
   // un complice ha parlato: si paga, o il signore finisce in ceppi e il turno passa
   if (g.state.phase.kind === 'impresa') {

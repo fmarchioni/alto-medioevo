@@ -98,14 +98,15 @@ export function updateTitle(p: Player, ka: number): void {
  * differenza da ogni giocatore di rango inferiore. I pagatori perdono gli
  * scudi subito; il beneficiario li accumula in `vassalli`.
  */
-export function calculateVassalTribute(players: Player[], a: number): { from: number; amount: number }[] {
+export function calculateVassalTribute(players: Player[], a: number, esente: (a: number, b: number) => boolean = () => false): { from: number; amount: number }[] {
   const lord = players[a];
   lord.vassalli = 0;
   const pj = rankOf(lord);
   const paid: { from: number; amount: number }[] = [];
   players.forEach((y, i) => {
     // i signori usciti dalla partita (caduti in guerra o arrestati) non pagano più
-    const dy = y.caduto === undefined ? pj - rankOf(y) : 0;
+    // Dinastia: fra casate imparentate non si pagano tributi
+    const dy = y.caduto === undefined && !esente(a, i) ? pj - rankOf(y) : 0;
     if (dy > 0) {
       lord.vassalli += TRIBUTE_PER_RANK * dy;
       y.scudi -= TRIBUTE_PER_RANK * dy;
@@ -125,7 +126,9 @@ export interface YearEndResult {
 }
 
 /** Righe 1960-2090 in ordine; con `pignoramenti` il debito oltre il credito si salda con i beni, dopo l'usura. */
-export function endOfPlayerYear(players: Player[], a: number, sc: Scalars, usuryScale = 1, pignoramenti = false, victory: Victory = LISTING_VICTORY): YearEndResult {
+export function endOfPlayerYear(
+  players: Player[], a: number, sc: Scalars, usuryScale = 1, pignoramenti = false, victory: Victory = LISTING_VICTORY, esente?: (a: number, b: number) => boolean,
+): YearEndResult {
   const p = players[a];
   p.baseMercati = marketBase(p);
   // riga 1970: gli interessi si applicano fra il calcolo di k e quello di v(a), ma non lo influenzano
@@ -142,5 +145,5 @@ export function endOfPlayerYear(players: Player[], a: number, sc: Scalars, usury
   updateTitle(p, ka);
   const extra = seized ? { seized } : {};
   if (reachesThrone(p, ka, victory)) return { won: true, usury, tribute: [], ...extra };
-  return { won: false, usury, tribute: calculateVassalTribute(players, a), ...extra };
+  return { won: false, usury, tribute: calculateVassalTribute(players, a, esente), ...extra };
 }
