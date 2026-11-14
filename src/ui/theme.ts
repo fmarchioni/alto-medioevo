@@ -34,3 +34,23 @@ const RE = new RegExp(`[${Object.keys(MAP).join('')}]`, 'g');
 export function c64ify(html: string): string {
   return html.replace(RE, ch => MAP[ch]);
 }
+
+/** Vista: la classica (schede e vedute disegnate) o la moderna (città isometrica). Separata dal tema. */
+export type Vista = 'classica' | 'moderna';
+const VISTA_KEY = 'alto-medioevo/vista';
+
+export function loadVista(): Vista {
+  try {
+    return localStorage.getItem(VISTA_KEY) === 'moderna' ? 'moderna' : 'classica';
+  } catch {
+    return 'classica';
+  }
+}
+
+export function saveVista(v: Vista): void {
+  try {
+    localStorage.setItem(VISTA_KEY, v);
+  } catch {
+    /* storage non disponibile */
+  }
+}

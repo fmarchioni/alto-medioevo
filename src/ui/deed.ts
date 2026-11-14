@@ -5,7 +5,8 @@
 import { ACRI_PER_ACQUISTO, COSTS, type InvestmentKind } from '../domain/investments';
 import { FEUDI, titleName } from '../domain/rank';
 import type { Player } from '../domain/types';
-import { pick } from './speaker';
+import { isPainted, pick } from './speaker';
+import { uiUrl } from './citta/assets';
 
 export interface Deed {
   /** numero progressivo dell'atto nella partita */
@@ -74,7 +75,7 @@ export function renderDeed(d: Deed): string {
       <button class="deed-close" data-act="deedClose" aria-label="chiudi l'atto">x</button>
       <div class="deed-head">${d.title} <span>n. ${d.number}</span></div>
       <p class="deed-body">${d.body}</p>
-      <div class="deed-foot"><span class="deed-sign">Rogato da ${d.notary}, notaio del feudo</span>${seal}</div>
+      <div class="deed-foot"><span class="deed-sign">Rogato da ${d.notary}, notaio del feudo</span>${isPainted() ? `<img class="deed-seal" src="${uiUrl('sigillo')}" alt="">` : seal}</div>
     </div>
     <div class="deed-roll bottom" aria-hidden="true"></div>
   </aside>`;

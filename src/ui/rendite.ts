@@ -91,7 +91,8 @@ export function treasurerGreeting(g: Game): string {
       `Badate che ogni ritocco delle gabelle costa grano: mentre i messi girano per il feudo, i sorci banchettano nei granai.`,
     ]));
   }
-  return lines.join(' ');
+  // una frase per volta nel fumetto
+  return lines.join('\n');
 }
 
 export function treasurerReaction(g: Game, before: { grano: number; totale: number }, after: RenditePreview, spoils: number): string {

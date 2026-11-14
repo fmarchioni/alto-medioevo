@@ -150,7 +150,8 @@ export function builderGreeting(g: Game): string {
   }
   const rec = recommend(g);
   lines.push(rec.why);
-  return lines.join(' ');
+  // una frase per volta nel fumetto
+  return lines.join('\n');
 }
 
 /** servi: accorsi nel feudo per il nuovo piano di palazzo (palazzo reale). */

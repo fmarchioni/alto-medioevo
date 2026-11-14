@@ -3,12 +3,11 @@
  * guida mura, esercito, guerra e briganti. Solo presentazione: le regole sono
  * in rules.ts.
  */
-import { FEUDO_POS } from '../../domain/geography';
 import { FEUDI, wealthIndex } from '../../domain/rank';
 import type { Game } from '../../domain/turn';
 import type { ActionResult, GameState, Player } from '../../domain/types';
 import { helmet, person, shield, spear } from '../../ui/comics';
-import { LAND_PATH, MAP_SIZE, THUMB } from '../../ui/map';
+import { MAP_POS, MAP_SIZE, mapBackground, markerPos } from '../../ui/map';
 import { dispatchScrolls, type ScrollItem } from '../../ui/scrolls';
 import { pick, speechBox, type Speaker } from '../../ui/speaker';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
@@ -142,11 +141,11 @@ function miniMap(g: Game, opts: { highlight?: number[] } = {}): string {
   const st = ss(g), ps = g.state.players, me = g.state.current;
   const near = neighbors(g, me);
   const lines = near.map(i => {
-    const [x1, y1] = FEUDO_POS[ps[me].feudo], [x2, y2] = FEUDO_POS[ps[i].feudo];
+    const [x1, y1] = MAP_POS[ps[me].feudo], [x2, y2] = MAP_POS[ps[i].feudo];
     return `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="#8b2a1e" stroke-width="5" stroke-dasharray="14 10"/>`;
   }).join('');
   const dots = ps.map((p, i) => {
-    const [x, y] = FEUDO_POS[p.feudo];
+    const [x, y] = MAP_POS[p.feudo];
     const cls = i === me ? 'mm-me' : near.includes(i) ? 'mm-near' : 'mm-far';
     const mark = opts.highlight?.includes(i) ? `<circle cx="${x}" cy="${y}" r="34" fill="none" stroke="#e3bb4f" stroke-width="6"/>` : '';
     // un feudo caduto resta sulla carta, grigio e sbarrato
@@ -155,9 +154,9 @@ function miniMap(g: Game, opts: { highlight?: number[] } = {}): string {
     return `<g class="${cls}">${mark}<circle cx="${x}" cy="${y}" r="20" fill="${p.caduto !== undefined ? '#8a8a8a' : i === me ? '#2e5fa3' : near.includes(i) ? '#8b2a1e' : '#8a6b3e'}" stroke="#2b2118" stroke-width="3"/>${fallen}${besieged}
       <text x="${x}" y="${y + 52}" text-anchor="middle" font-size="30" fill="#2b2118">${FEUDI[p.feudo]}</text></g>`;
   }).join('');
-  const band = st.brigands !== null ? brigandToken(FEUDO_POS[ps[st.brigands].feudo][0] + 30, FEUDO_POS[ps[st.brigands].feudo][1] - 30, 24) : '';
+  const band = st.brigands !== null ? brigandToken(MAP_POS[ps[st.brigands].feudo][0] + 30, MAP_POS[ps[st.brigands].feudo][1] - 30, 24) : '';
   return `<svg viewBox="0 0 ${MAP_SIZE.w} ${MAP_SIZE.h}" class="mini-map" role="img" aria-label="carta dei confini">
-    <rect width="${MAP_SIZE.w}" height="${MAP_SIZE.h}" fill="#7fa9c9"/><path d="${LAND_PATH}" fill="#e9dcb4" stroke="#8a6b3e" stroke-width="4"/>
+    ${mapBackground()}
     ${lines}${dots}${band}</svg>`;
 }
 
@@ -676,12 +675,12 @@ export const view: ExpansionView = {
     if (!st) return '';
     const ps = state.players;
     const wars = st.wars.filter(w => w.q === state.q - 1).map(w => {
-      const [x1, y1] = FEUDO_POS[ps[w.attacker].feudo], [x2, y2] = FEUDO_POS[ps[w.defender].feudo];
+      const [x1, y1] = MAP_POS[ps[w.attacker].feudo], [x2, y2] = MAP_POS[ps[w.defender].feudo];
       return swords((x1 + x2) / 2, (y1 + y2) / 2);
     }).join('');
     const band = st.brigands === null ? '' : (() => {
-      const [x, y] = FEUDO_POS[ps[st.brigands].feudo];
-      return brigandToken(x + THUMB.w / 2 - 6, y - THUMB.h / 2 - 6);
+      const [x, y] = markerPos(ps[st.brigands].feudo);
+      return brigandToken(x, y);
     })();
     return wars + band;
   },
@@ -890,14 +889,26 @@ export const view: ExpansionView = {
     return null;
   },
 
-  news(state, year) {
+  news(state) {
+    // le battaglie hanno già i loro articoli in prima pagina
     const st = state.ext as SpadeState | undefined;
     if (!st) return [];
-    const out: string[] = [];
-    const wars = st.wars.filter(w => 900 + w.q === year);
-    if (wars.length > 1) out.push(`Fu un anno di guerra: si combatterono ${wars.length} battaglie fra i feudi del regno.`);
-    else if (wars.length === 1) out.push(`Si combatté una battaglia: ${who(state.players[wars[0].attacker])} contro ${who(state.players[wars[0].defender])}.`);
-    if (st.brigands !== null) out.push(`I briganti infestano ora i boschi di ${FEUDI[state.players[st.brigands].feudo]}.`);
-    return out;
+    return st.brigands !== null ? [`I briganti infestano ora i boschi di ${FEUDI[state.players[st.brigands].feudo]}.`] : [];
+  },
+
+  salient(f, me, players) {
+    const d = f.data, luogo = (i: number) => FEUDI[players[i]?.feudo ?? 0];
+    const coppia = (k: string, a: number, b: number) => `${k}-${Math.min(a, b)}-${Math.max(a, b)}`;
+    switch (f.kind) {
+      case 'war': return { prio: 1, title: d.fell ? `La caduta di ${luogo(d.target)}` : `La battaglia di ${luogo(d.target)}`, art: d.win ? 'esito-vittoria' : 'esito-sconfitta', group: coppia('guerra', me, d.target) };
+      case 'besieged': return { prio: 1, title: `La battaglia di ${luogo(me)}`, art: d.held ? 'esito-mura' : 'esito-sconfitta', group: coppia('guerra', me, d.attacker) };
+      case 'conquest': return { prio: 1, title: `La caduta di ${luogo(d.target)}`, art: 'esito-vittoria', group: coppia('guerra', me, d.target) };
+      case 'fallen': return { prio: 1, title: `La caduta di ${luogo(me)}`, art: 'esito-sconfitta' };
+      case 'brigandsDriven': return { prio: 1, title: `I briganti a ${luogo(me)}`, art: 'briganti' };
+      case 'treaty': return { prio: 1, title: `La pace fra ${luogo(me)} e ${luogo(d.other)}`, art: 'esito-patto', group: coppia('pace', me, d.other) };
+      case 'peace': return { prio: 1, title: `La pace comprata`, art: 'esito-riscatto', group: coppia('pace', me, d.attacker) };
+      case 'peaceAccepted': return { prio: 1, title: `La pace comprata`, art: 'esito-riscatto', group: coppia('pace', me, d.target) };
+    }
+    return null;
   },
 };

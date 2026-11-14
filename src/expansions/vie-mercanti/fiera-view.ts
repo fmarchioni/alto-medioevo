@@ -174,6 +174,6 @@ export function fairNews(state: GameState, year: number): string[] {
   const value = wins.reduce((a, e) => a + (e.fact.t === 'ext' ? e.fact.data.qty * e.fact.data.price : 0), 0);
   // un contratto diviso compare una volta per ciascun socio
   const count = Math.round(wins.reduce((a, e) => a + (e.fact.t === 'ext' ? 1 / (e.fact.data.diviso || 1) : 0), 0));
-  return [`Alla fiera del ${year} i mercanti forestieri assegnarono ${count} ${count === 1 ? 'contratto' : 'contratti'}, per ${n(value)} scudi.`];
+  return [`Si tenne la fiera dei mercanti forestieri: furono assegnati ${count} ${count === 1 ? 'contratto' : 'contratti'}, per ${n(value)} scudi.`];
 }
 

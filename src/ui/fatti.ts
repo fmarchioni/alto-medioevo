@@ -10,7 +10,9 @@ import {
 } from '../domain/fatti';
 import type { Player } from '../domain/types';
 import { honorific } from './advisor';
-import { ground, house, person, sky } from './comics';
+import { fattoIllustration } from './citta/assets';
+import { ground, house, illustrated, person, sky } from './comics';
+import { isPainted } from './speaker';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -107,6 +109,9 @@ export const fattoTitle = (id: FattoId) => INFO[id].title;
 /** La vignetta del bando: l'araldo in piazza e il cartiglio illustrato. */
 export function fattoScene(id: FattoId): string {
   const i = INFO[id];
+  // vista moderna: l'illustrazione dipinta al posto dell'araldo col cartiglio
+  const art = isPainted() ? fattoIllustration(id) : undefined;
+  if (art) return illustrated(art, { caption: i.text, sound: i.good ? 'UDITE! UDITE!' : 'AHIMÈ!', line: '' }, i.title);
   return `<figure class="comic fatto-${i.good ? 'good' : 'bad'}">
     <figcaption class="comic-caption">${i.text}</figcaption>
     <svg viewBox="0 0 320 180" class="comic-scene" role="img" aria-label="${i.title}">
@@ -142,7 +147,7 @@ export function fattoOptionText(p: Player, id: FattoId, opt: string): FattoOptio
 export function fattoCaption(o: FattoOutcome, p: Player): string {
   const h = honorific(p);
   switch (o.id) {
-    case 'piogge': return `Quest'anno sul mercato ci sono ${n(o.raccolto ?? 0)} misure di grano in più, ${h}.`;
+    case 'piogge': return `Quest'anno sul mercato ci sono ${n(o.raccolto ?? 0)} misure di grano in più, ${h}.${o.annata ? ` Le piogge cambiano l'annata: è un anno di abbondanza, e il grano scende di ${n(o.prezzo ?? 0)} scudi ogni mille.` : ''}`;
     case 'cavallette': return `Le cavallette si mangiano ${n(o.raccolto ?? 0)} misure del raccolto, e il grano rincara di ${n(o.prezzo ?? 0)} scudi ogni mille.`;
     case 'mulino': return o.option === 'finanziare' ? `Il mulino nuovo gira già: quest'anno ${n(o.raccolto ?? 0)} misure in più, e così per ${MULINO_YEARS} anni.` : 'Il mastro se ne va a cercare un altro signore.';
     case 'immigrati': return o.option === 'accogliere' ? `Le famiglie si stabiliscono nel feudo: ${o.servi >= 0 ? `${n(o.servi)} servi in più` : `ma portano una malattia, e i servi calano di ${n(o.servi)}`}, sfamati con ${n(o.grano)} misure di grano.` : 'Le famiglie riprendono la strada, verso un altro feudo.';
@@ -192,7 +197,7 @@ export function effettiStrip(p: Player): string {
 /** Frase della cronaca. */
 export function fattoSentence(o: FattoOutcome): string {
   switch (o.id) {
-    case 'piogge': return `Le piogge furono generose, e il raccolto crebbe di ${n(o.raccolto ?? 0)} misure.`;
+    case 'piogge': return `Le piogge furono generose, e il raccolto crebbe di ${n(o.raccolto ?? 0)} misure${o.annata ? ': fu un anno di abbondanza' : ''}.`;
     case 'cavallette': return `Le cavallette divorarono ${n(o.raccolto ?? 0)} misure del raccolto.`;
     case 'mulino': return o.option === 'finanziare' ? `Finanziò un mulino di nuova fattura, con ${n(o.scudi)} scudi.` : 'Rifiutò di finanziare il mulino di un mastro forestiero.';
     case 'immigrati': return o.option === 'accogliere' ? `Accolse nelle sue terre famiglie di profughi${o.servi > 0 ? `: ${n(o.servi)} nuovi servi` : ', che portarono però una malattia'}.` : 'Respinse le famiglie di profughi che chiedevano asilo.';

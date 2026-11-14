@@ -11,8 +11,8 @@ import {
 } from '../domain/fazioni';
 import type { ChronicleFact, EventOutcome, Player } from '../domain/types';
 import { honorific } from './advisor';
-import { bubble, castle, coin, COMICS, type ComicText, ground, helmet, house, panel, person, shield, sky, spear } from './comics';
-import { pick } from './speaker';
+import { bubble, castle, coin, COMICS, type ComicText, ground, helmet, house, illustrated, outcomeArt, panel, person, shield, sky, spear } from './comics';
+import { isPainted, pick } from './speaker';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -406,6 +406,7 @@ export function factionOutcomeText(o: EventOutcome, p: Player): ComicText {
 /** Vignetta animata dell'esito di un attacco: scena, onomatopea e racconto. */
 export function renderFactionOutcome(o: EventOutcome, t: ComicText): string {
   const f = o.faction!;
+  if (isPainted()) return `<div class="faction-out">${illustrated(outcomeArt(o), t, `esito: ${INFO[f].name}`)}</div>`;
   let svg: string;
   if (o.win === true) svg = winScene(f, t.line);
   else if (o.win === false || o.option === 'saccheggio') svg = lossScene(f, t.line);

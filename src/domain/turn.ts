@@ -4,7 +4,7 @@
  * confrontare una partita con l'originale in VICE usando C64Rnd.
  */
 import { buyGrain, collectRendite, computeRendite, feedServants, INT, type RateKind, sellGrain, setRate, spoilGrain, startOfTurn, USURA_MIN } from './economy';
-import { annataOf, initAnnate } from './annate';
+import { annataOf, initAnnate, setAnnata } from './annate';
 import { granaryCapacity, SETTLER_MEDIA_PRICE, settlersFor, storeGrain } from './gabelle';
 import {
   CIAMBELLANO_THEFT_CHANCE, DECIMA, expireEffetti, fattiHarvestFactor, fattiRandom, fattoOptionOk, fattoOptions, hasEffetto, initFatti, pickFatto,
@@ -12,7 +12,7 @@ import {
 } from './fatti';
 import { abitudineOf, DEBT_SPOIL_MAX, FAMINE_MAX_DEATHS, FIDUCIA_START, grainPrices, LEAVE_CHANCE, livelloOf, MERCHANT_CHANCE, MOOD_DRIFT, stepCapriccio, tolleranzaMercanti, tolleranzaServi, nextAbitudine, nextFiducia, nextUmore, ricarico, riotSlots, umoreOf, UMORE_START } from './gabelle';
 import type { ExpansionRules, MacinaRule } from './expansion';
-import { applyFixedEvent, ATTACK, capLuck, EVENTS, drawEvent, luckCap, resolveChoice, rollEvent } from './events';
+import { applyFixedEvent, ATTACK, capLuck, EVENTS, drawEvent, eventKey, fattoKey, haRicorrenza, inPausa, luckCap, resolveChoice, rollEvent, segnaRicorrenza, type RandomEvent } from './events';
 import {
   attackSlots, defenseFrom, expirePacts, FACTION_EVENT, FACTION_OPTIONS, harvestFactor, hasPact, hordeSize, optionAvailable, pickFaction, PROTETTORATO_TRIBUTE,
   resolveFaction, winChance, type Defense, type FactionOption,
@@ -564,10 +564,13 @@ export class Game {
     rollTargets(st, f);
     if (!f.targets.includes(st.current)) return;
     const id = pickFatto(st, f, st.current);
+    if (!id) return;
+    if (st.options.ricorrenza) segnaRicorrenza(p, fattoKey(id), st.q);
     if (fattoOptions(p, id).length) {
       st.phase = { kind: 'fatto', id, awaitingChoice: true };
     } else {
       const outcome = resolveFatto(p, st.scalars, id, undefined, st.q, () => fattiRandom(f), this.luckCap());
+      if (outcome.annata && st.annate) setAnnata(st.annate, st.current, st.q, outcome.annata);
       this.record({ t: 'fatto', o: outcome });
       this.log(`fatto del reame: ${id}`);
       st.phase = { kind: 'fatto', id, awaitingChoice: false, outcome };
@@ -724,11 +727,17 @@ export class Game {
     // un'impresa temeraria arriva solo a chi non ne ha già una in serbo o in corso; con un'espansione ci sono solo le sue
     const impresa = !!this.state.options.imprese && !this.rules && !p.impresa;
     const riot = p.umore === undefined ? 0 : riotSlots(umoreOf(p)), attack = p.patti ? attackSlots(p) : -1;
-    const ev = this.state.options.mazzo
-      ? drawEvent(this.rng, { q: this.state.q, riot, attack, impresa, extra: this.rules?.deck?.(this) })
+    // ricorrenza: un imprevisto non militare non torna dallo stesso signore prima di RICORRENZA_ANNI anni
+    const q = this.state.q, ricorrenza = !!this.state.options.ricorrenza;
+    const pausa = (e: RandomEvent) => ricorrenza && haRicorrenza(e) && inPausa(p, eventKey(e.id), q);
+    let ev = this.state.options.mazzo
+      ? drawEvent(this.rng, { q, riot, attack, impresa, extra: this.rules?.deck?.(this), ...(ricorrenza ? { inPausa: pausa } : {}) })
       : rollEvent(this.rng, this.state.options, riot, attack, impresa);
     this.sync();
+    // senza mazzo la casella resta vuota (il numero di RND non cambia)
+    if (ev && pausa(ev)) ev = null;
     if (!ev) return this.enterRendite();
+    if (ricorrenza && haRicorrenza(ev)) segnaRicorrenza(p, eventKey(ev.id), q);
     if (ev.effect.kind === 'impresa') {
       p.impresa = { id: impresaOfEvent(ev.id)!, dal: this.state.q };
       const outcome = { scudi: 0, servi: 0 };

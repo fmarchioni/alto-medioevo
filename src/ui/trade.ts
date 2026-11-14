@@ -30,31 +30,34 @@ export function maxQty(mode: TradeMode, p: Player, sc: Scalars): number {
 }
 
 export interface Suggestion {
+  /** etichetta breve: i tre pulsanti stanno su una riga */
   label: string;
+  /** per esteso, nel suggerimento al passaggio del mouse */
+  title: string;
   qty: number;
 }
 
 export function suggestions(mode: TradeMode, p: Player, sc: Scalars): Suggestion[] {
   const max = maxQty(mode, p, sc);
   const clamp = (q: number) => Math.max(0, Math.min(max, Math.round(q)));
+  // al più tre: il resto si sceglie col cursore (tutto il granaio è in fondo al cursore)
   const list: Suggestion[] =
     mode === 'buy'
       ? [
-          { label: 'Quanto basta per la domanda', qty: clamp(sc.domanda - p.grano) },
-          { label: 'Metà del raccolto', qty: clamp(sc.raccolto / 2) },
-          { label: 'Tutto ciò che possiamo pagare', qty: max },
+          { label: 'Necessario', title: 'Quanto basta per la domanda', qty: clamp(sc.domanda - p.grano) },
+          { label: 'Metà', title: 'Metà del raccolto in vendita', qty: clamp(sc.raccolto / 2) },
+          { label: 'Massimo', title: 'Tutto ciò che possiamo pagare', qty: max },
         ]
       : mode === 'sell'
         ? [
-            { label: 'Un quarto del granaio', qty: clamp(p.grano / 4) },
-            { label: 'Tutto tranne la domanda', qty: clamp(p.grano - sc.domanda) },
-            { label: 'Svuotate i granai', qty: max },
+            { label: 'Un quarto', title: 'Un quarto del granaio', qty: clamp(p.grano / 4) },
+            { label: 'Avanzo', title: 'Tutto tranne la domanda', qty: clamp(p.grano - sc.domanda) },
+            { label: 'Tutto', title: 'Svuotate i granai', qty: max },
           ]
         : [
-            { label: 'Metà della domanda (crudele)', qty: clamp(sc.domanda / 2) },
-            { label: 'Esattamente la domanda', qty: clamp(sc.domanda) },
-            { label: 'Domanda e un decimo in più', qty: clamp(sc.domanda * 1.1) },
-            { label: 'Tutto il granaio', qty: max },
+            { label: 'Metà', title: 'Metà della domanda (crudele)', qty: clamp(sc.domanda / 2) },
+            { label: 'Domanda', title: 'Esattamente la domanda', qty: clamp(sc.domanda) },
+            { label: 'Abbondante', title: 'La domanda e un decimo in più', qty: clamp(sc.domanda * 1.1) },
           ];
   return list.filter((s, i, arr) => s.qty > 0 && arr.findIndex(o => o.qty === s.qty) === i);
 }
@@ -63,7 +66,8 @@ export function suggestions(mode: TradeMode, p: Player, sc: Scalars): Suggestion
 export function preview(mode: TradeMode, qty: number, p: Player, sc: Scalars): string {
   if (mode === 'buy') {
     const cost = (qty * sc.prezzo) / 1000;
-    return `Costo <b>${n(Math.ceil(cost))}</b> scudi · tesoro dopo l'acquisto <b>${n(Math.floor(p.scudi - cost))}</b> · granaio <b>${n(p.grano + qty)}</b>${granaryNote(sc, p.grano + qty - sc.domanda, 'se distribuite la sola domanda, ')}`;
+    // breve: il pulsante Compra deve vedersi senza scorrere (lo sfrido si calcola distribuendo la sola domanda)
+    return `Costo <b>${n(Math.ceil(cost))}</b> scudi · tesoro <b>${n(Math.floor(p.scudi - cost))}</b> · granaio <b>${n(p.grano + qty)}</b>${granaryNote(sc, p.grano + qty - sc.domanda)}`;
   }
   if (mode === 'sell') {
     const gain = (qty * (sc.prezzoVendita ?? sc.prezzo)) / 1000;
@@ -86,14 +90,15 @@ export function preview(mode: TradeMode, qty: number, p: Player, sc: Scalars): s
   const habit = p.abitudine !== undefined && qty > sc.domanda && p.servi > 0
     ? ` · <span class="warn">l'anno prossimo il popolo chiederà circa <b>${n(INT(Math.min(HABIT_MAX, p.abitudine * HABIT_KEEP + ((qty - sc.domanda) / p.servi) * HABIT_GAIN) * p.servi))}</b> misure in più</span>`
     : '';
-  return `Domanda ${n(sc.domanda)} · ${effect} · nel granaio resteranno <b>${n(p.grano - qty)}</b> misure${habit}${granaryNote(sc, p.grano - qty)}`;
+  // la domanda è già scritta sui pulsanti
+  return `${effect[0] === "<" ? effect : effect[0].toUpperCase() + effect.slice(1)} · nel granaio resteranno <b>${n(p.grano - qty)}</b> misure${habit}${granaryNote(sc, p.grano - qty)}`;
 }
 
 /** Avviso quando il grano che resterà supera la capienza dei granai (marcirà a fine anno). */
-function granaryNote(sc: Scalars, left: number, prefix = ''): string {
+function granaryNote(sc: Scalars, left: number): string {
   const cap = sc.capienza;
   if (cap === undefined || left <= cap) return '';
-  return ` · <span class="warn">${prefix}a fine anno marciranno <b>${n(left - cap)}</b> misure oltre la capienza dei granai (${n(cap)})</span>`;
+  return ` · <span class="warn">a fine anno marciranno <b>${n(left - cap)}</b> misure (capienza ${n(cap)})</span>`;
 }
 
 const advisorBox = (text: string) => speechBox(ANSELMO, text);
@@ -144,7 +149,7 @@ export function renderTrade(g: Game, t: TradeUi, extras?: TradeExtras): string {
     };
     const ext = renderExtCards(extras?.cards ?? []);
     return `${extras?.dispatches ?? ''}${advisorBox(t.advisor)}
-      <div class="action-cards">
+      <div class="action-cards trade-menu">
         ${card('buy', 'Comprare grano', `${sc.prezzo} scudi ogni mille`)}
         ${card('sell', 'Vendere grano', sc.prezzoVendita !== undefined ? `a ${sc.prezzoVendita} scudi · granaio ${n(p.grano)}` : `granaio: ${n(p.grano)}`)}
         ${card('feed', 'Nutrire il popolo', 'chiude il mercato')}
@@ -160,9 +165,9 @@ export function renderTrade(g: Game, t: TradeUi, extras?: TradeExtras): string {
         <input type="range" name="qty-range" min="0" max="${max}" step="1" value="${qty}" aria-label="quantità" ${max === 0 ? 'disabled' : ''}>
         <input type="number" name="qty" min="0" max="${max}" step="1" value="${qty}" inputmode="numeric" aria-label="quantità esatta">
       </div>
-      <div class="chips">${suggestions(mode, p, sc).map(s => `<button class="chip" data-act="chip" data-qty="${s.qty}">${s.label} <small>${n(s.qty)}</small></button>`).join('')}</div>
+      <div class="chips chips-row">${suggestions(mode, p, sc).map(s => `<button class="chip" data-act="chip" data-qty="${s.qty}" title="${s.title}">${s.label}<small>${n(s.qty)}</small></button>`).join('')}</div>
       <p class="preview" id="trade-preview">${preview(mode, qty, p, sc)}</p>
-      <p class="hint">${ruleNote(mode)}</p>${extras?.hint(mode) ? `<p class="hint ext-hint">${extras.hint(mode)}</p>` : ''}
+      ${ruleNote(mode) ? `<p class="hint">${ruleNote(mode)}</p>` : ''}${extras?.hint(mode) ? `<p class="hint ext-hint">${extras.hint(mode)}</p>` : ''}
       <div class="btns">
         <button data-act="tradeBack" class="ghost">Torna indietro</button>
         <button data-act="confirmTrade" class="primary">${verb}</button>

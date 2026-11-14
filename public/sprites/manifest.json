@@ -1,0 +1,1298 @@
+{
+ "ritratti/anselmo": {
+  "w": 320,
+  "h": 344,
+  "ax": 160,
+  "ay": 344,
+  "foglio": "characters1",
+  "n": 1
+ },
+ "ritratti/bonifacio": {
+  "w": 377,
+  "h": 345,
+  "ax": 189,
+  "ay": 345,
+  "foglio": "characters1",
+  "n": 2
+ },
+ "ritratti/ugolino": {
+  "w": 336,
+  "h": 350,
+  "ax": 168,
+  "ay": 350,
+  "foglio": "characters1",
+  "n": 3
+ },
+ "ritratti/gualtiero": {
+  "w": 353,
+  "h": 348,
+  "ax": 177,
+  "ay": 348,
+  "foglio": "characters1",
+  "n": 4
+ },
+ "ritratti/lapo": {
+  "w": 348,
+  "h": 364,
+  "ax": 174,
+  "ay": 364,
+  "foglio": "characters1",
+  "n": 5
+ },
+ "ritratti/giullare": {
+  "w": 300,
+  "h": 344,
+  "ax": 150,
+  "ay": 344,
+  "foglio": "characters1",
+  "n": 6
+ },
+ "ritratti/baldo": {
+  "w": 395,
+  "h": 347,
+  "ax": 198,
+  "ay": 347,
+  "foglio": "characters2",
+  "n": 1
+ },
+ "ritratti/cecco": {
+  "w": 349,
+  "h": 347,
+  "ax": 175,
+  "ay": 347,
+  "foglio": "characters2",
+  "n": 2
+ },
+ "ritratti/taddeo": {
+  "w": 391,
+  "h": 352,
+  "ax": 196,
+  "ay": 352,
+  "foglio": "characters2",
+  "n": 3
+ },
+ "ritratti/ardengo": {
+  "w": 412,
+  "h": 369,
+  "ax": 206,
+  "ay": 369,
+  "foglio": "characters2",
+  "n": 4
+ },
+ "ritratti/iacopo": {
+  "w": 359,
+  "h": 364,
+  "ax": 180,
+  "ay": 364,
+  "foglio": "characters2",
+  "n": 5
+ },
+ "ritratti/anselmo-parla": {
+  "w": 320,
+  "h": 344,
+  "ax": 160,
+  "ay": 344,
+  "foglio": "characters3",
+  "n": 1
+ },
+ "ritratti/bonifacio-parla": {
+  "w": 377,
+  "h": 345,
+  "ax": 189,
+  "ay": 345,
+  "foglio": "characters3",
+  "n": 2
+ },
+ "ritratti/ugolino-parla": {
+  "w": 336,
+  "h": 350,
+  "ax": 168,
+  "ay": 350,
+  "foglio": "characters3",
+  "n": 3
+ },
+ "ritratti/gualtiero-parla": {
+  "w": 353,
+  "h": 348,
+  "ax": 177,
+  "ay": 348,
+  "foglio": "characters3",
+  "n": 4
+ },
+ "ritratti/lapo-parla": {
+  "w": 348,
+  "h": 364,
+  "ax": 174,
+  "ay": 364,
+  "foglio": "characters3",
+  "n": 5
+ },
+ "ritratti/giullare-parla": {
+  "w": 300,
+  "h": 344,
+  "ax": 150,
+  "ay": 344,
+  "foglio": "characters3",
+  "n": 6
+ },
+ "ritratti/anselmo-occhi": {
+  "w": 320,
+  "h": 344,
+  "ax": 160,
+  "ay": 344,
+  "foglio": "characters4",
+  "n": 1
+ },
+ "ritratti/bonifacio-occhi": {
+  "w": 377,
+  "h": 345,
+  "ax": 189,
+  "ay": 345,
+  "foglio": "characters4",
+  "n": 2
+ },
+ "ritratti/ugolino-occhi": {
+  "w": 336,
+  "h": 350,
+  "ax": 168,
+  "ay": 350,
+  "foglio": "characters4",
+  "n": 3
+ },
+ "ritratti/gualtiero-occhi": {
+  "w": 353,
+  "h": 348,
+  "ax": 177,
+  "ay": 348,
+  "foglio": "characters4",
+  "n": 4
+ },
+ "ritratti/lapo-occhi": {
+  "w": 348,
+  "h": 364,
+  "ax": 174,
+  "ay": 364,
+  "foglio": "characters4",
+  "n": 5
+ },
+ "ritratti/giullare-occhi": {
+  "w": 300,
+  "h": 344,
+  "ax": 150,
+  "ay": 344,
+  "foglio": "characters4",
+  "n": 6
+ },
+ "terreno/erba": {
+  "w": 220,
+  "h": 120,
+  "ax": 110,
+  "ay": 120,
+  "foglio": "prompt1",
+  "n": 1
+ },
+ "terreno/erba-fiori": {
+  "w": 219,
+  "h": 120,
+  "ax": 110,
+  "ay": 120,
+  "foglio": "prompt1",
+  "n": 2
+ },
+ "terreno/grano-verde": {
+  "w": 219,
+  "h": 125,
+  "ax": 110,
+  "ay": 125,
+  "foglio": "prompt1",
+  "n": 3
+ },
+ "terreno/grano-maturo": {
+  "w": 220,
+  "h": 129,
+  "ax": 110,
+  "ay": 129,
+  "foglio": "prompt1",
+  "n": 4
+ },
+ "terreno/arato": {
+  "w": 235,
+  "h": 127,
+  "ax": 118,
+  "ay": 127,
+  "foglio": "prompt1",
+  "n": 5
+ },
+ "terreno/riva-strada": {
+  "w": 280,
+  "h": 149,
+  "ax": 140,
+  "ay": 149,
+  "foglio": "prompt1",
+  "n": 6
+ },
+ "terreno/riva-erba": {
+  "w": 262,
+  "h": 150,
+  "ax": 131,
+  "ay": 150,
+  "foglio": "prompt1",
+  "n": 7
+ },
+ "terreno/lastricato": {
+  "w": 224,
+  "h": 123,
+  "ax": 112,
+  "ay": 123,
+  "foglio": "prompt1",
+  "n": 8
+ },
+ "terreno/sassoso": {
+  "w": 225,
+  "h": 127,
+  "ax": 113,
+  "ay": 127,
+  "foglio": "prompt1",
+  "n": 9
+ },
+ "terreno/allagato": {
+  "w": 225,
+  "h": 122,
+  "ax": 113,
+  "ay": 122,
+  "foglio": "prompt1",
+  "n": 10
+ },
+ "terreno/bruciato": {
+  "w": 224,
+  "h": 122,
+  "ax": 112,
+  "ay": 122,
+  "foglio": "prompt1",
+  "n": 11
+ },
+ "natura/cipresso-1": {
+  "w": 42,
+  "h": 174,
+  "ax": 21,
+  "ay": 174,
+  "foglio": "prompt1",
+  "n": 12
+ },
+ "natura/cipresso-2": {
+  "w": 44,
+  "h": 173,
+  "ax": 22,
+  "ay": 173,
+  "foglio": "prompt1",
+  "n": 13
+ },
+ "natura/cipresso-3": {
+  "w": 47,
+  "h": 167,
+  "ax": 24,
+  "ay": 167,
+  "foglio": "prompt1",
+  "n": 14
+ },
+ "natura/ulivo-1": {
+  "w": 100,
+  "h": 119,
+  "ax": 50,
+  "ay": 119,
+  "foglio": "prompt1",
+  "n": 15
+ },
+ "natura/ulivo-2": {
+  "w": 118,
+  "h": 123,
+  "ax": 59,
+  "ay": 123,
+  "foglio": "prompt1",
+  "n": 16
+ },
+ "natura/quercia-1": {
+  "w": 140,
+  "h": 160,
+  "ax": 70,
+  "ay": 160,
+  "foglio": "prompt1",
+  "n": 17
+ },
+ "natura/quercia-2": {
+  "w": 144,
+  "h": 174,
+  "ax": 72,
+  "ay": 174,
+  "foglio": "prompt1",
+  "n": 18
+ },
+ "natura/sassi": {
+  "w": 105,
+  "h": 71,
+  "ax": 53,
+  "ay": 71,
+  "foglio": "prompt1",
+  "n": 19
+ },
+ "natura/covone": {
+  "w": 98,
+  "h": 91,
+  "ax": 49,
+  "ay": 91,
+  "foglio": "prompt1",
+  "n": 20
+ },
+ "natura/cespuglio-1": {
+  "w": 88,
+  "h": 71,
+  "ax": 44,
+  "ay": 71,
+  "foglio": "prompt1",
+  "n": 21
+ },
+ "natura/cespuglio-2": {
+  "w": 73,
+  "h": 50,
+  "ax": 37,
+  "ay": 50,
+  "foglio": "prompt1",
+  "n": 22
+ },
+ "palazzo/palazzo-1": {
+  "w": 292,
+  "h": 198,
+  "ax": 146,
+  "ay": 198,
+  "foglio": "prompt2",
+  "n": 1
+ },
+ "palazzo/palazzo-2": {
+  "w": 332,
+  "h": 221,
+  "ax": 166,
+  "ay": 221,
+  "foglio": "prompt2",
+  "n": 2
+ },
+ "palazzo/palazzo-3": {
+  "w": 316,
+  "h": 238,
+  "ax": 158,
+  "ay": 238,
+  "foglio": "prompt2",
+  "n": 3
+ },
+ "palazzo/palazzo-4": {
+  "w": 318,
+  "h": 252,
+  "ax": 159,
+  "ay": 252,
+  "foglio": "prompt2",
+  "n": 4
+ },
+ "palazzo/palazzo-5": {
+  "w": 318,
+  "h": 256,
+  "ax": 159,
+  "ay": 256,
+  "foglio": "prompt2",
+  "n": 5
+ },
+ "palazzo/palazzo-6": {
+  "w": 351,
+  "h": 298,
+  "ax": 176,
+  "ay": 298,
+  "foglio": "prompt2",
+  "n": 6
+ },
+ "edifici/casa-paglia": {
+  "w": 208,
+  "h": 162,
+  "ax": 104,
+  "ay": 162,
+  "foglio": "prompt3",
+  "n": 1
+ },
+ "edifici/casa-orto": {
+  "w": 228,
+  "h": 179,
+  "ax": 114,
+  "ay": 179,
+  "foglio": "prompt3",
+  "n": 2
+ },
+ "edifici/casa-pozzo": {
+  "w": 198,
+  "h": 148,
+  "ax": 99,
+  "ay": 148,
+  "foglio": "prompt3",
+  "n": 3
+ },
+ "edifici/mercato-1": {
+  "w": 206,
+  "h": 135,
+  "ax": 103,
+  "ay": 135,
+  "foglio": "prompt3",
+  "n": 4
+ },
+ "edifici/mercato-2": {
+  "w": 218,
+  "h": 188,
+  "ax": 109,
+  "ay": 188,
+  "foglio": "prompt3",
+  "n": 5
+ },
+ "edifici/opificio-1": {
+  "w": 282,
+  "h": 223,
+  "ax": 141,
+  "ay": 223,
+  "foglio": "prompt3",
+  "n": 6
+ },
+ "edifici/opificio-2": {
+  "w": 254,
+  "h": 224,
+  "ax": 127,
+  "ay": 224,
+  "foglio": "prompt3",
+  "n": 7
+ },
+ "edifici/mulino": {
+  "w": 262,
+  "h": 199,
+  "ax": 131,
+  "ay": 199,
+  "foglio": "prompt3",
+  "n": 8
+ },
+ "edifici/granaio": {
+  "w": 216,
+  "h": 192,
+  "ax": 108,
+  "ay": 192,
+  "foglio": "prompt3",
+  "n": 9
+ },
+ "edifici/chiesa": {
+  "w": 259,
+  "h": 223,
+  "ax": 130,
+  "ay": 223,
+  "foglio": "prompt3",
+  "n": 10
+ },
+ "edifici/fondaco": {
+  "w": 267,
+  "h": 188,
+  "ax": 134,
+  "ay": 188,
+  "foglio": "prompt4",
+  "n": 1
+ },
+ "edifici/banco": {
+  "w": 207,
+  "h": 174,
+  "ax": 104,
+  "ay": 174,
+  "foglio": "prompt4",
+  "n": 2
+ },
+ "edifici/porto": {
+  "w": 206,
+  "h": 125,
+  "ax": 103,
+  "ay": 125,
+  "foglio": "prompt4",
+  "n": 3
+ },
+ "edifici/cava": {
+  "w": 243,
+  "h": 181,
+  "ax": 122,
+  "ay": 181,
+  "foglio": "prompt4",
+  "n": 4
+ },
+ "edifici/cattedrale": {
+  "w": 271,
+  "h": 245,
+  "ax": 136,
+  "ay": 245,
+  "foglio": "prompt4",
+  "n": 5
+ },
+ "difese/mura-ne": {
+  "w": 211,
+  "h": 169,
+  "ax": 106,
+  "ay": 169,
+  "foglio": "prompt4",
+  "n": 6
+ },
+ "difese/mura-no": {
+  "w": 212,
+  "h": 169,
+  "ax": 106,
+  "ay": 169,
+  "foglio": "prompt4",
+  "n": 7
+ },
+ "difese/mura-angolo": {
+  "w": 224,
+  "h": 134,
+  "ax": 112,
+  "ay": 134,
+  "foglio": "prompt4",
+  "n": 8
+ },
+ "difese/torre": {
+  "w": 159,
+  "h": 175,
+  "ax": 80,
+  "ay": 175,
+  "foglio": "prompt4",
+  "n": 9
+ },
+ "difese/porta": {
+  "w": 210,
+  "h": 194,
+  "ax": 105,
+  "ay": 194,
+  "foglio": "prompt4",
+  "n": 10
+ },
+ "difese/accampamento": {
+  "w": 241,
+  "h": 171,
+  "ax": 121,
+  "ay": 171,
+  "foglio": "prompt4",
+  "n": 11
+ },
+ "difese/assedio": {
+  "w": 241,
+  "h": 142,
+  "ax": 121,
+  "ay": 142,
+  "foglio": "prompt4",
+  "n": 12
+ },
+ "persone/contadino": {
+  "w": 81,
+  "h": 140,
+  "ax": 41,
+  "ay": 140,
+  "foglio": "prompt5",
+  "n": 1
+ },
+ "persone/carro-buoi": {
+  "w": 315,
+  "h": 167,
+  "ax": 158,
+  "ay": 167,
+  "foglio": "prompt5",
+  "n": 6
+ },
+ "persone/cavaliere": {
+  "w": 161,
+  "h": 179,
+  "ax": 81,
+  "ay": 179,
+  "foglio": "prompt5",
+  "n": 9
+ },
+ "persone/cavaliere-pesante": {
+  "w": 137,
+  "h": 202,
+  "ax": 69,
+  "ay": 202,
+  "foglio": "prompt5",
+  "n": 10
+ },
+ "persone/monaco": {
+  "w": 58,
+  "h": 137,
+  "ax": 29,
+  "ay": 137,
+  "foglio": "prompt5",
+  "n": 11
+ },
+ "persone/monaco-retro": {
+  "w": 57,
+  "h": 138,
+  "ax": 29,
+  "ay": 138,
+  "foglio": "prompt5",
+  "n": 12
+ },
+ "persone/signore": {
+  "w": 73,
+  "h": 148,
+  "ax": 37,
+  "ay": 148,
+  "foglio": "prompt5",
+  "n": 13
+ },
+ "persone/signore-retro": {
+  "w": 69,
+  "h": 146,
+  "ax": 35,
+  "ay": 146,
+  "foglio": "prompt5",
+  "n": 14
+ },
+ "persone/dama": {
+  "w": 76,
+  "h": 146,
+  "ax": 38,
+  "ay": 146,
+  "foglio": "prompt5",
+  "n": 15
+ },
+ "persone/dama-retro": {
+  "w": 68,
+  "h": 149,
+  "ax": 34,
+  "ay": 149,
+  "foglio": "prompt5",
+  "n": 16
+ },
+ "persone/banditore": {
+  "w": 83,
+  "h": 143,
+  "ax": 42,
+  "ay": 143,
+  "foglio": "prompt5",
+  "n": 17
+ },
+ "persone/ungaro": {
+  "w": 116,
+  "h": 185,
+  "ax": 58,
+  "ay": 185,
+  "foglio": "prompt5",
+  "n": 18
+ },
+ "persone/longobardo": {
+  "w": 103,
+  "h": 161,
+  "ax": 52,
+  "ay": 161,
+  "foglio": "prompt5",
+  "n": 20
+ },
+ "persone/bizantino": {
+  "w": 74,
+  "h": 154,
+  "ax": 37,
+  "ay": 154,
+  "foglio": "prompt5",
+  "n": 21
+ },
+ "persone/brigante": {
+  "w": 66,
+  "h": 149,
+  "ax": 33,
+  "ay": 149,
+  "foglio": "prompt5",
+  "n": 23
+ },
+ "persone/brigante-retro": {
+  "w": 78,
+  "h": 149,
+  "ax": 39,
+  "ay": 149,
+  "foglio": "prompt5",
+  "n": 24
+ },
+ "persone/carro-buoi-retro": {
+  "w": 235,
+  "h": 167,
+  "ax": 118,
+  "ay": 167,
+  "foglio": "prompt6",
+  "n": 1
+ },
+ "persone/cavaliere-retro": {
+  "w": 137,
+  "h": 179,
+  "ax": 69,
+  "ay": 179,
+  "foglio": "prompt6",
+  "n": 3
+ },
+ "persone/cavaliere-pesante-retro": {
+  "w": 140,
+  "h": 202,
+  "ax": 70,
+  "ay": 202,
+  "foglio": "prompt6",
+  "n": 5
+ },
+ "persone/ungaro-retro": {
+  "w": 81,
+  "h": 185,
+  "ax": 41,
+  "ay": 185,
+  "foglio": "prompt7",
+  "n": 1
+ },
+ "persone/contadino-passo": {
+  "w": 82,
+  "h": 136,
+  "ax": 41,
+  "ay": 136,
+  "foglio": "prompt8",
+  "n": 1
+ },
+ "persone/carro-buoi-passo": {
+  "w": 314,
+  "h": 158,
+  "ax": 157,
+  "ay": 158,
+  "foglio": "prompt8",
+  "n": 6
+ },
+ "persone/cavaliere-passo": {
+  "w": 159,
+  "h": 178,
+  "ax": 80,
+  "ay": 178,
+  "foglio": "prompt8",
+  "n": 9
+ },
+ "persone/cavaliere-pesante-passo": {
+  "w": 142,
+  "h": 204,
+  "ax": 71,
+  "ay": 204,
+  "foglio": "prompt8",
+  "n": 10
+ },
+ "persone/monaco-passo": {
+  "w": 64,
+  "h": 138,
+  "ax": 32,
+  "ay": 138,
+  "foglio": "prompt8",
+  "n": 11
+ },
+ "persone/monaco-retro-passo": {
+  "w": 58,
+  "h": 139,
+  "ax": 29,
+  "ay": 139,
+  "foglio": "prompt8",
+  "n": 12
+ },
+ "persone/signore-passo": {
+  "w": 72,
+  "h": 147,
+  "ax": 36,
+  "ay": 147,
+  "foglio": "prompt8",
+  "n": 13
+ },
+ "persone/signore-retro-passo": {
+  "w": 63,
+  "h": 144,
+  "ax": 32,
+  "ay": 144,
+  "foglio": "prompt8",
+  "n": 14
+ },
+ "persone/dama-passo": {
+  "w": 76,
+  "h": 149,
+  "ax": 38,
+  "ay": 149,
+  "foglio": "prompt8",
+  "n": 15
+ },
+ "persone/dama-retro-passo": {
+  "w": 63,
+  "h": 150,
+  "ax": 32,
+  "ay": 150,
+  "foglio": "prompt8",
+  "n": 16
+ },
+ "persone/banditore-passo": {
+  "w": 81,
+  "h": 142,
+  "ax": 41,
+  "ay": 142,
+  "foglio": "prompt8",
+  "n": 17
+ },
+ "persone/ungaro-passo": {
+  "w": 118,
+  "h": 182,
+  "ax": 59,
+  "ay": 182,
+  "foglio": "prompt8",
+  "n": 18
+ },
+ "persone/longobardo-passo": {
+  "w": 107,
+  "h": 155,
+  "ax": 54,
+  "ay": 155,
+  "foglio": "prompt8",
+  "n": 20
+ },
+ "persone/bizantino-passo": {
+  "w": 78,
+  "h": 154,
+  "ax": 39,
+  "ay": 154,
+  "foglio": "prompt8",
+  "n": 21
+ },
+ "persone/brigante-passo": {
+  "w": 67,
+  "h": 145,
+  "ax": 34,
+  "ay": 145,
+  "foglio": "prompt8",
+  "n": 23
+ },
+ "persone/brigante-retro-passo": {
+  "w": 73,
+  "h": 150,
+  "ax": 37,
+  "ay": 150,
+  "foglio": "prompt8",
+  "n": 24
+ },
+ "edifici/caserma-1": {
+  "w": 234,
+  "h": 205,
+  "ax": 117,
+  "ay": 205,
+  "foglio": "prompt9",
+  "n": 1
+ },
+ "edifici/caserma-2": {
+  "w": 246,
+  "h": 241,
+  "ax": 123,
+  "ay": 241,
+  "foglio": "prompt9",
+  "n": 2
+ },
+ "edifici/caserma-3": {
+  "w": 295,
+  "h": 255,
+  "ax": 148,
+  "ay": 255,
+  "foglio": "prompt9",
+  "n": 3
+ },
+ "persone/banditore-retro": {
+  "w": 81,
+  "h": 143,
+  "ax": 41,
+  "ay": 143,
+  "foglio": "prompt10",
+  "n": 3
+ },
+ "persone/banditore-retro-passo": {
+  "w": 80,
+  "h": 143,
+  "ax": 40,
+  "ay": 143,
+  "foglio": "prompt10",
+  "n": 4
+ },
+ "persone/contadino-retro": {
+  "w": 63,
+  "h": 140,
+  "ax": 32,
+  "ay": 140,
+  "foglio": "prompt11",
+  "n": 1
+ },
+ "persone/contadino-retro-passo": {
+  "w": 59,
+  "h": 140,
+  "ax": 30,
+  "ay": 140,
+  "foglio": "prompt11",
+  "n": 2
+ },
+ "persone/contadina": {
+  "w": 64,
+  "h": 128,
+  "ax": 32,
+  "ay": 128,
+  "foglio": "prompt12",
+  "n": 1
+ },
+ "persone/contadina-passo": {
+  "w": 63,
+  "h": 125,
+  "ax": 32,
+  "ay": 125,
+  "foglio": "prompt12",
+  "n": 2
+ },
+ "persone/contadina-retro": {
+  "w": 59,
+  "h": 125,
+  "ax": 30,
+  "ay": 125,
+  "foglio": "prompt12",
+  "n": 3
+ },
+ "persone/contadina-retro-passo": {
+  "w": 59,
+  "h": 124,
+  "ax": 30,
+  "ay": 124,
+  "foglio": "prompt12",
+  "n": 4
+ },
+ "persone/saraceno": {
+  "w": 93,
+  "h": 138,
+  "ax": 47,
+  "ay": 138,
+  "foglio": "prompt13",
+  "n": 1
+ },
+ "persone/saraceno-passo": {
+  "w": 87,
+  "h": 138,
+  "ax": 44,
+  "ay": 138,
+  "foglio": "prompt13",
+  "n": 2
+ },
+ "persone/saraceno-retro": {
+  "w": 85,
+  "h": 137,
+  "ax": 43,
+  "ay": 137,
+  "foglio": "prompt13",
+  "n": 3
+ },
+ "persone/saraceno-retro-passo": {
+  "w": 84,
+  "h": 137,
+  "ax": 42,
+  "ay": 137,
+  "foglio": "prompt13",
+  "n": 4
+ },
+ "persone/mercante-asino": {
+  "w": 124,
+  "h": 150,
+  "ax": 62,
+  "ay": 150,
+  "foglio": "prompt14",
+  "n": 1
+ },
+ "persone/mercante-asino-passo": {
+  "w": 125,
+  "h": 150,
+  "ax": 63,
+  "ay": 150,
+  "foglio": "prompt14",
+  "n": 2
+ },
+ "persone/mercante-asino-retro": {
+  "w": 135,
+  "h": 163,
+  "ax": 68,
+  "ay": 163,
+  "foglio": "prompt14",
+  "n": 3
+ },
+ "persone/mercante-asino-retro-passo": {
+  "w": 140,
+  "h": 163,
+  "ax": 70,
+  "ay": 163,
+  "foglio": "prompt14",
+  "n": 4
+ },
+ "persone/franco": {
+  "w": 59,
+  "h": 165,
+  "ax": 30,
+  "ay": 165,
+  "foglio": "prompt15",
+  "n": 1
+ },
+ "persone/franco-passo": {
+  "w": 59,
+  "h": 165,
+  "ax": 30,
+  "ay": 165,
+  "foglio": "prompt15",
+  "n": 2
+ },
+ "persone/franco-retro": {
+  "w": 58,
+  "h": 166,
+  "ax": 29,
+  "ay": 166,
+  "foglio": "prompt15",
+  "n": 3
+ },
+ "persone/franco-retro-passo": {
+  "w": 54,
+  "h": 165,
+  "ax": 27,
+  "ay": 165,
+  "foglio": "prompt15",
+  "n": 4
+ },
+ "persone/soldato-retro": {
+  "w": 60,
+  "h": 166,
+  "ax": 30,
+  "ay": 166,
+  "foglio": "prompt16",
+  "n": 3
+ },
+ "persone/soldato-retro-passo": {
+  "w": 56,
+  "h": 165,
+  "ax": 28,
+  "ay": 165,
+  "foglio": "prompt16",
+  "n": 4
+ },
+ "persone/soldato": {
+  "w": 62,
+  "h": 165,
+  "ax": 31,
+  "ay": 165,
+  "foglio": "prompt17",
+  "n": 1
+ },
+ "persone/soldato-passo": {
+  "w": 60,
+  "h": 158,
+  "ax": 30,
+  "ay": 158,
+  "foglio": "prompt17",
+  "n": 2
+ },
+ "persone/carovana": {
+  "w": 250,
+  "h": 215,
+  "ax": 125,
+  "ay": 215,
+  "foglio": "prompt18",
+  "n": 1
+ },
+ "persone/carovana-passo": {
+  "w": 239,
+  "h": 209,
+  "ax": 120,
+  "ay": 209,
+  "foglio": "prompt18",
+  "n": 2
+ },
+ "ui/cornice": {
+  "w": 569,
+  "h": 435,
+  "ax": 285,
+  "ay": 435,
+  "foglio": "user_interface",
+  "n": 1
+ },
+ "ui/fumetto": {
+  "w": 255,
+  "h": 192,
+  "ax": 128,
+  "ay": 192,
+  "foglio": "user_interface",
+  "n": 2
+ },
+ "ui/pulsante-su": {
+  "w": 215,
+  "h": 59,
+  "ax": 108,
+  "ay": 59,
+  "foglio": "user_interface",
+  "n": 3
+ },
+ "ui/pulsante": {
+  "w": 210,
+  "h": 54,
+  "ax": 105,
+  "ay": 54,
+  "foglio": "user_interface",
+  "n": 4
+ },
+ "ui/pulsante-no": {
+  "w": 210,
+  "h": 54,
+  "ax": 105,
+  "ay": 54,
+  "foglio": "user_interface",
+  "n": 5
+ },
+ "ui/cornice-ritratto": {
+  "w": 178,
+  "h": 210,
+  "ax": 89,
+  "ay": 210,
+  "foglio": "user_interface",
+  "n": 6
+ },
+ "ui/cornice-piccola": {
+  "w": 257,
+  "h": 202,
+  "ax": 129,
+  "ay": 202,
+  "foglio": "user_interface",
+  "n": 7
+ },
+ "ui/pergamena": {
+  "w": 292,
+  "h": 292,
+  "ax": 146,
+  "ay": 292,
+  "foglio": "user_interface",
+  "n": 8
+ },
+ "ui/legno": {
+  "w": 380,
+  "h": 378,
+  "ax": 190,
+  "ay": 378,
+  "foglio": "user_interface",
+  "n": 9
+ },
+ "ui/fumetto-2": {
+  "w": 244,
+  "h": 238,
+  "ax": 122,
+  "ay": 238,
+  "foglio": "user_interface",
+  "n": 10
+ },
+ "ui/cornice-ritratto-2": {
+  "w": 216,
+  "h": 254,
+  "ax": 108,
+  "ay": 254,
+  "foglio": "user_interface",
+  "n": 11
+ },
+ "ui/ico-grano": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 12
+ },
+ "ui/ico-scudi": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 13
+ },
+ "ui/ico-servi": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 14
+ },
+ "ui/sigillo": {
+  "w": 109,
+  "h": 109,
+  "ax": 55,
+  "ay": 109,
+  "foglio": "user_interface",
+  "n": 15
+ },
+ "ui/ico-serve": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 16
+ },
+ "ui/nastro": {
+  "w": 439,
+  "h": 86,
+  "ax": 220,
+  "ay": 86,
+  "foglio": "user_interface",
+  "n": 17
+ },
+ "ui/ico-acri": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 18
+ },
+ "ui/ico-prezzo": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 19
+ },
+ "ui/ico-domanda": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 20
+ },
+ "ui/ico-usura": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 21
+ },
+ "ui/ico-mercanti": {
+  "w": 76,
+  "h": 76,
+  "ax": 38,
+  "ay": 76,
+  "foglio": "user_interface",
+  "n": 22
+ },
+ "ui/filetto": {
+  "w": 197,
+  "h": 11,
+  "ax": 99,
+  "ay": 11,
+  "foglio": "user_interface",
+  "n": 23
+ },
+ "ui/giglio": {
+  "w": 40,
+  "h": 42,
+  "ax": 20,
+  "ay": 42,
+  "foglio": "user_interface",
+  "n": 24
+ }
+}

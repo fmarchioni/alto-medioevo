@@ -6,7 +6,7 @@
 import { FEUDI, titleName, wealthIndex } from '../domain/rank';
 import type { GameState, Player } from '../domain/types';
 import { renderRealmMap } from './map';
-import { pick } from './speaker';
+import { isPainted, paintedPortrait, pick } from './speaker';
 
 export interface PlayerSnapshot {
   scudi: number;
@@ -65,7 +65,7 @@ function fullName(p: Player): string {
   return `${titleName(p.title)} ${p.name} da ${FEUDI[p.feudo]}`;
 }
 
-export function buildInterlude(before: YearSnapshot, state: GameState, mapMarkers = ''): Interlude {
+export function buildInterlude(before: YearSnapshot, state: GameState, mapMarkers = '', mapRoutes = ''): Interlude {
   const year = 900 + before.q;
   // chi è caduto in guerra (o è stato arrestato) è uscito dalla partita: non compare più, né nell'elenco né sulla carta
   const alive = state.players.map((p, i) => ({ p, i })).filter(x => x.p.caduto === undefined);
@@ -84,7 +84,7 @@ export function buildInterlude(before: YearSnapshot, state: GameState, mapMarker
       promotedTo: p.title !== b.title ? titleName(p.title) : null,
     };
   });
-  return { year, nextYear: year + 1, proclamation: proclaim(year, players), players, map: renderRealmMap(alive.map(x => x.p), year, mapMarkers), closing: false };
+  return { year, nextYear: year + 1, proclamation: proclaim(year, players), players, map: renderRealmMap(alive.map(x => x.p), mapMarkers, alive.map(x => x.i), mapRoutes), closing: false };
 }
 
 function proclaim(year: number, players: PlayerChronicle[]): string {
@@ -162,9 +162,9 @@ export function renderInterlude(it: Interlude): string {
     <div class="valance" aria-hidden="true"></div>
     <div class="stage">
       <div class="stage-title"><span>Fine dell'anno del Signore</span><b>${it.year}</b></div>
-      ${winterScene}
-      <div class="scroll"><p class="herald"><span class="herald-name">Il giullare di corte proclama:</span> ${it.proclamation}</p></div>
-      <div class="map-frame">${it.map}</div>
+      ${isPainted() ? '' : winterScene}
+      <div class="scroll${isPainted() ? ' con-giullare' : ''}">${isPainted() ? paintedPortrait('giullare', 'il giullare di corte', it.proclamation) : ''}<p class="herald"><span class="herald-name">Il giullare di corte proclama:</span> ${it.proclamation}</p></div>
+      <div class="map-roll"><div class="map-frame">${it.map}</div><span class="map-rod top" aria-hidden="true"></span><span class="map-rod bottom" aria-hidden="true"></span></div>
       <button data-act="interludeClose" class="primary">Leggi la cronaca dell'anno</button>
     </div>
   </div>`;

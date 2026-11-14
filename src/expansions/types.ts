@@ -75,6 +75,8 @@ export interface ExpansionView {
   yearEndScenes?(state: GameState, year: number): { title: string; html: string }[];
   /** SVG sopra la carta del regno di fine anno (coordinate della carta) */
   mapMarkers?(state: GameState): string;
+  /** SVG sotto i medaglioni della carta di fine anno (es. le rotte delle carovane) */
+  mapRoutes?(state: GameState): string;
   /** nota aggiunta ai consigli del siniscalco nella Delibera */
   tradeHint?(g: Game, mode: 'buy' | 'sell' | 'feed'): string;
   /** rendite: nota accanto a ciascuna gabella per la bozza `r` (null: nessuna) */
@@ -95,6 +97,12 @@ export interface ExpansionView {
   chronicle(f: { kind: string; data: Record<string, number> }, players: Player[]): string | null;
   /** notizie del regno dell'anno */
   news?(state: GameState, year: number): string[];
+  /**
+   * Fatto dell'espansione che il giornale porta in prima pagina (battaglie, paci...), con il titolo
+   * dell'articolo e il dipinto; `group` riunisce in un solo articolo i fatti di più signori.
+   * `who`: il signore del fatto. null: va nel trafiletto della vita dei feudi.
+   */
+  salient?(f: { kind: string; data: Record<string, number> }, who: number, players: Player[]): { prio: number; title: string; art?: string; group?: string } | null;
 }
 
 export interface Expansion {

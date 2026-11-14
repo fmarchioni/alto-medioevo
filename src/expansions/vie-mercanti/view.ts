@@ -6,6 +6,7 @@
 import { FEUDI } from '../../domain/rank';
 import type { Game } from '../../domain/turn';
 import type { ActionResult, GameState, Player } from '../../domain/types';
+import { MAP_POS, mapObstacles, PIAZZA_POS, playerColor, transitRoutes, type Transit } from '../../ui/map';
 import { dispatchScrolls } from '../../ui/scrolls';
 import { pick, speechBox, type Speaker } from '../../ui/speaker';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
@@ -302,8 +303,35 @@ const PANELS: Record<string, { title: string; render: (g: Game, st: MercantiStat
 
 // ---------------------------------------------------------------- vista
 
+/**
+ * Carta di fine anno: le carovane in viaggio, dal feudo che spedisce al compratore o alla piazza
+ * della fiera. Il tondo con la merce avanza ogni anno lungo la rotta (a metà per un viaggio
+ * di un anno, a un terzo e due terzi per due anni...), cerchiato del colore di chi spedisce.
+ */
+export function caravanRoutes(state: GameState): string {
+  const st = state.ext as MercantiState | undefined;
+  if (!st) return '';
+  const ps = state.players, now = state.q;
+  const label = (good: Merce, qty: number) => `${n(qty)} ${UNITA[good][qty === 1 ? 0 : 1]}`;
+  const step = (start: number, previsti: number) => Math.min(Math.max(1, now - start), previsti) / (previsti + 1);
+  const out: Transit[] = [];
+  for (const c of st.carovane ?? []) {
+    if (c.consegnata || ps[c.seller]?.caduto !== undefined) continue;
+    const start = c.partita ?? c.arrive - c.previsti;
+    out.push({ from: MAP_POS[ps[c.seller].feudo], to: MAP_POS[ps[c.buyer].feudo], t: step(start, c.previsti), color: playerColor(c.seller), good: c.good, label: label(c.good, c.qty) });
+  }
+  for (const imp of st.impegni ?? []) {
+    const s = imp.spedito;
+    if (!s || ps[imp.player]?.caduto !== undefined) continue;
+    out.push({ from: MAP_POS[ps[imp.player].feudo], to: PIAZZA_POS[imp.c.piazza], t: step(s.q, s.previsti), color: playerColor(imp.player), good: imp.c.good, label: label(imp.c.good, s.qty) });
+  }
+  return out.length ? transitRoutes(out, mapObstacles(ps.filter(p => p.caduto === undefined).map(p => p.feudo))) : '';
+}
+
+
 export const view: ExpansionView = {
   title: 'Le vie dei mercanti',
+  mapRoutes: caravanRoutes,
   motto: 'Vino, manufatti e denaro corrono per le strade del regno.',
   miniature,
   summary: [

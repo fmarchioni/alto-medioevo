@@ -77,6 +77,8 @@ export interface Player {
   patti?: Pact[];
   /** effetti dei fatti del reame in corso (solo con `fatti`) */
   effetti?: Effetto[];
+  /** anno (q) dell'ultima volta di ogni imprevisto o fatto non militare: chiave `e<id>` o `f:<fatto>` (opzione `ricorrenza`) */
+  ricorrenze?: Record<string, number>;
   /** prestigio guadagnato (visita del re): conta nella ricchezza [ka] */
   prestigio?: number;
   /** valore dei beni costruiti in un'espansione (es. i vigneti): conta nella ricchezza come gli altri beni */
@@ -178,6 +180,8 @@ export interface Options {
   usuraMinima?: boolean;
   /** inizio mite: nei primi anni la sorte non toglie né dà più di qualche centinaio di scudi (src/domain/events.ts, luckCap) */
   inizioMite?: boolean;
+  /** ricorrenza: un imprevisto o un fatto del reame non torna dallo stesso signore prima di RICORRENZA_ANNI anni, tranne quelli militari (src/domain/events.ts) */
+  ricorrenza?: boolean;
   /** obiettivo Dinastia: la partita finisce nel 962, i signori muoiono e succedono gli eredi, vince la casata con più prestigio (src/domain/dinastia.ts) */
   dinastia?: boolean;
 }
@@ -218,6 +222,7 @@ export const GAME_OPTIONS: Options = {
   bancarotta: true,
   usuraMinima: true,
   inizioMite: true,
+  ricorrenza: true,
 };
 
 export type Phase =

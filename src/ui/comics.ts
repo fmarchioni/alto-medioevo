@@ -6,7 +6,8 @@
 import { EVENTS } from '../domain/events';
 import type { EventOutcome, Player } from '../domain/types';
 import { honorific } from './advisor';
-import { pick } from './speaker';
+import { isPainted, pick } from './speaker';
+import { eventIllustration, illustrationUrl } from './citta/assets';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
 
@@ -278,6 +279,48 @@ export function panel(svg: string, sound: string, caption: string, label: string
   </figure>`;
 }
 
+/** Vista moderna: l'illustrazione dipinta dell'imprevisto, con didascalia, battuta e onomatopea. */
+export function illustrated(url: string, t: ComicText, label: string): string {
+  return `
+  <figure class="comic illustrata">
+    <figcaption class="comic-caption">${t.caption}</figcaption>
+    <img class="comic-art" src="${url}" alt="${label}" loading="lazy" width="1000" height="671">
+    ${t.line ? `<div class="comic-line">${t.line}</div>` : ''}
+    <div class="comic-sound" aria-hidden="true">${t.sound}</div>
+  </figure>`;
+}
+
+/** Quota minima dell'altezza piena che la vignetta conserva: con due o più decisioni si taglia meno e si preferisce scorrere. */
+const MIN_ART = { simple: 0.75, choice: 0.85 };
+
+/**
+ * Dopo il disegno: la vignetta occupa tutta la larghezza del pannello; se l'imprevisto (didascalia, vignetta,
+ * esito, pulsanti) non sta nella finestra, la vignetta perde un po' d'altezza tagliando sopra e sotto,
+ * senza mai rimpicciolirsi e senza scendere sotto MIN_ART dell'altezza piena.
+ * Vale per la pagina (vista classica) e per la finestra sopra la città (vista moderna).
+ */
+export function fitComic(root: HTMLElement): void {
+  const fig = root.querySelector<HTMLElement>('.phase .comic');
+  const section = fig?.closest<HTMLElement>('.phase');
+  const art = fig?.querySelector<HTMLElement | SVGSVGElement>('.comic-art, .comic-scene');
+  if (!fig || !section || !art) return;
+  art.style.height = '';
+  // clientWidth/Height: l'<svg> non ha offsetWidth, e non risentono della scala dell'animazione d'entrata
+  const full = art.clientHeight;
+  if (!full) return;
+  const box = fig.closest<HTMLElement>('.m-window');
+  const pad = box ? parseFloat(getComputedStyle(box).paddingBottom) || 0 : 0;
+  const bottom = section.getBoundingClientRect().bottom + 12;
+  const over = box
+    ? bottom - box.getBoundingClientRect().top + box.scrollTop - (box.clientHeight - pad)
+    : bottom + window.scrollY - window.innerHeight;
+  if (over <= 1) return;
+  const choice = section.querySelectorAll('.action-card').length >= 2;
+  const h = Math.max(Math.round(full * MIN_ART[choice ? 'choice' : 'simple']), full - over);
+  if (art instanceof SVGSVGElement) art.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+  art.style.height = `${h}px`;
+}
+
 export interface ComicText {
   caption: string;
   sound: string;
@@ -321,10 +364,27 @@ export function effectBadges(o: EventOutcome): string {
 }
 
 export function renderEventComic(eventId: number, title: string, t: ComicText): string {
+  const art = isPainted() ? eventIllustration(eventId) : undefined;
+  if (art) return illustrated(art, t, title);
   return panel(COMICS[eventId].scene(t.line), t.sound, t.caption, title);
 }
 
+/**
+ * L'illustrazione dipinta dell'esito di un imprevisto o di un attacco (comune a tutti i nemici):
+ * vittoria, sconfitta (anche il saccheggio), mura che reggono, patto, oppure riscatto e tributo pagati.
+ */
+export function outcomeArt(o: EventOutcome): string {
+  const won = o.win ?? (o.choice === 'pugna' ? o.scudi >= 0 : undefined);
+  if (won === true) return illustrationUrl('esito-vittoria');
+  if (won === false || o.option === 'saccheggio') return illustrationUrl('esito-sconfitta');
+  if (o.option === 'mura') return illustrationUrl('esito-mura');
+  if (o.option === 'matrimonio' || o.option === 'vassallo' || o.option === 'protettorato' || o.option === 'accordi') return illustrationUrl('esito-patto');
+  return illustrationUrl('esito-riscatto');
+}
+
 export function renderOutcomeComic(o: EventOutcome, t: ComicText): string {
+  const label = o.choice === 'riscatto' ? 'riscatto pagato' : 'esito della pugna';
+  if (isPainted()) return illustrated(outcomeArt(o), t, label);
   return panel(outcomeScene(o, t.line), t.sound, t.caption, o.choice === 'riscatto' ? 'riscatto pagato' : 'esito della pugna');
 }
 

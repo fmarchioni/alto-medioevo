@@ -13,11 +13,14 @@
  * La sorte dei fatti ha un generatore proprio salvato nella partita: la
  * sequenza RND del motore non cambia.
  */
+import { PRICE_BAND } from './annate';
 import { INT } from './economy';
+import { fattoKey, inPausa } from './ricorrenza';
+import { grainPrices } from './gabelle';
 import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI, roomFor } from './investments';
 import { wealthIndex } from './rank';
 import { Mulberry32 } from './rng';
-import type { GameState, Player } from './types';
+import type { AnnataKind, GameState, Player } from './types';
 
 export type Sorte = 'poco' | 'normale' | 'molto';
 
@@ -120,17 +123,22 @@ export function rollTargets(st: GameState, f: FattiState): void {
   f.rng = r.getState()[0];
 }
 
-/** Sceglie il fatto per il signore `who`: la decima colpisce più spesso chi è in testa. */
-export function pickFatto(st: GameState, f: FattiState, who: number): FattoId {
+/**
+ * Sceglie il fatto per il signore `who`: la decima colpisce più spesso chi è in testa. Con la ricorrenza
+ * un fatto capitato a quel signore da meno di RICORRENZA_ANNI anni non torna; se non ne resta nessuno, null.
+ */
+export function pickFatto(st: GameState, f: FattiState, who: number): FattoId | null {
   const r = new Mulberry32(f.rng);
   const ps = st.players;
   const leader = ps.reduce((a, _, i) => (wealthIndex(ps[i]) > wealthIndex(ps[a]) ? i : a), 0);
   // con il mazzo degli imprevisti il ciambellano resta solo fra gli imprevisti: niente doppione fra i fatti
-  const w = FATTI.map((id): number => (id === 'ciambellano' && st.options.mazzo ? 0 : id === 'decima' && ps.length > 1 && who === leader ? 3 : 1));
-  let x = r.next() * w.reduce((a, b) => a + b, 0);
-  const id = FATTI.find((_, i) => (x -= w[i]) < 0) ?? FATTI[FATTI.length - 1];
+  const pausa = (id: FattoId) => !!st.options.ricorrenza && inPausa(ps[who], fattoKey(id), st.q);
+  const w = FATTI.map((id): number => (pausa(id) || (id === 'ciambellano' && st.options.mazzo) ? 0 : id === 'decima' && ps.length > 1 && who === leader ? 3 : 1));
+  const total = w.reduce((a, b) => a + b, 0);
+  let x = r.next() * total;
   f.rng = r.getState()[0];
-  return id;
+  if (!total) return null;
+  return FATTI.find((_, i) => (x -= w[i]) < 0) ?? FATTI.filter((_, i) => w[i] > 0).slice(-1)[0];
 }
 
 /** Numero casuale dal generatore dei fatti (per l'entità degli effetti). */
@@ -184,6 +192,8 @@ export interface FattoOutcome {
   opifici?: number;
   /** variazione del raccolto in vendita quest'anno */
   raccolto?: number;
+  /** le piogge hanno fatto dell'anno un'annata abbondante */
+  annata?: 'buona';
   prezzo?: number;
   umore?: number;
   prestigio?: number;
@@ -202,11 +212,44 @@ export function fattoOptionOk(p: Player, id: FattoId, opt: string): boolean {
 }
 
 /**
+ * Piogge abbondanti: un anno medio o di carestia diventa di abbondanza. Il prezzo scende nella fascia
+ * dell'annata buona, alla stessa altezza a cui stava nella sua (un anno medio caro diventa un'abbondanza
+ * cara), e il raccolto in vendita cresce come se l'anno fosse nato così (righe 120-180: prezzo =
+ * INT(scarsità × 60) + 1, raccolto = (1 − scarsità) × acri × 75). Con le gabelle i prezzi d'acquisto e
+ * di vendita si rifanno sul prezzo nuovo. Restituisce vero se l'anno è cambiato.
+ */
+export function rendiAbbondante(
+  p: Player, sc: { raccolto: number; prezzo: number; prezzoVendita?: number; prezzoBase?: number; annata?: AnnataKind },
+): boolean {
+  const base = sc.prezzoBase ?? sc.prezzo;
+  const from = sc.annata ?? (base <= PRICE_BAND.buona.max ? 'buona' : base <= PRICE_BAND.media.max ? 'media' : 'carestia');
+  if (from === 'buona') return false;
+  const a = PRICE_BAND[from], b = PRICE_BAND.buona;
+  const alto = Math.min(1, Math.max(0, (base - a.min + 0.5) / (a.max - a.min + 1)));
+  const prima = Math.min(0.999, (base - 0.5) / 60), dopo = (b.min - 1) / 60 + alto * ((b.max - b.min + 1) / 60);
+  const nuovo = Math.min(b.max, Math.max(b.min, INT(dopo * 60) + 1));
+  // in proporzione: ciò che altri effetti hanno già aggiunto al raccolto (il mulino) resta
+  sc.raccolto = Math.max(sc.raccolto, INT((sc.raccolto * (1 - dopo)) / (1 - prima)));
+  if (sc.prezzoBase !== undefined && p.fiducia !== undefined) {
+    const { compra, vendi } = grainPrices(nuovo, p.fiducia);
+    sc.prezzoBase = nuovo;
+    sc.prezzo = compra;
+    sc.prezzoVendita = vendi;
+  } else {
+    sc.prezzo = nuovo;
+    if (sc.prezzoBase !== undefined) sc.prezzoBase = nuovo;
+    if (sc.prezzoVendita !== undefined) sc.prezzoVendita = nuovo;
+  }
+  if (sc.annata !== undefined) sc.annata = 'buona';
+  return true;
+}
+
+/**
  * Applica il fatto (e la scelta, se ce n'è una). `sc` è lo stato del turno:
  * piogge e cavallette cambiano il raccolto in vendita e il prezzo di quest'anno.
  */
 export function resolveFatto(
-  p: Player, sc: { raccolto: number; prezzo: number; prezzoVendita?: number; prezzoBase?: number },
+  p: Player, sc: { raccolto: number; prezzo: number; prezzoVendita?: number; prezzoBase?: number; annata?: AnnataKind },
   id: FattoId, opt: string | undefined, q: number, rnd: () => number,
   /** inizio mite: scudi massimi che la sorte sposta (l'eredità, il furto); le spese scelte restano intere */
   cap = Infinity,
@@ -217,9 +260,12 @@ export function resolveFatto(
   const effetto = (kind: EffettoKind, years: number) => { addEffetto(p, kind, q + years - 1); out.effetto = kind; };
   switch (id) {
     case 'piogge': {
-      const extra = INT(sc.raccolto * PIOGGE_BONUS);
-      sc.raccolto += extra;
-      out.raccolto = extra;
+      // con le piogge abbondanti non c'è carestia: l'anno diventa di abbondanza, poi il raccolto cresce ancora
+      const before = { raccolto: sc.raccolto, prezzo: sc.prezzo };
+      if (rendiAbbondante(p, sc)) out.annata = 'buona';
+      sc.raccolto += INT(sc.raccolto * PIOGGE_BONUS);
+      out.raccolto = sc.raccolto - before.raccolto;
+      if (sc.prezzo !== before.prezzo) out.prezzo = sc.prezzo - before.prezzo;
       break;
     }
     case 'cavallette': {

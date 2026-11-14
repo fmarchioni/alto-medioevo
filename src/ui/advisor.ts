@@ -74,8 +74,9 @@ export function greeting(p: Player, sc: Scalars, year: number): string {
       `I servi attendono la loro parte: ${n(sc.domanda)} misure basterebbero a tenerli contenti.`,
     ]));
   }
-  lines.push(pick(['Cosa comandate?', 'Come intendete procedere?', 'Attendo i vostri ordini.']));
-  return lines.join(' ');
+  // la chiusa sta con l'ultima frase; le frasi vanno a capo, così il fumetto le mostra una per volta
+  lines[lines.length - 1] += ' ' + pick(['Cosa comandate?', 'Come intendete procedere?', 'Attendo i vostri ordini.']);
+  return lines.join('\n');
 }
 
 /** Domanda del consigliere quando si sceglie un'azione. */
@@ -106,9 +107,9 @@ export function question(mode: TradeMode, p: Player, sc: Scalars): string {
 /** Avvertimento fisso sull'azione (regole del listato originale). */
 export function ruleNote(mode: TradeMode): string {
   switch (mode) {
-    case 'buy': return 'Si può comprare solo dal raccolto di quest\'anno.';
+    case 'buy': return ''; // nessuna nota: così il pulsante Compra si vede senza scorrere
     case 'sell': return 'Se il tesoro scende sotto i -2500 scudi, i mercanti non comprano più.';
-    case 'feed': return 'Dopo la distribuzione il mercato chiude fino all\'anno prossimo.';
+    case 'feed': return ''; // nessuna nota: così il pulsante Distribuisci si vede senza scorrere
   }
 }
 

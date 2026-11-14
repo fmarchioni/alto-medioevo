@@ -104,7 +104,21 @@ export interface DrawCtx {
   impresa: boolean;
   /** carte del mazzo di un'espansione, con il loro peso */
   extra?: { id: number; w: number }[];
+  /** ricorrenza: le carte che questo signore ha avuto da poco (restano fuori dal mazzo) */
+  inPausa?: (ev: RandomEvent) => boolean;
 }
+
+// ---------------------------------------------------------------- ricorrenza (opzione `ricorrenza`)
+
+export { RICORRENZA_ANNI } from './ricorrenza';
+/** Imprevisti militari: tributo longobardo, campagna vittoriosa, briganti. Con le fazioni, gli attacchi e la rivolta, tornano quando vogliono. */
+const MILITARI = [1, 4, 7];
+
+/** L'imprevisto ha la pausa di RICORRENZA_ANNI anni? Non i militari, non la rivolta (figlia delle gabelle), non le carte delle espansioni (hanno la loro mano). */
+export const haRicorrenza = (ev: RandomEvent): boolean =>
+  ev !== ATTACK && !MILITARI.includes(ev.id) && ev.effect.kind !== 'fazione' && ev.effect.kind !== 'rivolta' && ev.effect.kind !== 'carta';
+
+export { eventKey, fattoKey, inPausa, segnaRicorrenza } from './ricorrenza';
 
 /** Carte del mazzo per questo signore, con il loro peso: gli imprevisti semplici pesano 1. */
 export function deckFor(ctx: DrawCtx): { ev: RandomEvent; w: number }[] {
@@ -115,7 +129,8 @@ export function deckFor(ctx: DrawCtx): { ev: RandomEvent; w: number }[] {
   if (ctx.attack > 0) deck.push({ ev: ATTACK, w: ctx.attack });
   if (ctx.impresa) for (const id of Object.keys(IMPRESE) as ImpresaId[]) deck.push({ ev: EVENTS.find(e => e.id === IMPRESE[id].event)!, w: 1 });
   for (const x of ctx.extra ?? []) if (x.w > 0) deck.push({ ev: EVENTS.find(e => e.id === x.id)!, w: x.w });
-  return deck;
+  // ricorrenza: le carte capitate da poco restano fuori dal mazzo
+  return ctx.inPausa ? deck.filter(c => !c.ev || !ctx.inPausa!(c.ev)) : deck;
 }
 
 /** Probabilità che in questo turno arrivi un imprevisto qualsiasi (al più 1). */

@@ -167,6 +167,14 @@ input[type="number"] { width: 8em; }
 .chip { border-radius: 999px; padding: 4px 12px; font-size: .9rem; border-color: var(--line); }
 .chip:hover { border-color: var(--gold); background: var(--paper); }
 .chip small { color: var(--muted); margin-left: 4px; }
+/* Delibera: i tre suggerimenti su una riga, l'etichetta sopra e la quantità sotto */
+.chips-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.chips-row .chip { white-space: nowrap; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border-radius: 10px; line-height: 1.2; text-align: center; }
+.chips-row .chip small { margin-left: 0; }
+/* fumetto a frasi: tutte nella stessa cella, se ne vede una alla volta (prima svanisce l'una, poi compare l'altra) */
+.say-seq { display: grid; cursor: pointer; }
+.say-seq .frase { grid-area: 1 / 1; opacity: 0; transition: opacity .5s ease; }
+.say-seq .frase.on { opacity: 1; transition-delay: .5s; }
 .preview { background: var(--paper); border-left: 3px solid var(--gold); padding: 8px 12px; margin: 8px 0; }
 .warn { color: var(--red); }
 
@@ -179,7 +187,7 @@ input[type="number"] { width: 8em; }
 }
 @media (prefers-reduced-motion: reduce) {
   .say, .decide { animation: none; }
-  .action-card { transition: none; }
+  .action-card, .say-seq .frase { transition: none; }
 }
 
 /* ---------- rendite ---------- */
@@ -215,7 +223,7 @@ input[type="number"] { width: 8em; }
 
 /* ---------- vignette degli imprevisti ---------- */
 .comic {
-  position: relative; margin: 8px 0 14px; border: 3px solid #2b2118; border-radius: 4px;
+  position: relative; margin: 6px 0 10px; border: 3px solid #2b2118; border-radius: 4px;
   background: #fff; box-shadow: 5px 5px 0 rgba(43,33,24,.35); overflow: hidden;
   animation: comic-in .45s cubic-bezier(.2,1.4,.4,1) both;
 }
@@ -746,3 +754,294 @@ p.spy.on { border-color: var(--gold); color: var(--gold); }
 .tower-alert ul { margin: 4px 0 0; padding-left: 1.3em; }
 @keyframes tower-blink { 50% { background: rgba(184, 50, 30, .3); } }
 @media (prefers-reduced-motion: reduce) { .tower-alert { animation: none; } }
+
+/* ---------- vista moderna: città a sinistra, consigliere e scelte a destra (solo desktop) ---------- */
+:root[data-vista="moderna"] body { overflow: hidden; }
+:root[data-vista="moderna"] #app { max-width: none; height: 100vh; padding: 8px 12px; }
+.moderna { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.moderna > .top { margin-bottom: 4px; }
+.moderna > .resource-bar { margin-bottom: 8px; }
+.moderna > .pacts-strip { margin: -2px 0 6px; }
+.m-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(420px, 1fr); gap: 12px; }
+.m-city { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #4d6427; border: 3px solid var(--frame); border-radius: 2px; }
+#citta-slot { position: absolute; inset: 0; }
+.citta-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.citta-canvas:active { cursor: grabbing; }
+/* finestra sopra la città: la veduta resta visibile ai bordi */
+.m-window { position: absolute; inset: 0; overflow-y: auto; padding: 22px 28px; background: rgba(20, 14, 8, .28); }
+.m-window > * { max-width: 920px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+.m-window > .card { border: 3px solid var(--frame); }
+.m-col { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.m-col > * { flex: none; }
+.m-col > .log { margin-top: 0; }
+.m-phase { border: 3px solid var(--frame); }
+.m-tools { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 4px; }
+/* nella colonna tutto va su una fila sola */
+.m-col .action-cards, .m-col .action-cards.two, .m-col .action-cards.four, .m-col .build-cards, .m-col .rate-cards { grid-template-columns: 1fr; }
+.m-col .action-card { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; text-align: left; gap: 4px 12px; padding: 10px 12px; }
+.m-col .action-card .card-art { width: 64px; height: 48px; }
+.m-col .action-card .card-sub { flex-basis: 100%; }
+.m-col .realm-legend { grid-template-columns: 1fr; }
+/* ritratti dipinti dei consiglieri: nella colonna guardano la città */
+.m-col { font-size: 14px; line-height: 1.5; }
+.m-col h2 { font-size: 20px; }
+.m-col .big { font-size: 1.15rem; }
+
+/* ---------- vista moderna: veste dipinta (legno e pergamena; gli indirizzi dei pezzi arrivano da paintedSkin come --ui-*) ---------- */
+:root[data-vista="moderna"] {
+  --paper: #ecdcb4;
+  --card: #f4e8c8;
+  --ink: #2b2118;
+  --muted: #6b5234;
+  --line: #b99a66;
+  --red: #8b2a1e;
+  --gold: #86601a;
+  --frame: #6b4526;
+  --btn-bg: #8b2a1e;
+  --btn-ink: #fbeecb;
+  --bar-bg: rgba(20, 12, 6, .45);
+  --bar-ink: #f3e3bd;
+  color-scheme: light;
+}
+:root[data-vista="moderna"] body { background: #3a2617 var(--ui-legno); }
+.moderna { color: var(--bar-ink); }
+.moderna .card, .moderna .m-window { color: var(--ink); }
+.moderna > .top .year { color: #e9c66a; text-shadow: 0 2px 0 rgba(0, 0, 0, .5); }
+.moderna > .top .who { text-shadow: 0 1px 0 rgba(0, 0, 0, .6); }
+.moderna > .resource-bar { border: 1px solid #a8843f; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35); padding: 4px 12px; }
+.moderna .rb-item .ico { width: 34px; height: 34px; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6)); }
+.moderna .rb-item svg.ico { width: 26px; height: 26px; }
+
+/* cornici di noce: grande per la città, la fase e le finestre; piccola per i riquadri secondari */
+.m-city { border: 20px solid transparent; border-image: var(--ui-cornice) 46 stretch; border-radius: 0; background-clip: padding-box; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+.moderna .card { background: #ecdcb4 var(--ui-pergamena); background-clip: padding-box; border: 12px solid transparent; border-image: var(--ui-cornice-piccola) 29 stretch; border-radius: 0; padding: 12px 14px; }
+.moderna .m-phase, .moderna .m-window > .card { border-width: 18px; border-image: var(--ui-cornice) 46 stretch; }
+.moderna .m-window > .card { padding: 16px 20px; }
+.m-window { background: rgba(20, 12, 6, .38); }
+.m-col { scrollbar-color: #a8843f rgba(0, 0, 0, .25); }
+.moderna .log summary { cursor: pointer; }
+
+/* titolo della fase su un nastro rosso */
+.m-col .m-phase > h2 {
+  color: #fbeecb; text-align: center; font-size: 17px; line-height: 1.5; margin: -4px -8px 10px; padding: 9px 15% 27px;
+  background: var(--ui-nastro) center / 100% 100% no-repeat; text-shadow: 0 2px 0 #4a120c;
+}
+/* filetto d'oro con il giglio fra le sezioni della colonna */
+.m-col .imprese, .m-col .realm-legend {
+  border-top: 0; margin-top: 12px; padding-top: 28px;
+  background: var(--ui-giglio) 50% 2px / auto 22px no-repeat, var(--ui-filetto) 0 10px / calc(50% - 18px) 6px no-repeat, var(--ui-filetto) 100% 10px / calc(50% - 18px) 6px no-repeat;
+}
+
+/* pulsanti: rossi di ceralacca quelli che decidono, di pergamena gli altri */
+:root[data-vista="moderna"] button {
+  background: linear-gradient(#f8eed0, #dfc994); border: 1px solid #7a5a2e; color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 2px rgba(0, 0, 0, .3);
+}
+:root[data-vista="moderna"] button:hover:not(:disabled) { background: linear-gradient(#fdf6de, #e9d6a6); }
+:root[data-vista="moderna"] button.primary {
+  background: none; box-shadow: none; color: #fbeecb; text-shadow: 0 2px 0 #4a120c;
+  border: solid transparent; border-width: 10px 16px; border-image: var(--ui-pulsante) 20 26 fill stretch; padding: 1px 6px;
+}
+:root[data-vista="moderna"] button.primary:hover:not(:disabled) { background: none; border-image-source: var(--ui-pulsante-su); }
+:root[data-vista="moderna"] button.primary:disabled { border-image-source: var(--ui-pulsante-no); opacity: .85; text-shadow: none; color: #3a3a3a; }
+:root[data-vista="moderna"] .action-card { background: linear-gradient(#f9f0d6, #e6d3a3); border: 2px solid #b08a4e; }
+:root[data-vista="moderna"] .action-card.decisive { border-color: var(--red); }
+:root[data-vista="moderna"] .rate-card, :root[data-vista="moderna"] .forces, :root[data-vista="moderna"] .impresa-card { background: linear-gradient(#f9f0d6, #ead9ad); border-color: #b08a4e; }
+:root[data-vista="moderna"] input, :root[data-vista="moderna"] select { background: #fbf4dc; border-color: #9a7a45; }
+
+/* ritratti dipinti nella cornice dorata; guardano il testo, e nella colonna la città */
+.ritratto { position: relative; display: block; flex: none; width: 112px; aspect-ratio: 216 / 254; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .4)); }
+.ritratto::before { content: ''; position: absolute; inset: 10% 10% 8%; background: radial-gradient(ellipse at 50% 35%, #f6e8c4, #a57c45); }
+.ritratto::after { content: ''; position: absolute; inset: 0; background: var(--ui-cornice-ritratto-2) center / 100% 100% no-repeat; }
+.ritratto .portrait.painted { position: absolute; left: 11%; top: 13%; width: 78%; height: 77%; object-fit: cover; object-position: 50% 0; border: 0; border-radius: 0; box-shadow: none; }
+.ritratto[data-faces="left"] .portrait { transform: scaleX(-1); }
+.m-col .ritratto { width: 100px; }
+.m-col .ritratto .portrait { transform: scaleX(-1); }
+.m-col .ritratto[data-faces="left"] .portrait { transform: none; }
+
+/* fumetto di pergamena: la punta, capovolta in alto, va verso il ritratto */
+:root[data-vista="moderna"] .speech, .advisor.dipinto .speech { background: none; border: 0; border-radius: 0; padding: 10px 16px 12px 18px; margin-top: 24px; z-index: 0; }
+:root[data-vista="moderna"] .speech::before, .advisor.dipinto .speech::before {
+  left: -8px; top: -27px; right: -4px; bottom: -4px; width: auto; height: auto; z-index: -1; background: none;
+  border: solid transparent; border-width: 15px 15px 31px 40px; border-image: var(--ui-fumetto-2) 30 30 62 80 fill stretch; transform: scaleY(-1);
+}
+
+/* illustrazione dell'imprevisto */
+.comic.illustrata { border-color: #3a2414; background: #1c120a; box-shadow: 0 6px 16px rgba(0, 0, 0, .45); }
+.comic.illustrata .comic-caption { background: #f1e2b8; border-bottom-color: #3a2414; }
+.comic-art { display: block; width: 100%; height: auto; object-fit: cover; }
+.comic-line { position: absolute; left: 12px; bottom: 12px; max-width: 62%; background: #f6ebcb; color: #2b2118; border: 2px solid #3a2414; border-radius: 12px 12px 12px 2px; padding: 4px 12px; font-size: .9rem; box-shadow: 2px 3px 0 rgba(0, 0, 0, .35); }
+
+/* siparietto, avvisi e atti sopra la vista moderna */
+:root[data-vista="moderna"] .stage { background: #ecdcb4 var(--ui-pergamena); background-clip: padding-box; border: 20px solid transparent; border-image: var(--ui-cornice) 46 stretch; }
+.scroll.con-giullare { display: flex; gap: 16px; align-items: center; }
+.scroll.con-giullare .ritratto { width: 128px; }
+:root[data-vista="moderna"] .help-card { background: #ecdcb4 var(--ui-pergamena); border-color: #6b4526; }
+img.deed-seal { width: 54px; height: 54px; transform: rotate(-8deg); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .4)); }
+
+/* imprevisti e notizie dal reame: niente titolo, testi più piccoli, così la vignetta resta grande */
+.phase:has(.comic) .comic-caption { font-size: .8rem; padding: 4px 10px; }
+.phase:has(.comic) .comic-line { font-size: .8rem; }
+.phase:has(.comic) .big { font-size: 1rem; margin: 6px 0; }
+.phase:has(.comic) .btns { margin: 8px 0 0; }
+.phase:has(.comic) .badges { margin: 0 0 4px; }
+.phase:has(.comic) .badge { font-size: .85rem; }
+.phase:has(.comic) .action-card { padding: 8px 10px; gap: 2px; }
+.phase:has(.comic) .card-emblem { font-size: 1.5rem; }
+.phase:has(.comic) .card-title { font-size: .95rem; }
+.phase:has(.comic) .card-sub { font-size: 11px; }
+.phase:has(.comic) .faction-head { margin-bottom: 4px; gap: 10px; }
+.phase:has(.comic) .faction-head h2 { font-size: 1.15rem; }
+.phase:has(.comic) .faction-sub { font-size: .8rem; }
+.phase:has(.comic) .forces { margin: 6px 0; padding: 6px 12px; }
+.phase:has(.comic) .forces-side b { font-size: 1.1rem; }
+
+/* imprevisto senza decisioni: effetti e Prosegui in basso a destra dentro la vignetta */
+.comic-dock { position: absolute; right: 10px; bottom: 10px; z-index: 2; max-width: 52%; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
+.comic-dock .badges { margin: 0; gap: 5px; justify-content: flex-end; }
+.phase:has(.comic) .comic-dock .badge, .comic-dock .badge { font-size: .72rem; padding: 2px 8px; background: #f6ebcb; box-shadow: 2px 2px 0 rgba(0, 0, 0, .35); }
+.comic-dock .badge { animation-delay: .35s; }
+.comic-dock .badge.gain { background: #e4ecd0; color: #2f5a1e; }
+.comic-dock .badge.loss { background: #f3dccf; color: #8b2a1e; }
+.comic-dock button { font-size: .78rem; padding: 4px 14px; min-height: 0; box-shadow: 2px 3px 0 rgba(0, 0, 0, .4); }
+.comic:has(.comic-dock) .comic-sound { bottom: 56px; }
+.comic:has(.comic-dock) .comic-line { max-width: 44%; }
+:root[data-vista="moderna"] .comic-dock button.primary { border-width: 7px 12px; padding: 0 4px; }
+
+/* fine anno: la carta del regno si srotola dall'alto in basso, fra due bastoni di legno */
+.map-roll { position: relative; margin: 18px 0 14px; }
+.map-roll .map-frame { margin: 0; animation: map-unroll 1.8s 1.6s cubic-bezier(.45, .05, .35, 1) both; }
+.map-rod {
+  position: absolute; left: -14px; right: -14px; height: 18px; margin-top: -9px; z-index: 2; border-radius: 9px; pointer-events: none;
+  background: linear-gradient(#f3e3b9, #d9bf86 35%, #a07a3f 70%, #6b4a22);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(60, 35, 10, .5);
+}
+.map-rod::before, .map-rod::after { content: ''; position: absolute; top: -3px; width: 14px; height: 24px; border-radius: 5px; background: linear-gradient(#a8743a, #5a3412); box-shadow: 0 2px 3px rgba(0, 0, 0, .4); }
+.map-rod::before { left: -10px; }
+.map-rod::after { right: -10px; }
+.map-rod.top { top: 0; }
+.map-rod.bottom { top: 0; animation: map-rod-down 1.8s 1.6s cubic-bezier(.45, .05, .35, 1) both; }
+@keyframes map-unroll { from { clip-path: inset(-8px -8px 100% -8px); } to { clip-path: inset(-8px); } }
+@keyframes map-rod-down { from { top: 0; } to { top: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .map-roll .map-frame, .map-rod.bottom { animation: none; }
+  .map-rod.bottom { top: 100%; }
+}
+/* esito di una notizia dal reame: un secondo cartiglio sotto l'intestazione, stesso stile */
+.comic-note { border-top: 0; font-weight: bold; }
+.comic.illustrata .comic-note { background: #f1e2b8; }
+
+/* busti che parlano e sbattono gli occhi: i fotogrammi stanno sopra il ritratto, uguali al pixel */
+.ritratto .portrait.frame { visibility: hidden; }
+.ritratto.bocca .frame-parla, .ritratto.occhi .frame-occhi { visibility: visible; }
+.ritratto.bocca.occhi .frame-parla { visibility: hidden; }
+
+/* ---------- giornale di fine anno: pagina di cronaca miniata ---------- */
+.giornale {
+  --g-ink: #2a1a10; --g-rubric: #a3221a; --g-azure: #1f3f8a; --g-gold1: #f7e08a; --g-gold2: #c99a2e; --g-gold3: #7a5412;
+  position: relative; max-width: 1000px; margin: 12px auto; padding: 64px 76px 40px; box-sizing: border-box; color: var(--g-ink);
+  background:
+    radial-gradient(ellipse at 20% 15%, rgba(255, 250, 230, .55), transparent 55%),
+    radial-gradient(ellipse at 80% 85%, rgba(150, 100, 40, .18), transparent 50%),
+    radial-gradient(ellipse at 50% 50%, #f1e2bd 40%, #e2c993 85%, #c9a868);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .6), inset 0 0 90px rgba(120, 75, 25, .45);
+  border-radius: 3px; text-transform: none; letter-spacing: 0;
+}
+.gz-cornice { position: absolute; inset: 28px; border: 3px solid var(--g-rubric); outline: 2px solid var(--g-azure); outline-offset: 5px; pointer-events: none; }
+.gz-angolo { position: absolute; width: 70px; height: 70px; pointer-events: none; }
+.gz-angolo svg { display: block; width: 100%; height: 100%; }
+.gz-angolo.tl { left: 12px; top: 12px; } .gz-angolo.tr { right: 12px; top: 12px; transform: scaleX(-1); }
+.gz-angolo.bl { left: 12px; bottom: 12px; transform: scaleY(-1); } .gz-angolo.br { right: 12px; bottom: 12px; transform: scale(-1); }
+.gz-testa { text-align: center; margin-bottom: 16px; }
+.gz-testata { font: 58px/1 'UnifrakturMaguntia', serif; color: var(--g-rubric); margin: 0; text-shadow: 1px 1px 0 rgba(255, 240, 200, .6); letter-spacing: 1px; text-transform: none; }
+.gz-anno { font: 28px/1.2 'UnifrakturMaguntia', serif; color: var(--g-azure); margin: 6px 0 0; }
+.gz-fregio { display: block; margin: 10px auto 0; width: min(520px, 90%); height: 22px; }
+.gz-colonne { columns: 2 340px; column-gap: 50px; column-rule: 1px solid rgba(120, 70, 20, .35); font: 450 19px/1.45 'Grenze Gotisch', serif; text-align: justify; hyphens: auto; }
+.gz-colonne p { margin: 0 0 12px; }
+.gz-intro { overflow: hidden; }
+.gz-capo { float: left; width: 88px; height: 88px; margin: 4px 12px 2px 0; position: relative; background: var(--g-azure); border: 3px solid var(--g-gold2); box-shadow: inset 0 0 0 4px var(--g-rubric), 2px 3px 0 rgba(60, 30, 0, .3); }
+.gz-capo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.gz-capo b {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 76px/1 'UnifrakturMaguntia', serif; padding-top: 6px;
+  background: linear-gradient(170deg, var(--g-gold1), var(--g-gold2) 45%, var(--g-gold3) 70%, var(--g-gold1)); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, .5));
+}
+.gz-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.giornale .chr-entry { overflow: visible; }
+.gz-rubrica { break-after: avoid; color: var(--g-rubric); font: 24px/1.2 'UnifrakturMaguntia', serif; margin: 8px 0 6px; text-transform: none; }
+.gz-rubrica::before { content: '\00B6  '; color: var(--g-azure); }
+.giornale .chr-bot { font: 11px/1.4 var(--font, sans-serif); color: #6b5a47; border-color: var(--g-gold2); }
+/* miniatura: filo d'oro, fascia rosa a puntini bianchi, fascia azzurra, filetto nero */
+.gz-mini { break-inside: avoid; margin: 6px 0 12px; }
+.gz-oro { padding: 4px; background: linear-gradient(135deg, var(--g-gold1), var(--g-gold2) 40%, var(--g-gold3) 70%, var(--g-gold1)); box-shadow: 2px 3px 0 rgba(60, 30, 0, .3); }
+.gz-rosa { padding: 6px; background: #d06a82 radial-gradient(circle, #f6ebe0 1.2px, transparent 1.6px) 0 0 / 11px 11px; }
+.gz-azzurra { padding: 4px; background: #2a49a6 radial-gradient(circle, #f6ebe0 1px, transparent 1.4px) 3px 3px / 9px 9px; line-height: 0; }
+.gz-azzurra img, .gz-azzurra canvas, .gz-azzurra svg { display: block; width: 100%; height: auto; outline: 2px solid #1a1410; }
+/* le miniature già dipinte hanno la loro cornice: niente fasce intorno */
+.gz-oro:has(img.gz-dipinta) { padding: 0; background: none; }
+.gz-oro:has(img.gz-dipinta) .gz-rosa, .gz-oro:has(img.gz-dipinta) .gz-azzurra { padding: 0; background: none; }
+.gz-oro:has(img.gz-dipinta) img { outline: 0; }
+.gz-attesa { opacity: 0; }
+.gz-notizie { break-inside: avoid; margin-top: 8px; padding-top: 8px; border-top: 2px solid var(--g-rubric); }
+.gz-notizie h3 { font: 30px/1 'UnifrakturMaguntia', serif; color: var(--g-azure); text-align: center; margin: 4px 0 10px; text-transform: none; }
+.gz-notizie ul { list-style: none; padding: 0; margin: 0; }
+.gz-notizie li { margin: 0 0 6px; }
+.gz-notizie li::before { content: '\2720  '; color: var(--g-rubric); }
+.gz-explicit { text-align: right; font: 22px 'UnifrakturMaguntia', serif; color: var(--g-rubric); }
+.gz-nav { justify-content: center; margin-top: 18px; position: relative; }
+
+/* come un giornale: l'articolo d'apertura a tutta pagina, poi gli altri in colonna, le notizie, il trafiletto */
+.gz-intro, .gz-quieto, .gz-apertura { font: 450 19px/1.45 'Grenze Gotisch', serif; text-align: justify; hyphens: auto; }
+.gz-intro { margin: 0 0 14px; }
+.gz-quieto { text-align: center; font-style: italic; margin: 0 0 14px; }
+.gz-articolo { display: flow-root; margin: 0 0 6px; break-inside: avoid; }
+.gz-articolo p { margin: 0 0 8px; }
+.gz-chi { font-variant: small-caps; font-weight: 700; color: var(--g-rubric); }
+.gz-articolo p.gz-attacco { font-weight: 650; color: #3a2414; margin: 0 0 6px; }
+.gz-apertura { margin: 0 0 18px; padding: 10px 0 14px; border-top: 2px solid var(--g-rubric); border-bottom: 2px solid var(--g-rubric); font-size: 21px; }
+.gz-apertura .gz-rubrica { font-size: 40px; text-align: center; margin: 4px 0 14px; }
+.gz-apertura .gz-rubrica::before { content: none; }
+/* le miniature: grandi se i fatti dell'anno sono pochi, piccole se sono tanti */
+.gz-con-mini .gz-mini { margin-top: 4px; }
+.gz-apertura.gz-con-mini .gz-mini { float: left; margin: 4px 22px 10px 0; }
+.gz-grandi .gz-apertura .gz-mini { width: 60%; }
+.gz-medie .gz-apertura .gz-mini { width: 46%; }
+.gz-piccole .gz-apertura .gz-mini { width: 36%; }
+.gz-colonne .gz-dx .gz-mini { float: right; margin: 4px 0 8px 14px; }
+.gz-colonne .gz-sx .gz-mini { float: left; margin: 4px 14px 8px 0; }
+.gz-grandi .gz-colonne .gz-mini { float: none; width: 100%; margin: 4px 0 10px; }
+.gz-medie .gz-colonne .gz-mini { width: 60%; }
+.gz-piccole .gz-colonne .gz-mini { width: 44%; }
+.gz-trafiletto { margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(120, 70, 20, .55); font-size: 16px; line-height: 1.38; }
+.gz-trafiletto h3 { font: 22px/1 'UnifrakturMaguntia', serif; color: var(--g-azure); text-align: center; margin: 4px 0 8px; text-transform: none; break-after: avoid; }
+.gz-trafiletto p { margin: 0 0 8px; }
+.gz-colonne > .gz-notizie:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+
+/* la pagina si srotola dall'alto in basso fra due rulli, come la carta del regno */
+.gz-rotolo { position: relative; max-width: 1000px; margin: 22px auto 14px; }
+.gz-rotolo .giornale { margin: 0; animation: map-unroll 2.6s .2s cubic-bezier(.45, .05, .35, 1) both; }
+.gz-rotolo .map-rod.bottom { animation: map-rod-down 2.6s .2s cubic-bezier(.45, .05, .35, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .gz-rotolo .giornale, .gz-rotolo .map-rod.bottom { animation: none; }
+}
+@media (max-width: 700px) { .giornale { padding: 48px 36px 30px; } .gz-testata { font-size: 40px; } }
+.exp-mini.dipinta { aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: 0 2px 4px rgba(0, 0, 0, .35); }
+.notice .investitura { margin: 2px 0 8px; animation: none; }
+
+/* Delibera: comprare e vendere affiancati, nutrire il popolo su una riga intera, tutto più compatto */
+.m-col .action-cards.trade-menu { grid-template-columns: 1fr 1fr; gap: 8px; }
+.m-col .trade-menu .action-card { flex-direction: column; align-items: center; text-align: center; padding: 6px 6px 8px; gap: 2px; }
+.m-col .trade-menu .action-card .card-art { width: 44px; height: 33px; }
+.m-col .trade-menu .card-title { font-size: .95rem; }
+.m-col .trade-menu .card-sub { flex-basis: auto; font-size: .72rem; }
+.m-col .trade-menu .action-card.decisive { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 4px 12px; }
+
+/* fumetto dipinto anche fuori dalla vista moderna (Lapo nel benvenuto): inchiostro scuro sulla pergamena */
+.advisor.dipinto .speech { color: #2b2118; }
+.advisor.dipinto .who-speaks { color: #8b2a1e; }
+.advisor.dipinto .who-speaks span { color: #6b5a47; }
+
+/* benvenuto: Messer Lapo è a sinistra del fumetto, la punta resta in basso a sinistra come nel disegno */
+.benvenuto .advisor.dipinto { align-items: flex-start; }
+.benvenuto .advisor.dipinto .speech { margin-top: 4px; margin-bottom: 28px; }
+.benvenuto .advisor.dipinto .speech::before { top: -4px; bottom: -27px; transform: none; }

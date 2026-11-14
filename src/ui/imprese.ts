@@ -9,7 +9,9 @@ import {
 import type { Game } from '../domain/turn';
 import type { Player } from '../domain/types';
 import { honorific } from './advisor';
-import { bubble, coin, ground, hood, panel, person, sky } from './comics';
+import { illustrationUrl } from './citta/assets';
+import { bubble, coin, ground, hood, illustrated, panel, person, sky } from './comics';
+import { isPainted } from './speaker';
 
 const n = (v: number) => Math.abs(Math.floor(v)).toLocaleString('it-IT');
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -155,7 +157,10 @@ export function renderImpresa(id: ImpresaId, esito: EsitoImpresa, amount: number
     : esito === 'multa' ? `<span class="badge loss">−${n(amount)} scudi</span>` : '<span class="badge loss">arresto: la partita finisce</span>';
   const out = esito === 'fallita' || esito === 'arresto';
   const line = esito === 'riuscita' ? t.line : LINE[esito];
-  return `<h2>${title}</h2>${panel(scene(id, esito, line), SOUND[esito], caption(id, esito, amount, p), title)}
+  // vista moderna: il colpo riuscito (le decime, le galee del contrabbando) o il signore in ceppi
+  const art = isPainted() ? illustrationUrl(esito === 'riuscita' ? `impresa-${id}` : 'impresa-arresto') : undefined;
+  const comic = art ? illustrated(art, { caption: caption(id, esito, amount, p), sound: SOUND[esito], line }, title) : panel(scene(id, esito, line), SOUND[esito], caption(id, esito, amount, p), title);
+  return `<h2>${title}</h2>${comic}
     <div class="badges">${badge}</div>
     <div class="btns"><button data-act="afterImpresa" class="primary">${out ? 'Lasciate il feudo' : 'Prosegui'}</button></div>`;
 }
@@ -164,4 +169,10 @@ export function renderImpresa(id: ImpresaId, esito: EsitoImpresa, amount: number
 export function impresaSentence(id: ImpresaId, esito: EsitoImpresa | 'scaduta', amount: number): string {
   // le cronache scritte prima che ci fossero più carte non hanno l'id
   return (CARTE[id] ?? CARTE.decime).chr[esito](amount);
+}
+
+/** Titolo e dipinto dell'impresa per il giornale di fine anno. */
+export function impresaHeadline(id: ImpresaId, esito: EsitoImpresa | 'scaduta'): { title: string; art?: string } {
+  const t = CARTE[id];
+  return { title: t?.title ?? "Un'impresa", art: esito === 'riuscita' ? `impresa-${id}` : esito === 'arresto' ? 'impresa-arresto' : undefined };
 }

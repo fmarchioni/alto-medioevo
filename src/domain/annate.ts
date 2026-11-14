@@ -77,3 +77,10 @@ export function annataOf(a: AnnateState, player: number, q: number): AnnataKind 
   a.rng = gen.getState()[0];
   return KIND_OF[a.seq[player][q]];
 }
+
+/** Cambia l'annata già estratta di un signore (le piogge abbondanti fanno dell'anno un'annata buona). */
+export function setAnnata(a: AnnateState, player: number, q: number, kind: AnnataKind): void {
+  const s = a.seq[player];
+  if (s === undefined || s.length <= q) return;
+  a.seq[player] = s.slice(0, q) + CODE[kind] + s.slice(q + 1);
+}

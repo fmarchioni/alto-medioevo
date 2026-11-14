@@ -1,0 +1,2 @@
+/** Miniature del giornale già dipinte (public/sprites/miniature): scritto da tools/ritaglia-miniature.mjs. */
+export const MINIATURE: readonly string[] = ["alluvione","bizantini","briganti","campagna","cavallette","ciambellano","cloaca","commercio-segreto","decime-abate","doni-saraceni","franchi","incendio","longobardi","mercenari","mulino","peste","piogge","reliquia","rivolta","saraceni","traditore","tregua","ungari","visita-re"];

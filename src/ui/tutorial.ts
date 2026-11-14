@@ -218,7 +218,7 @@ export function renderWelcome(text: string): string {
   return `<h1>Alto Medioevo</h1>
     <p class="sub">Cronache di un feudo, anno 900 circa.</p>
     <p class="version">versione ${VERSION} del ${versionDateText()}</p>
-    ${speechBox(LAPO, text)}
+    <div class="benvenuto">${speechBox(LAPO, text, true)}</div>
     <div class="action-cards two">
       <button class="action-card" data-act="tutorialStart"><span class="card-emblem" aria-hidden="true">📜</span><span class="card-title">Sì, insegnatemi</span><span class="card-sub">${PAGES.length} pagine illustrate</span></button>
       <button class="action-card" data-act="skipTutorial"><span class="card-emblem" aria-hidden="true">⚑</span><span class="card-title">No, conosco il mestiere</span><span class="card-sub">si va subito al feudo</span></button>

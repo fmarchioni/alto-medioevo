@@ -65,6 +65,8 @@ export interface Carovana {
   paid: number;
   /** anno (q) dell'arrivo */
   arrive: number;
+  /** anno (q) della partenza (assente nei salvataggi vecchi: arrive - previsti) */
+  partita?: number;
   /** anni di viaggio previsti alla partenza (l'imprevisto si scopre all'arrivo) */
   previsti: number;
   /** unità perdute per strada e imprevisto del viaggio */
@@ -235,7 +237,7 @@ export function buyLot(g: Game, st: MerciState, lotId: number, qty: number, rnd:
   const previsti = travelYears(ps[lot.seller].feudo, { feudo: p.feudo });
   const v = rollJourney(rnd, previsti, qty);
   const caravan: Carovana = {
-    id: st.nextId++, seller: lot.seller, buyer: me, good: lot.good, qty, paid: cost,
+    id: st.nextId++, seller: lot.seller, buyer: me, good: lot.good, qty, paid: cost, partita: g.state.q,
     arrive: g.state.q + v.anni, previsti, perse: v.perse, ...(v.evento ? { evento: v.evento } : {}),
   };
   st.carovane.push(caravan);

@@ -7,7 +7,7 @@ import type { RateKind } from '../domain/economy';
 import { fiduciaOf, livelloOf, sereno, umoreOf, type Livello } from '../domain/gabelle';
 import type { FactionOption } from '../domain/fazioni';
 import type { Sorte } from '../domain/fatti';
-import { effettiStrip, fattoBadges, fattoCaption, fattoOptionText, fattoScene, fattoTitle } from './fatti';
+import { effettiStrip, fattoBadges, fattoCaption, fattoOptionText, fattoScene } from './fatti';
 import { crest, factionBadges, factionOutcomeText, forcesBox, INFO as FACTION_INFO, optionText, pactsStrip, renderFactionOutcome } from './fazioni';
 import { EVENTS } from '../domain/events';
 import { COSTS, type InvestmentKind } from '../domain/investments';
@@ -31,16 +31,20 @@ import { hasSensale, hireSensale, sensaleCost, sensaleNow } from '../domain/sens
 import type { RateBadges } from './rendite';
 import { deleteSave, listSaves, loadGame, newSlotId, saveGame, type SaveSlot } from '../persistence/save';
 import { feedingOutcome, greeting, question, reaction, refusal, type TradeMode } from './advisor';
-import { icons, turret } from './art';
+import { icons as drawnIcons, turret } from './art';
+import { miniatureUrl, UI_PIECES, uiUrl } from './citta/assets';
 import { builderGreeting, builderReaction, renderCantiere, type CantiereUi } from './cantiere';
 import { buildInterlude, renderInterlude, snapshot, type Interlude, type YearSnapshot } from './interlude';
 import { impreseAside, renderImpresa } from './imprese';
 import { realmComment, realmHeading, realmLegend, realmScene } from './realm';
-import { c64ify, loadTheme, saveTheme, type Theme } from './theme';
+import { c64ify, loadTheme, loadVista, saveTheme, saveVista, type Theme, type Vista } from './theme';
+import { cityExtra, cityModel, sceneOf, showCity } from './citta';
 import { renderTutorial, renderWelcome, TUTORIAL_PAGES, welcomeText } from './tutorial';
 import { ANSELMO } from './advisor';
-import { speechBox } from './speaker';
-import { comicText, effectBadges, outcomeText, renderEventComic, renderOutcomeComic, type ComicText } from './comics';
+import { isPainted, setPainted, speechBox } from './speaker';
+import { miniaturizza } from './miniatura';
+import { coronaNotice, scenaFigure, titoloNotice } from './investiture';
+import { comicText, effectBadges, fitComic, outcomeText, renderEventComic, renderOutcomeComic, type ComicText } from './comics';
 import { changedKinds, currentRates, KINDS, presets, previewRates, renderRendite, spoilsFor, treasurerGreeting, treasurerReaction, updateLive, type RenditeUi } from './rendite';
 import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderSignoriBuildCard, renderTrade, type TradeUi } from './trade';
 
@@ -66,6 +70,8 @@ interface UiState {
   comic: ComicUi;
   cantiere: CantiereUi;
   theme: Theme;
+  /** vista classica (schede) o moderna (città isometrica): scelta separata dal tema */
+  vista: Vista;
   /** istantanea di inizio anno, per la cronaca del siparietto */
   yearSnap: YearSnapshot | null;
   interlude: Interlude | null;
@@ -89,6 +95,9 @@ interface UiState {
   confirm: DebtConfirm | null;
   /** turno per cui si è già cercato un pignoramento da annunciare */
   seizedKey?: string;
+  /** turno in cui si è già mostrata l'investitura (o la corona) */
+  titleKey?: string;
+  coronaKey?: string;
   /** turno in cui l'espansione ha già mostrato il suo avviso nei dispendimenti */
   reminderKey?: string;
 }
@@ -171,6 +180,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     comic: { key: '' },
     cantiere: { key: '', advisor: '' },
     theme: loadTheme(),
+    vista: loadVista(),
     yearSnap: null,
     interlude: null,
     scenes: null,
@@ -229,20 +239,35 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         const year = 900 + ui.yearSnap.q;
         const list = exp?.view.yearEndScenes?.(g.state, year) ?? [];
         if (list.length) ui.scenes = { year, list, i: 0 };
-        if (g.state.phase.kind !== 'fine') ui.interlude = buildInterlude(ui.yearSnap, g.state, exp?.view.mapMarkers?.(g.state) ?? '');
+        if (g.state.phase.kind !== 'fine') ui.interlude = buildInterlude(ui.yearSnap, g.state, exp?.view.mapMarkers?.(g.state) ?? '', exp?.view.mapRoutes?.(g.state) ?? '');
         ui.yearSnap = snapshot(g.state);
       }
     }
-    document.documentElement.dataset.theme = ui.theme;
+    // vista moderna: vale a partita in corso; avvio e scelta dei signori restano quelli di sempre
+    const moderna = ui.vista === 'moderna' && !!g;
+    // la moderna ha una veste sola (legno e pergamena dipinti): il tema scelto vale per la classica, e lì si ritrova
+    document.documentElement.dataset.theme = moderna ? 'pergamena' : ui.theme;
+    // le immagini dei pezzi dipinti servono anche fuori dalla moderna (il ritratto di Lapo nel benvenuto)
+    paintedSkin();
+    document.documentElement.dataset.vista = moderna ? 'moderna' : 'classica';
+    setPainted(moderna);
     // il font C64 non ha le lettere accentate: si scrive come sullo schermo originale ("piu'", "e' re")
     let page: string;
-    if (ui.tutorial) page = renderTutorial(ui.tutorial.page, ui.tutorial.inGame);
+    if (moderna && g) {
+      // la città resta sempre in vista: le pagine a sé (insegnamento, cronache) diventano finestre, la veduta di fine anno va nella colonna
+      const over: ModernOver | undefined = ui.tutorial ? { window: renderTutorial(ui.tutorial.page, ui.tutorial.inGame) }
+        : ui.realmReview ? { column: renderRealmReviewColumn(ui.realmReview), player: ui.realmReview.player }
+        : ui.chronicleYear !== null ? { window: renderChronicle(g.state, ui.chronicleYear, exp?.view ?? null) }
+        : (ui.interlude || ui.scenes) && g.state.phase.kind !== 'fine' ? {}
+        : undefined;
+      page = renderGame(g, ui.message, ui.trade, ui.rendite, ui.comic, ui.cantiere, ui.theme, ui.realmText.text, exp, ui.ext, ui.casata, 'moderna', over);
+    } else if (ui.tutorial) page = renderTutorial(ui.tutorial.page, ui.tutorial.inGame);
     else if (!g) page = ui.screen === 'welcome' ? `<section class="card castle setup-card">${battlements}${renderWelcome(ui.welcome)}</section>` : renderSetup(ui);
     else if (ui.realmReview) page = renderRealmReview(ui.realmReview);
     else if (ui.chronicleYear !== null) page = renderChronicle(g.state, ui.chronicleYear, exp?.view ?? null);
     // sotto il sipario e le scene di fine anno non si vede nulla: l'anno nuovo (e le sue notizie) comincia dopo la cronaca
     else if ((ui.interlude || ui.scenes) && g.state.phase.kind !== 'fine') page = '';
-    else page = renderGame(g, ui.message, ui.trade, ui.rendite, ui.comic, ui.cantiere, ui.theme, ui.realmText.text, exp, ui.ext, ui.casata);
+    else page = renderGame(g, ui.message, ui.trade, ui.rendite, ui.comic, ui.cantiere, ui.theme, ui.realmText.text, exp, ui.ext, ui.casata, ui.vista);
     // la pergamena compare solo durante i dispendimenti
     if (ui.deed && g?.state.phase.kind !== 'investimenti') ui.deed = null;
     const deed = ui.deed && !ui.tutorial && !ui.realmReview ? renderDeed(ui.deed) : '';
@@ -254,6 +279,19 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       ui.seizedKey = turnKey(g);
       const end = g.state.chronicle?.find(e => e.year === g.year - 1 && e.player === g.state.current && e.fact.t === 'yearEnd')?.fact;
       if (end?.t === 'yearEnd' && end.seized && !ui.notice) ui.notice = seizedNotice(end.seized, g.player);
+    }
+    // nuovo titolo (o titolo perduto) e corona d'Italia: l'investitura la vede solo il signore interessato, all'inizio del suo turno
+    if (onTurn && g.state.phase.kind === 'commercio' && !ui.notice) {
+      const facts = (g.state.chronicle ?? []).filter(e => e.year === g.year - 1 && e.player === g.state.current).map(e => e.fact);
+      const end = facts.find(f => f.t === 'yearEnd');
+      if (ui.titleKey !== turnKey(g)) {
+        ui.titleKey = turnKey(g);
+        if (end?.t === 'yearEnd') ui.notice = titoloNotice(g.player, end.titleBefore, end.titleAfter);
+      }
+      if (!ui.notice && ui.coronaKey !== turnKey(g)) {
+        ui.coronaKey = turnKey(g);
+        if (facts.some(f => f.t === 'corona')) ui.notice = coronaNotice(g.player);
+      }
     }
     // dispendimenti: l'ultima occasione per qualcosa che l'espansione ricorda (es. la merce da spedire)
     if (onTurn && g.state.phase.kind === 'investimenti' && ui.reminderKey !== turnKey(g)) {
@@ -268,7 +306,27 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     }
     const decision = onTurn ? nozzeDecision(g) ?? exp?.view.decision?.(g) ?? null : null;
     const modal = !g || ui.tutorial ? '' : ui.confirm ? renderConfirm(ui.confirm) : ui.notice ? renderNotice(ui.notice) : decision ? renderDecision(decision) : '';
+    // vista moderna: colonna e finestra scorrono per conto loro; il ridisegno non deve riportarle in cima finché la schermata è la stessa
+    const screen = moderna && g ? [turnKey(g), g.state.phase.kind, ui.tutorial?.page, ui.chronicleYear, !!ui.realmReview, ui.ext.panel, ui.ext.menu, ui.ext.signori, ui.casata.open, ui.trade.mode].join('|') : '';
+    const scrolled = ['.m-col', '.m-window'].map(sel => (screen && screen === lastScreen ? root.querySelector(sel)?.scrollTop ?? 0 : 0));
+    lastScreen = screen;
     root.innerHTML = c64ify(page + deed + overlay + modal);
+    if (moderna && g) {
+      ['.m-col', '.m-window'].forEach((sel, i) => {
+        const el = root.querySelector(sel);
+        if (el && scrolled[i]) el.scrollTop = scrolled[i];
+      });
+      // il canvas della città è uno solo: dopo ogni ridisegno torna nel suo segnaposto, con il feudo da mostrare
+      const slot = root.querySelector<HTMLElement>('#citta-slot');
+      if (slot) {
+        const rv = ui.realmReview, fine = g.state.phase.kind === 'fine' ? g.state.phase.winner : -1;
+        const i = rv ? g.state.players.findIndex(x => x.feudo === rv.player.feudo) : g.state.players[fine] ? fine : g.state.current;
+        showCity(slot, cityModel(rv ? rv.player : g.state.players[i], cityExtra(g.state, i, rv ? 'autunno' : undefined)), sceneOf(g.state, i, !!rv));
+      }
+    }
+    // l'imprevisto sta tutto in vista: la vignetta si adatta all'altezza della finestra
+    fitComic(root);
+    miniaturizza(root);
     if (modal) root.querySelector<HTMLButtonElement>('.notice .primary')?.focus();
     if (ui.interlude && !ui.interlude.closing) root.querySelector<HTMLButtonElement>('.interlude button')?.focus();
     // i dispacci si srotolano una volta sola, quando la Delibera è davvero in vista (non sotto il siparietto)
@@ -279,6 +337,11 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       else saveGame(ui.game.state, ui.rngKind, ui.slot);
     }
   };
+
+  let lastScreen = '';
+  window.addEventListener('resize', () => fitComic(root));
+  // i font C64 arrivano dopo il primo disegno e cambiano le altezze dei testi
+  document.fonts?.ready.then(() => fitComic(root));
 
   const act = (fn: () => { ok: boolean; reason?: string } | void) => {
     const r = fn();
@@ -650,6 +713,10 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         ui.theme = ui.theme === 'c64' ? 'pergamena' : 'c64';
         saveTheme(ui.theme);
         return render();
+      case 'vista':
+        ui.vista = ui.vista === 'moderna' ? 'classica' : 'moderna';
+        saveVista(ui.vista);
+        return render();
       case 'karta': return act(() => g!.viewRealm());
       case 'next': {
         const idx = g!.state.current, year = g!.year;
@@ -702,6 +769,23 @@ function renderRealmReview(r: RealmReview): string {
   </section>`;
 }
 
+/** Vista moderna: la veduta di fine anno è la città stessa; nella colonna restano il commento e i numeri. */
+function renderRealmReviewColumn(r: RealmReview): string {
+  return `<h2>Lo reame alla fine dell'anno ${r.year}</h2>
+    <p class="realm-heading">${realmHeading(r.player, r.year)}</p>
+    ${speechBox(ANSELMO, r.comment)}
+    ${realmLegend(r.player)}
+    <div class="btns"><button data-act="reviewDone" class="primary">Prosegui</button></div>`;
+}
+
+/** Vista moderna: ciò che prende il posto della fase (finestra sopra la città, colonna) nelle schermate a sé. */
+interface ModernOver {
+  window?: string;
+  column?: string;
+  /** signore di cui si mostra la città, se non è quello di turno */
+  player?: Player;
+}
+
 /** Le partite salvate: anno, signori, regole, espansione e quando sono state salvate. */
 function renderSaves(saves: SaveSlot[]): string {
   if (!saves.length) return '';
@@ -752,6 +836,29 @@ function renderSetup(ui: UiState): string {
   </section>`;
 }
 
+const PROSEGUI_EVENTO = '<div class="btns"><button data-act="afterEvent" class="primary">Prosegui</button></div>';
+
+/**
+ * Imprevisto senza decisioni: gli effetti e il Prosegui stanno in basso a destra dentro la vignetta,
+ * così si vedono senza scorrere. Il resto (patti, avvisi) segue sotto. Se un'espansione mette
+ * una sua decisione al posto del Prosegui, tutto resta sotto la vignetta.
+ */
+function docked(comic: string, under: string, proceed: string): string {
+  const end = comic.lastIndexOf('</figure>');
+  if (proceed !== PROSEGUI_EVENTO || end < 0) return `${comic}${under}${proceed}`;
+  const badges = under.match(/<div class="badges">[\s\S]*?<\/div>/)?.[0] ?? '';
+  return `${inComic(comic, badges, '<button data-act="afterEvent" class="primary">Prosegui</button>')}${under.replace(badges, '')}`;
+}
+
+/** Mette effetti e pulsante in basso a destra nella vignetta e, se c'è, l'esito in un cartiglio sotto l'intestazione. */
+function inComic(comic: string, badges: string, button: string, note = ''): string {
+  const end = comic.lastIndexOf('</figure>');
+  if (end < 0) return `${comic}${note ? `<p class="big">${note}</p>` : ''}${badges}${button}`;
+  let out = `${comic.slice(0, end)}<div class="comic-dock">${badges}${button}</div>${comic.slice(end)}`;
+  if (note) out = out.replace('</figcaption>', `</figcaption><div class="comic-caption comic-note">${note}</div>`);
+  return out;
+}
+
 /** Miniatura del gioco base: il castello del feudo. */
 const baseMiniature = `<svg viewBox="0 0 160 110" class="exp-mini" role="img" aria-label="miniatura: il gioco base">
   <rect width="160" height="110" fill="#e9d7a8"/>
@@ -764,11 +871,14 @@ const baseMiniature = `<svg viewBox="0 0 160 110" class="exp-mini" role="img" ar
   <g fill="#d6b25a"><circle cx="20" cy="86" r="3"/><circle cx="28" cy="88" r="3"/><circle cx="138" cy="86" r="3"/></g>
 </svg>`;
 
+/** Copertine della scelta iniziale: miniature duecentesche (public/sprites/miniature). */
+const COPERTINE: Record<string, string> = { '': 'copertina-base', 'spade-castelli': 'copertina-spade', 'vie-mercanti': 'copertina-vie' };
+
 /** Tessere delle espansioni trovate: se ne sceglie una sola, o il gioco base. */
 function renderExpansions(selected: string | null): string {
   const tile = (id: string, mini: string, title: string, motto: string) =>
     `<button type="button" class="exp-tile" data-act="expansion" data-id="${id}" aria-pressed="${(selected ?? '') === id}">
-      ${mini}<span class="exp-name">${title}</span><span class="exp-motto">${motto}</span></button>`;
+      ${COPERTINE[id] ? `<img class="exp-mini dipinta" src="${miniatureUrl(COPERTINE[id])}" alt="miniatura: ${title}">` : mini}<span class="exp-name">${title}</span><span class="exp-motto">${motto}</span></button>`;
   const chosen: Expansion | null = findExpansion(selected);
   const rules = chosen
     ? `<ul class="exp-rules">${chosen.view.summary.map(r => `<li>${r}</li>`).join('')}</ul>`
@@ -799,6 +909,8 @@ function renderScene(sc: { year: number; list: { title: string; html: string }[]
 /** Barra delle risorse in alto, sempre visibile. */
 function resourceBar(g: Game, exp: Expansion | null): string {
   const p = g.player, sc = g.state.scalars;
+  // vista moderna: medaglioni dipinti al posto delle icone disegnate
+  const icons = isPainted() ? PAINTED_ICONS : { ...drawnIcons, mercanti: drawnIcons.scudi };
   const umoreLv = livelloOf(umoreOf(p)), fiduciaLv = livelloOf(fiduciaOf(p));
   const item = (ico: string, label: string, value: string, cls = '') =>
     `<div class="rb-item ${cls}" title="${label || value}">${ico}<span class="rb-val">${value}</span>${label ? `<span class="rb-lab">${label}</span>` : ''}</div>`;
@@ -808,7 +920,7 @@ function resourceBar(g: Game, exp: Expansion | null): string {
     ${item(icons.grano, 'grano', fmt(p.grano), p.grano < sc.domanda ? 'low' : '')}
     ${item(icons.scudi, 'scudi', fmt(p.scudi), p.scudi < 0 ? 'low' : '')}
     ${p.umore === undefined ? item(icons.servi, 'servi', fmt(p.servi)) : item(icons.servi, `servi ${SERVI_WORD[umoreLv]}`, fmt(p.servi), sereno(umoreLv) ? '' : 'low')}
-    ${p.fiducia !== undefined ? item(icons.scudi, MERCANTI_WORD[fiduciaLv], 'mercanti', sereno(fiduciaLv) ? '' : 'low') : ''}
+    ${p.fiducia !== undefined ? item(icons.mercanti, MERCANTI_WORD[fiduciaLv], 'mercanti', sereno(fiduciaLv) ? '' : 'low') : ''}
     ${item(icons.acri, 'acri', fmt(p.acri))}
     <span class="rb-sep"></span>
     ${sc.annata ? item(icons.grano, '', ANNATA_LABEL[sc.annata], `annata-${sc.annata}`) : ''}
@@ -832,10 +944,12 @@ function resources(g: Game): string {
   return `<dl class="res">${items.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
 }
 
-function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi, comic: ComicUi, cantiere: CantiereUi, theme: Theme, realmText: string, exp: Expansion | null, ext: ExtUi, casata?: CasataUi): string {
+function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi, comic: ComicUi, cantiere: CantiereUi, theme: Theme, realmText: string, exp: Expansion | null, ext: ExtUi, casata?: CasataUi, vista: Vista = 'classica', over?: ModernOver): string {
   const p = g.player, st = g.state, ph = st.phase, sc = st.scalars;
-  if (ph.kind === 'fine' && st.dinastia) return renderDinastiaEnd(g, ph.winner);
-  if (ph.kind === 'fine') {
+  const moderna = vista === 'moderna';
+  let end = '';
+  if (ph.kind === 'fine' && st.dinastia) end = renderDinastiaEnd(g, ph.winner);
+  else if (ph.kind === 'fine') {
     const w = st.players[ph.winner];
     const fallen = st.players.filter(x => x.caduto !== undefined && x.arrestato === undefined);
     const jailed = st.players.filter(x => x.arrestato !== undefined);
@@ -843,16 +957,19 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       ? `<h1>${esc(w.name)} da ${FEUDI[w.feudo]} è ${w.gender === 1 ? 're' : 'regina'}</h1><p>Anno ${g.year}. Ricchezza finale: ${fmt(wealthIndex(w))}.</p>`
       : `<h1>Il trono resta vuoto</h1><p>Anno ${g.year}. Nessun signore è rimasto a contenderselo.</p>`;
     const out = (x: Player) => (x.arrestato !== undefined ? `arrestat${x.gender === 1 ? 'o' : 'a'} nel ${900 + x.arrestato}` : `caduto nel ${900 + x.caduto!}`);
-    return `<section class="card end">${head}
+    const gloria = w ? scenaFigure({ art: 'titolo-re', caption: `${esc(w.name)} ${w.gender === 1 ? "incoronato" : "incoronata"}` }, `Nella basilica l'arcivescovo pone la Corona Ferrea sul capo di ${esc(w.name)} da ${FEUDI[w.feudo]}, e i signori d'Italia ${w.gender === 1 ? 'lo' : 'la'} acclamano.`) : '';
+    end = `<section class="card end">${head}${gloria}
       ${fallen.length ? `<p>Feudi caduti in guerra: ${fallen.map(x => `${esc(x.name)} da ${FEUDI[x.feudo]} (${900 + x.caduto!})`).join(', ')}.</p>` : ''}
       ${jailed.length ? `<p>Signori arrestati: ${jailed.map(x => `${esc(x.name)} da ${FEUDI[x.feudo]} (${900 + x.arrestato!})`).join(', ')}.</p>` : ''}
       <ol class="standings">${[...st.players].sort((a, b) => Number(a.caduto !== undefined) - Number(b.caduto !== undefined) || wealthIndex(b) - wealthIndex(a)).map(x => `<li>${fullName(x)}: ${x.caduto !== undefined ? out(x) : fmt(wealthIndex(x))}</li>`).join('')}</ol>
       <button data-act="new" class="primary">Nuova partita</button></section>`;
   }
+  if (end && !moderna) return end;
   let body = '';
   // Dinastia: il pannello della casata prende il posto della Delibera o dei dispendimenti
   const casataOpen = !!casata?.open && !!st.dinastia?.persone && (ph.kind === 'commercio' || ph.kind === 'investimenti');
-  if (casataOpen) body = renderCasata(g, casata!);
+  if (end || over) body = '';
+  else if (casataOpen) body = renderCasata(g, casata!);
   else switch (ph.kind) {
     case 'fatto': {
       const cards = ph.awaitingChoice
@@ -861,8 +978,9 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
             return `<button class="action-card" data-act="fatto" data-opt="${o.id}" ${o.ok ? '' : 'disabled'}><span class="card-emblem" aria-hidden="true">${t.emblem}</span>
               <span class="card-title">${t.label}</span><span class="card-sub">${o.ok ? t.sub : 'non ve lo potete permettere'}</span></button>`;
           }).join('')}</div>`
-        : `<p class="big fatto-out">${fattoCaption(ph.outcome!, p)}</p>${fattoBadges(ph.outcome!)}<div class="btns"><button data-act="afterFatto" class="primary">Alla Delibera</button></div>`;
-      body = `<h2>Notizie dal reame: ${fattoTitle(ph.id)}</h2>${fattoScene(ph.id)}${cards}`;
+        : '';
+      body = ph.awaitingChoice ? `${fattoScene(ph.id)}${cards}`
+        : inComic(fattoScene(ph.id), fattoBadges(ph.outcome!), '<button data-act="afterFatto" class="primary">Alla Delibera</button>', fattoCaption(ph.outcome!, p));
       break;
     }
     case 'commercio': {
@@ -889,7 +1007,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     case 'evento': {
       const ev = EVENTS.find(e => e.id === ph.eventId)!;
       // un'espansione può chiedere una decisione dopo l'imprevisto (es. dove mandare i briganti)
-      const proceed = (!ph.awaitingChoice && exp?.view.eventPanel?.(g)) || '<div class="btns"><button data-act="afterEvent" class="primary">Prosegui</button></div>';
+      const proceed = (!ph.awaitingChoice && exp?.view.eventPanel?.(g)) || PROSEGUI_EVENTO;
       const out = ph.outcome;
       if (ph.faction) {
         const f = ph.faction, info = FACTION_INFO[f];
@@ -904,11 +1022,10 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
           const forces = forcesBox(f, ph.nemici ?? 0, g.factionDefense(), winP, p.servi);
           body = `${head}${renderEventComic(ev.id, ev.title, comic.event!)}${forces}<div class="action-cards ${cards.length > 3 ? 'four' : ''}">${cards}</div>`;
         } else {
-          body = `${head}${renderFactionOutcome(out!, comic.outcome!)}${factionBadges(out!)}
-            ${proceed}`;
+          body = `${head}${docked(renderFactionOutcome(out!, comic.outcome!), factionBadges(out!), proceed)}`;
         }
       } else if (ph.awaitingChoice) {
-        body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
+        body = `${renderEventComic(ev.id, ev.title, comic.event!)}
           <div class="action-cards two">
             <button class="action-card" data-act="pugna"><span class="card-emblem" aria-hidden="true">⚔</span><span class="card-title">Pugna</span>
               <span class="card-sub">bottino fra −${fmt(Math.min(799, g.luckCap()))} e +${fmt(Math.min(800, g.luckCap()))} scudi, servi fra −49 e +50</span></button>
@@ -916,20 +1033,14 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
               <span class="card-sub">da 0 a ${fmt(Math.min(800, g.luckCap()))} scudi, nessun rischio per i servi</span></button>
           </div>`;
       } else if (out?.choice) {
-        body = `<h2>Accadimento: ${ev.title}</h2>${renderOutcomeComic(out, comic.outcome!)}${effectBadges(out)}
-          ${proceed}`;
+        body = docked(renderOutcomeComic(out, comic.outcome!), effectBadges(out), proceed);
       } else if (ev.effect.kind === 'impresa') {
-        body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
-          <p class="big">Non dovete decidere ora: la carta resta fra le vostre <b>Imprese</b>, nel pannello a sinistra, e potete giocarla quando volete nei prossimi anni.</p>
-          ${proceed}`;
+        body = docked(renderEventComic(ev.id, ev.title, comic.event!), '<p class="big">Non dovete decidere ora: la carta resta fra le vostre <b>Imprese</b>, nel pannello a sinistra, e potete giocarla quando volete nei prossimi anni.</p>', proceed);
       } else if (ev.effect.kind === 'carta') {
         // carta del mazzo di un'espansione: va fra le carte in mano, nella colonna a sinistra
-        body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}
-          <p class="big">${exp?.view.cardNote?.(g, ev.id) ?? 'Non dovete decidere ora: la carta resta nel pannello a sinistra, e potete giocarla nei prossimi anni.'}</p>
-          ${proceed}`;
+        body = docked(renderEventComic(ev.id, ev.title, comic.event!), `<p class="big">${exp?.view.cardNote?.(g, ev.id) ?? 'Non dovete decidere ora: la carta resta nel pannello a sinistra, e potete giocarla nei prossimi anni.'}</p>`, proceed);
       } else {
-        body = `<h2>Accadimento: ${ev.title}</h2>${renderEventComic(ev.id, ev.title, comic.event!)}${effectBadges(out!)}
-          ${proceed}`;
+        body = docked(renderEventComic(ev.id, ev.title, comic.event!), effectBadges(out!), proceed);
       }
       break;
     }
@@ -951,7 +1062,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     case 'reame':
       body = `<h2>Lo reame</h2>
         <p class="realm-heading">${realmHeading(p, g.year)}</p>
-        <div class="realm-frame">${realmScene(p)}</div>
+        ${moderna ? '' : `<div class="realm-frame">${realmScene(p)}</div>`}
         ${speechBox(ANSELMO, realmText)}
         ${realmLegend(p)}
         <div class="btns"><button data-act="realmBack" class="primary">Prosegui</button></div>`;
@@ -971,15 +1082,62 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
   }
   const others = st.players.length > 1
     ? `<ul class="others">${st.players.map((x, i) => `<li class="${i === st.current ? 'cur' : ''}">${fullName(x)} · rango ${rankOf(x)} · ${fmt(wealthIndex(x))}</li>`).join('')}</ul>` : '';
+  const tools = `<button data-act="openTutorial" class="ghost">Insegnamento</button>
+    <button data-act="vista" class="ghost">Vista: ${vista}</button>
+    ${moderna ? '' : `<button data-act="theme" class="ghost">Stile: ${theme === 'c64' ? 'C64' : 'pergamena'}</button>`}
+    <button data-act="new" class="ghost">Nuova partita</button>`;
+  if (moderna) return renderModerna(g, exp, tools, body, message, end, over, others,
+    // le schermate larghe (rendite, imprevisti, pannelli con tabelle) si aprono come finestre sopra la città; le altre stanno nella colonna
+    casataOpen || ph.kind === 'rendite' || ph.kind === 'evento' || ph.kind === 'fatto' || ph.kind === 'impresa' || ph.kind === 'successione'
+      || (!!exp && !!ext.panel) || (ph.kind === 'investimenti' && ext.signori === 'investimenti'),
+    casataOpen);
   return `
   <header class="top"><span class="year">A.D. ${g.year}</span><span class="who">${fullName(p)}</span>
-    <button data-act="openTutorial" class="ghost">Insegnamento</button>
-    <button data-act="theme" class="ghost">Stile: ${theme === 'c64' ? 'C64' : 'pergamena'}</button>
-    <button data-act="new" class="ghost">Nuova partita</button></header>
+    ${tools}</header>
   ${resourceBar(g, exp)}${pactsStrip(g.player)}${effettiStrip(g.player)}
   <div class="layout">
     <aside class="card">${st.dinastia ? dinastiaAside(g, !casataOpen && (ph.kind === 'commercio' || ph.kind === 'investimenti')) : ''}${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${exp ? `${exp.view.imprese?.(g) ?? ''}${g.player.impresa ? impreseAside(g) : ''}` : impreseAside(g)}</aside>
     <section class="card phase castle">${battlements}${message ? `<p class="msg">${esc(message)}</p>` : ''}${body}</section>
   </div>
   <details class="card log"><summary>Cronache</summary><ol>${st.log.slice(-30).reverse().map(l => `<li>${esc(l)}</li>`).join('')}</ol></details>`;
+}
+
+const paintedIcon = (file: string, label: string) => `<img class="ico" src="${uiUrl(file)}" alt="${label}">`;
+const PAINTED_ICONS = {
+  ...drawnIcons,
+  grano: paintedIcon('ico-grano', 'grano'), scudi: paintedIcon('ico-scudi', 'scudi'), servi: paintedIcon('ico-servi', 'servi'), acri: paintedIcon('ico-acri', 'acri'),
+  prezzo: paintedIcon('ico-prezzo', 'prezzo'), domanda: paintedIcon('ico-domanda', 'domanda'), usura: paintedIcon('ico-usura', 'usura'), mercanti: paintedIcon('ico-mercanti', 'mercanti'),
+};
+
+/**
+ * Veste dipinta: gli indirizzi dei pezzi (cornici, fondi, pulsanti) arrivano al CSS come variabili,
+ * così valgono con qualunque base (sito, pagina singola aperta da disco). Si impostano una volta sola.
+ */
+let skinned = false;
+function paintedSkin(): void {
+  if (skinned) return;
+  skinned = true;
+  for (const name of UI_PIECES) document.documentElement.style.setProperty(`--ui-${name}`, `url("${uiUrl(name)}")`);
+}
+
+/**
+ * Vista moderna: barra in alto, città a sinistra su due terzi, colonna a destra con il consigliere e le scelte.
+ * Le schermate larghe e le pagine a sé stanno in una finestra sopra la città, che resta visibile ai bordi.
+ */
+function renderModerna(g: Game, exp: Expansion | null, tools: string, body: string, message: string, end: string, over: ModernOver | undefined, others: string, wide: boolean, casataOpen: boolean): string {
+  const st = g.state, ph = st.phase;
+  const phase = body
+    ? `<section class="card phase${wide ? '' : ' m-phase'}">${message ? `<p class="msg">${esc(message)}</p>` : ''}${body.replaceAll('nel pannello a sinistra', 'nella colonna qui a destra').replaceAll('nella colonna a sinistra', 'nella colonna qui a destra')}</section>`
+    : '';
+  const win = end || (over ? over.window ?? '' : wide ? phase : '');
+  const col = over ? (over.column ? `<section class="card phase m-phase">${over.column}</section>` : '') : wide ? '' : phase;
+  const aside = over || end ? '' : `<aside class="card">${st.dinastia ? dinastiaAside(g, !casataOpen && (ph.kind === 'commercio' || ph.kind === 'investimenti')) : ''}${exp ? `<p class="exp-badge">Espansione: ${exp.view.title}</p>${exp.view.aside?.(g) ?? ''}` : ''}${resources(g)}${others}${exp ? `${exp.view.imprese?.(g) ?? ''}${g.player.impresa ? impreseAside(g) : ''}` : impreseAside(g)}</aside>`;
+  const log = end ? '' : `<details class="card log"><summary>Cronache</summary><ol>${st.log.slice(-30).reverse().map(l => `<li>${esc(l)}</li>`).join('')}</ol></details>`;
+  return `<div class="moderna">
+  <header class="top"><span class="year">A.D. ${g.year}</span><span class="who">${fullName(over?.player ?? g.player)}</span></header>
+  ${over?.player || end ? '' : `${resourceBar(g, exp)}${pactsStrip(g.player)}${effettiStrip(g.player)}`}
+  <div class="m-layout">
+    <div class="m-city"><div id="citta-slot"></div>${win ? `<div class="m-window">${win}</div>` : ''}</div>
+    <div class="m-col">${col}${aside}${log}<div class="m-tools">${tools}</div></div>
+  </div></div>`;
 }

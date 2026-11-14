@@ -9,6 +9,7 @@ import {
 import { FEUDI, missingFloors, rankOf, titleName, victoryRule, wealthIndex } from '../domain/rank';
 import type { Game } from '../domain/turn';
 import type { ChronicleFact, Gender, Player } from '../domain/types';
+import { scenaFigure } from './investiture';
 import { figliDi, nomeConsorte, nozzeDi, personaOf, signoreP } from '../domain/famiglia';
 import { INFO } from './fazioni';
 
@@ -81,7 +82,7 @@ function sede(g: Game, s: Successione): string {
 export function renderSuccessione(g: Game, s: Successione): string {
   const p = g.player, d = g.state.dinastia!, erede = signoreOf(d, g.state.current);
   return `<h2>Morte ${s.gender === 1 ? 'del signore' : 'della signora'}</h2>
-    <p class="big">${esc(s.morto)} ${morte(s.causa, s.gender)}, a ${s.eta} anni, dopo ${s.anni} ${s.anni === 1 ? 'anno' : 'anni'} di regno.</p>
+    ${scenaFigure({ art: 'morte-signore', caption: `La morte di ${s.morto}` }, `${esc(s.morto)} ${morte(s.causa, s.gender)}, a ${s.eta} anni, dopo ${s.anni} ${s.anni === 1 ? 'anno' : 'anni'} di regno.`)}
     <p>${s.gender === 1 ? 'Gli' : 'Le'} succede ${s.rel === 'nipote' ? `${p.gender === 1 ? 'il nipote' : 'la nipote'}: non c'erano figli in casa` : p.gender === 1 ? 'il figlio' : 'la figlia'} <b>${esc(s.erede)}</b>, di ${s.etaErede} anni.</p>
     ${s.reggenza !== undefined ? `<p>L'erede è un bambino: fino al ${900 + s.reggenza} governa un consiglio di reggenza, che trattiene parte della rendita.</p>` : ''}
     <p>${s.rel === 'nipote' && s.eredita.cadetti ? "Senza figli, i parenti si contendono l'eredità. " : ''}${ereditaText(s)}</p>
@@ -153,7 +154,8 @@ export function renderDinastiaEnd(g: Game, winner: number): string {
   const items = rows.map(({ i, p, pr }) => `<li><b>Casata di ${esc(d.casate[i].fondatore)} da ${FEUDI[p.feudo]}</b>: ${fmt(pr.totale)} di prestigio
       <small>(titoli ${fmt(pr.titoli)}, corone ${fmt(pr.corone)}, nozze ${pr.nozze < 0 ? '−' : ''}${fmt(pr.nozze)}, ricchezza ${fmt(pr.ricchezza)})</small>
       <ol class="genealogy">${albero(d, i, p)}</ol></li>`).join('');
-  return `<section class="card end">${head}
+  const gloria = scenaFigure({ art: 'casata', caption: 'La gloria della casata' }, `Nella sala grande l'albero della casata di ${esc(d.casate[winner].fondatore)} porta i volti di tutti i suoi signori.`);
+  return `<section class="card end">${head}${gloria}
     <ol class="standings">${items}</ol>
     <p class="hint">Prestigio: per ogni generazione ${PRESTIGIO_RANGO.slice(1).map((v, k) => `${titleName(k + 2)} ${v}`).join(', ')}; ogni corona ${PRESTIGIO_RE}; i matrimoni illustri e i ripudi; la ricchezza dell'ultimo signore in gioco conta con la radice quadrata.</p>
     <button data-act="new" class="primary">Nuova partita</button></section>`;
