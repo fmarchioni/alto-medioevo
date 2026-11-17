@@ -1111,7 +1111,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     }
     case 'esitoNutrimento':
       body = `<h2>Nello anno</h2>
-        <img class="esito-grano" src="${miniatureUrl(sc.natiMorti >= 0 ? 'nascita' : 'peste')}" alt="miniatura: ${sc.natiMorti >= 0 ? 'le culle piene' : 'i morti di fame'}">
+        ${sc.natiMorti === 0 ? '' : `<img class="esito-grano" src="${miniatureUrl(sc.natiMorti > 0 ? 'nascita' : 'peste')}" alt="miniatura: ${sc.natiMorti > 0 ? 'le culle piene' : 'i morti di fame'}">`}
         <p class="big">${sc.natiMorti >= 0 ? 'Sono nati' : 'Sono morti'} ${fmt(Math.abs(sc.natiMorti))} servi.</p>
         ${renderFeedingOutcome(trade.advisor)}`;
       break;

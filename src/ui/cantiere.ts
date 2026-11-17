@@ -184,12 +184,12 @@ export function builderReaction(kind: InvestmentKind, p: Player, times = 1, serv
 
 const TITLES: Record<InvestmentKind, string> = { terre: '25 acri di terra', mercato: 'Mercato', opificio: 'Opificio', palazzo: 'Piano di palazzo', granaio: 'Granaio' };
 
-/** Acquisto rapido delle terre: ACRI_IN_BLOCCO acri in una volta, entro MAX_ACRI e il credito. */
+/** Acquisto rapido delle terre: ACRI_IN_BLOCCO acri in una volta, entro MAX_ACRI e il credito (il costo nel suggerimento). */
 function bulkLandButton(p: Player): string {
   const times = ACRI_IN_BLOCCO / ACRI_PER_ACQUISTO;
   const c = canInvestTimes(p, 'terre', times);
-  const label = c.ok ? `Costruisci ${ACRI_IN_BLOCCO} acri di terra (${n(times * COSTS.terre)} scudi)` : `${ACRI_IN_BLOCCO} acri: ${c.reason}`;
-  return `<button data-act="invest" data-kind="terre" data-times="${times}" ${c.ok ? '' : `disabled title="${c.reason}"`}>${label}</button>`;
+  const costo = `${n(times * COSTS.terre)} scudi`;
+  return `<button data-act="invest" data-kind="terre" data-times="${times}" title="${c.ok ? costo : c.reason}" ${c.ok ? '' : 'disabled'}>Compra ${ACRI_IN_BLOCCO} acri</button>`;
 }
 
 /** war: dopo il cantiere viene il menu Guerra dell'espansione */
@@ -210,8 +210,9 @@ export function renderCantiere(g: Game, ui: CantiereUi, war = false, extra = '')
         <div class="build-head"><span class="build-title">${TITLES[k]}</span><span class="build-cost">${n(COSTS[k])} scudi</span></div>
         <div class="build-owned">posseduti: <b>${n(cap.owned)}</b>${cap.unit ? ' ' + cap.unit : ''} su ${n(cap.max)}</div>
         <p class="build-effect">${effectText(p, k, !!g.state.options.palazzoReale)}</p>
-        <button data-act="invest" data-kind="${k}" ${c.ok ? 'class="primary"' : `disabled title="${c.reason}"`}>${c.ok ? 'Costruisci' : c.reason}</button>
-        ${k === 'terre' ? bulkLandButton(p) : ''}
+        ${k === 'terre'
+          ? `<div class="build-btns"><button data-act="invest" data-kind="terre" ${c.ok ? 'class="primary"' : `disabled title="${c.reason}"`}>${c.ok ? `Compra ${ACRI_PER_ACQUISTO} acri` : c.reason}</button>${bulkLandButton(p)}</div>`
+          : `<button data-act="invest" data-kind="${k}" ${c.ok ? 'class="primary"' : `disabled title="${c.reason}"`}>${c.ok ? 'Costruisci' : c.reason}</button>`}
       </div>
     </div>`;
   }).join('');

@@ -13,6 +13,7 @@ import { faidaArt, scenaFigure } from './investiture';
 import { figliDi, nomeConsorte, nozzeDi, personaOf, signoreP } from '../domain/famiglia';
 import { INFO } from './fazioni';
 import { quantoBene } from '../domain/prestiti';
+import { miniatureUrl } from './citta/assets';
 
 export type Obiettivo = 'regno' | 'dinastia';
 
@@ -22,9 +23,9 @@ const oa = (g: Gender) => (g === 1 ? 'o' : 'a');
 
 /** Pannello in fondo alla schermata iniziale: la partita finisce sul trono o nel 962. */
 export function renderObiettivi(selected: Obiettivo): string {
-  const tile = (id: Obiettivo, emblem: string, title: string, motto: string) =>
+  const tile = (id: Obiettivo, mini: string, title: string, motto: string) =>
     `<button type="button" class="exp-tile goal-tile" data-act="obiettivo" data-id="${id}" aria-pressed="${selected === id}">
-      <span class="goal-emblem" aria-hidden="true">${emblem}</span><span class="exp-name">${title}</span><span class="exp-motto">${motto}</span></button>`;
+      <img class="exp-mini dipinta" src="${miniatureUrl(mini)}" alt="miniatura: ${title}"><span class="exp-name">${title}</span><span class="exp-motto">${motto}</span></button>`;
   const rules = selected === 'dinastia'
     ? `<ul class="exp-rules">
         <li>La partita non finisce sul trono: finisce nel ${ANNO_FINE}, quando Ottone I è incoronato imperatore a Roma e il Regno d'Italia passa all'Impero.</li>
@@ -37,8 +38,8 @@ export function renderObiettivi(selected: Obiettivo): string {
     : '<p class="hint">Vince chi sale per primo al trono, come nel gioco originale.</p>';
   return `<fieldset class="expansions goals"><legend>Obiettivo</legend>
     <div class="exp-tiles">
-      ${tile('regno', '♛', 'Regno', 'Diventare re: la partita finisce sul trono.')}
-      ${tile('dinastia', '⚜', 'Dinastia', `Generazioni di signori fino al ${ANNO_FINE}.`)}
+      ${tile('regno', 'incoronazione', 'Regno', 'Diventare re: la partita finisce sul trono.')}
+      ${tile('dinastia', 'casata', 'Dinastia', `Generazioni di signori fino al ${ANNO_FINE}.`)}
     </div>${rules}</fieldset>`;
 }
 
