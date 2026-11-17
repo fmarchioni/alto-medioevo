@@ -6,6 +6,7 @@
  */
 import type { Game } from './turn';
 import type { InvestmentKind } from './investments';
+import type { BeniCasata } from './prestiti';
 import type { ActionResult, BotLevel, EventOutcome, GameState } from './types';
 
 /** Contesto delle decisioni di un signore del computer. */
@@ -26,6 +27,8 @@ export interface ExpansionRules {
   id: string;
   /** stato iniziale dell'espansione (deve essere serializzabile in JSON) */
   init(state: GameState): unknown;
+  /** un signore nuovo (il ramo cadetto della Dinastia) entra in gioco con l'indice `i`: lo stato per signore si allunga */
+  addPlayer?(state: GameState, i: number): void;
   /** dopo il mercato del grano c'è la pagina "Fra signori" (fase `signori`, prima dell'imprevisto) */
   signori?: boolean;
   /** inizio del turno di un signore, dopo raccolto, prezzo e domanda */
@@ -44,6 +47,13 @@ export interface ExpansionRules {
   onIncome?(g: Game, amount: number): void;
   /** fine anno del signore di turno, prima di interessi, titoli e tributi */
   beforeYearEnd?(g: Game): void;
+  /** cigno nero: quante orde normali vale il grande esercito (assente: CIGNO_MULT, fazioni.ts) */
+  cignoNero?: number;
+  /**
+   * cigno nero della leva dei Franchi (solo con soldati): quanti soldati ha nel fortino il signore di
+   * turno, e la partenza di `n` uomini (dal fortino e dai servi arruolati), di cui una parte tornerà.
+   */
+  leva?: { soldati(g: Game): number; parti(g: Game, dalFortino: number, totale: number): void };
   /** fazioni: forza dei soldati e moltiplicatore delle mura del signore di turno (assente: nessuno) */
   factionDefense?(g: Game): { soldati: number; mura: number };
   /** rincaro (o sconto, se negativo) dell'usura in punti percentuali per il signore di turno, sommato a inizio turno a quella del raccolto, mai sotto zero (assente: 0) */
@@ -54,6 +64,8 @@ export interface ExpansionRules {
   onTrasferimento?(g: Game, i: number, da: number): void;
   /** Dinastia: i signori i e j sono in guerra (nessuna nozze fra loro finché dura) */
   ostili?(g: Game, i: number, j: number): boolean;
+  /** Dinastia: i beni che casata madre e rami cadetti si prestano oltre agli scudi (assente: niente prestiti di casata) */
+  prestiti?: BeniCasata;
   /** tutti i signori hanno giocato l'anno 900 + q (prima che q avanzi) */
   onYearClose?(g: Game): void;
   /** signori del computer: azioni dell'espansione prima della Delibera */
@@ -64,4 +76,16 @@ export interface ExpansionRules {
   botBeforeFeed?(c: BotCtx, feed: number): void;
   /** signori del computer: azioni all'inizio dei dispendimenti, dopo le rendite */
   botBeforeInvest?(c: BotCtx): void;
+}
+
+/**
+ * Allunga gli elenchi per signore dello stato di un'espansione fino all'indice `i` (un signore entrato a
+ * partita in corso): per ogni chiave presente, il valore iniziale. Le chiavi assenti si creano quando servono.
+ */
+export function growPerPlayer(st: object, i: number, defaults: Record<string, () => unknown>): void {
+  const o = st as Record<string, unknown>;
+  for (const [k, def] of Object.entries(defaults)) {
+    const a = o[k];
+    if (Array.isArray(a)) while (a.length <= i) a.push(def());
+  }
 }

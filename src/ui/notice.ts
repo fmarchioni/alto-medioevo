@@ -9,6 +9,8 @@ export interface Notice {
   body: string;
   /** il corpo è già impaginato (un personaggio che parla): non va in un paragrafo */
   html?: boolean;
+  /** traccia breve che suona sopra la musica quando l'avviso compare (musica.ts) */
+  musica?: import('./musica').Stacco;
 }
 
 /** Spesa da confermare: si esegue solo dopo "Confermo". */

@@ -8,7 +8,7 @@ import { FEUDI, titleName } from '../domain/rank';
 import type { ChronicleEntry, ChronicleFact, GameState, Player } from '../domain/types';
 import type { ExpansionView } from '../expansions/types';
 import { eventMiniature } from './comics';
-import { factionSentence } from './fazioni';
+import { aThe, factionSentence } from './fazioni';
 import { annualSentence, fattoSentence, fattoTitle } from './fatti';
 import { impresaHeadline, impresaSentence } from './imprese';
 import { seizedSentence } from './pignoramenti';
@@ -75,9 +75,16 @@ function eventSentence(f: Facts<'event'>[number]): string {
     case 15: return "Un brigante incappucciato gli sussurrò del carro delle decime di un abate corrotto, e gli chiese di farsi complice.";
     case 16: return 'Mercanti senza scrupoli gli offrirono di entrare in società nel loro commercio segreto.';
     case 9: return `Il popolo, stremato dalla gabella sul bere, si ribellò: assaltò i granai e portò via ${n(f.grano ?? 0)} misure di grano; negli scontri morirono ${n(f.servi)} servi${f.scudi ? ` e sparirono ${n(f.scudi)} scudi` : ''}.`;
+    case 17: {
+      const chiusi = [f.mercati ? 'un mercato' : '', f.opifici ? 'un opificio' : ''].filter(Boolean).join(' e ');
+      return `Vessati dalle gabelle sul commerzio, i mercanti sprangarono le botteghe e lasciarono la città${chiusi ? `: chiusero ${chiusi}` : ''}.`;
+    }
     default: return `Accadde un fatto mirabile: ${ev.title.toLowerCase()}.`;
   }
 }
+
+/** Il dipinto dell'esito di una battaglia contro una fazione: vittoria, sconfitta, o il tributo pagato. */
+const battleArtOf = (f: Facts<'event'>[number]) => (f.win === true ? 'esito-vittoria' : f.win === false ? 'esito-sconfitta' : 'esito-riscatto');
 
 // ---------------------------------------------------------------- articoli di prima pagina
 
@@ -87,6 +94,8 @@ interface Articolo {
   prio: number;
   ord: number;
   title: string;
+  /** Il titolo col luogo del fatto ("Incendio a Roma"), dai feudi dei signori dell'articolo. */
+  titolo?: (luogo: string) => string;
   art?: string;
   group?: string;
   ev?: Facts<'event'>[number];
@@ -98,6 +107,7 @@ interface Articolo {
 function tonoEvento(f: Facts<'event'>[number]): Tono {
   if (f.id >= 10 && f.id <= 14) return 'stranieri';
   if (f.id === 15 || f.id === 16) return 'mistero';
+  if (f.id === 17) return 'sciagura';
   if (f.choice === 'pugna') return 'guerra';
   const neg = f.scudi < 0 || f.servi < 0 || (f.grano ?? 0) < 0, pos = f.scudi > 0 || f.servi > 0;
   return neg ? 'sciagura' : pos ? 'fortuna' : 'ventura';
@@ -119,6 +129,39 @@ const TITOLI_FAMIGLIA: Record<Famiglia['k'], (f: Famiglia, feudo: string) => str
   ripudiato: () => 'Il ripudio',
   reggenza: (_, feudo) => `La reggenza di ${feudo}`,
   trasferimento: f => `La corte lascia ${FEUDI[f.da ?? 0]}`,
+  cadetto: f => `Un ramo cadetto a ${FEUDI[f.citta ?? 0]}`,
+  prestito: (f, feudo) => (f.esito === 'mancato' ? `Un debito non pagato a ${feudo}` : f.esito === 'negato' ? `Un prestito negato a ${feudo}` : `Un prestito di casata a ${feudo}`),
+  vincolo: (_, feudo) => `Rotto il vincolo a ${feudo}`,
+  usurpazione: (_, feudo) => `La notte della successione a ${feudo}`,
+  esilio: (_, feudo) => `Una congiura sventata a ${feudo}`,
+};
+
+/** Titoli degli imprevisti col luogo, dove "<titolo> a <luogo>" non suona bene. */
+const TITOLI_EVENTO: Record<number, (l: string) => string> = {
+  4: l => `Le schiere di ${l} tornano vittoriose`,
+  6: l => `Crolla la cloaca romana di ${l}`,
+  8: l => `Il ciambellano infedele di ${l}`,
+  10: l => `I Franchi a ${l}`, 11: l => `Gli Ungari a ${l}`, 12: l => `I Longobardi a ${l}`, 13: l => `I Bizantini a ${l}`, 14: l => `I Saraceni a ${l}`,
+  17: l => `I mercanti vessati lasciano ${l}`,
+  102: l => `Un traditore offre le porte a ${l}`,
+  112: l => `La nuova cattedrale di ${l}`,
+};
+const titoloEvento = (id: number, title = 'Un fatto mirabile') => TITOLI_EVENTO[id] ?? ((l: string) => `${title} a ${l}`);
+
+/** Titoli dei fatti del reame col luogo ("Incendio a Roma"). */
+const TITOLI_FATTO: Partial<Record<FattoOutcome['id'], (l: string) => string>> = {
+  piogge: l => `Piogge abbondanti a ${l}`,
+  mulino: l => `Un mulino nuovo a ${l}`,
+  immigrati: l => `Profughi alle porte di ${l}`,
+  eredita: l => `Un'eredità inaspettata a ${l}`,
+  reliquia: l => `Le spoglie di un santo a ${l}`,
+  visitaRe: l => `Il re in visita a ${l}`,
+  incendio: l => `Incendio a ${l}`,
+  cavallette: l => `Cavallette su ${l}`,
+  ciambellano: l => `Il ciambellano infedele di ${l}`,
+  mulinoGuasto: l => `Si guasta il mulino di ${l}`,
+  muffa: l => `Muffa nei granai di ${l}`,
+  decima: l => `La decima del vescovo a ${l}`,
 };
 
 /**
@@ -132,14 +175,14 @@ function cronaca(pys: PlayerYear[], players: Player[], view: ExpansionView | nul
   let ord = 0;
   const vita = pys.map(py => {
     const { p } = py, feudo = FEUDI[p.feudo];
-    const add = (prio: number, title: string, text: string, tono: Tono, o: { art?: string; group?: string; ev?: Articolo['ev'] } = {}) => {
+    const add = (prio: number, title: string, text: string, tono: Tono, o: { art?: string; group?: string; ev?: Articolo['ev']; titolo?: Articolo['titolo'] } = {}) => {
       if (!text) return;
       const g = o.group ? articoli.find(a => a.group === o.group) : undefined;
       if (g) {
         g.parts.push({ who: py.index, text });
         g.prio = Math.min(g.prio, prio);
         if (!g.art) g.art = o.art;
-      } else articoli.push({ prio, ord: ord++, title, tono, art: o.art, group: o.group, ev: o.ev, parts: [{ who: py.index, text }] });
+      } else articoli.push({ prio, ord: ord++, title, titolo: o.titolo, tono, art: o.art, group: o.group, ev: o.ev, parts: [{ who: py.index, text }] });
     };
     const end = py.of('yearEnd')[0];
 
@@ -148,7 +191,7 @@ function cronaca(pys: PlayerYear[], players: Player[], view: ExpansionView | nul
       if (f.t !== 'successione' && f.t !== 'famiglia' && f.t !== 'corona') continue;
       const text = dinastiaSentences([f], p, players).join(' ');
       const art = scenaDellAnno([f])?.art;
-      if (f.t === 'successione') add(1, `La morte di ${esc(f.morto)}`, text, 'morte', { art });
+      if (f.t === 'successione') add(1, f.causa === 'faida' ? `Morte sospetta a ${feudo}` : `La morte di ${esc(f.morto)}`, text, f.causa === 'faida' ? 'mistero' : 'morte', { art });
       else if (f.t === 'corona') add(1, p.gender === 1 ? "Il nuovo re d'Italia" : "La nuova regina d'Italia", text, 'corona', { art });
       else {
         const coppia = f.con ? `${f.k === 'ripudiato' ? 'ripudio' : f.k}-${[f.chi, f.con].sort().join('|')}` : undefined;
@@ -169,12 +212,17 @@ function cronaca(pys: PlayerYear[], players: Player[], view: ExpansionView | nul
     // 2) imprevisti e fatti del reame
     for (const f of py.of('event')) {
       const ev = EVENTS.find(e => e.id === f.id);
-      add(2, ev?.title ?? 'Un fatto mirabile', eventSentence(f), tonoEvento(f), { art: eventArt(f.id), group: `ev-${f.id}`, ev: f });
+      // cigno nero: il grande esercito di una fazione è un fatto di prima grandezza
+      if (f.cigno && f.faction) {
+        add(1, f.leva !== undefined ? 'La leva dei Franchi' : `Il grande esercito: ${ev?.title ?? ''}`, eventSentence(f), 'guerra', { art: f.option === 'concedere' ? 'franchi' : battleArtOf(f), ev: f });
+        continue;
+      }
+      add(2, ev?.title ?? 'Un fatto mirabile', eventSentence(f), tonoEvento(f), { art: eventArt(f.id), group: `ev-${f.id}`, ev: f, titolo: titoloEvento(f.id, ev?.title) });
     }
-    for (const f of py.of('fatto')) add(2, fattoTitle(f.o.id), fattoSentence(f.o), tonoFatto(f.o), { art: fattoArt(f.o.id), group: `fatto-${f.o.id}` });
+    for (const f of py.of('fatto')) add(2, fattoTitle(f.o.id), fattoSentence(f.o), tonoFatto(f.o), { art: fattoArt(f.o.id), group: `fatto-${f.o.id}`, titolo: TITOLI_FATTO[f.o.id] ?? (l => `${fattoTitle(f.o.id)} a ${l}`) });
     for (const f of py.of('impresa')) {
       const h = impresaHeadline(f.id, f.esito);
-      add(2, h.title, impresaSentence(f.id, f.esito, f.amount), f.esito === 'riuscita' ? 'fortuna' : f.esito === 'arresto' ? 'rovina' : f.esito === 'scaduta' ? 'mistero' : 'sciagura', { art: h.art });
+      add(2, h.title, impresaSentence(f.id, f.esito, f.amount), f.esito === 'riuscita' ? 'fortuna' : f.esito === 'arresto' ? 'rovina' : f.esito === 'scaduta' ? 'mistero' : 'sciagura', { art: h.art, titolo: l => `${h.title} a ${l}` });
     }
     for (const f of py.of('bancarotta')) add(2, `La rovina di ${feudo}`, `Chiuse l'anno con ${n(-f.scudi)} scudi di debiti: gli usurai lo fecero arrestare, e uscì dalla storia del regno.`, 'rovina');
 
@@ -184,7 +232,8 @@ function cronaca(pys: PlayerYear[], players: Player[], view: ExpansionView | nul
       const text = end.titleAfter > end.titleBefore
         ? `Per tanta ricchezza fu elevato al rango di ${titleName(end.titleAfter)}.`
         : `Le sue fortune calarono, e tornò al rango di ${titleName(end.titleAfter)}.`;
-      add(3, sc?.caption ?? 'Un nuovo titolo', text, end.titleAfter > end.titleBefore ? 'sale' : 'scende', { art: sc?.art });
+      const sale = end.titleAfter > end.titleBefore;
+      add(3, sc?.caption ?? 'Un nuovo titolo', text, sale ? 'sale' : 'scende', { art: sc?.art, titolo: l => (sale ? `Investitura a ${titleName(end.titleAfter)} di ${l}` : `Il titolo perduto di ${l}`) });
     }
 
     return { py, lines: quotidiano(py, players, view, inPrima) };
@@ -193,9 +242,14 @@ function cronaca(pys: PlayerYear[], players: Player[], view: ExpansionView | nul
   return { articoli, vita };
 }
 
+/** Quante frasi al più per signore nel trafiletto della vita dei feudi. */
+const VITA_FRASI = 2;
+
 /** La vita di tutti i giorni di un signore, per il trafiletto in fondo alla pagina. */
 function quotidiano(py: PlayerYear, players: Player[], view: ExpansionView | null, inPrima: Set<ChronicleFact>): string[] {
-  const s: string[] = [];
+  // ogni frase ha un peso: i fatti insoliti (3) prima dei cantieri (2), del sensale (1,8), delle casse (1,5), del grano e delle gabelle (1)
+  const s: { text: string; w: number }[] = [];
+  const put = (w: number, text: string) => { if (text) s.push({ text, w }); };
   const end = py.of('yearEnd')[0];
 
   // grano
@@ -207,36 +261,39 @@ function quotidiano(py: PlayerYear, players: Player[], view: ExpansionView | nul
   if (bought) grain += ` comprò ${n(bought)} misure di grano a ${price} scudi il migliaio`;
   if (sold) grain += bought ? ` e ne vendette ${n(sold)} ai mercanti` : ` vendette ${n(sold)} misure di grano ai mercanti`;
   if (!bought && !sold) grain += ' non fece commercio di grano';
-  s.push(grain + '.');
+  put(bought || sold ? 1 : 0, grain + '.');
   const coloni = py.of('sell').reduce((a, f) => a + (f.coloni ?? 0), 0);
-  if (coloni) s.push(`Il suo grano sfamò i feudi vicini nella carestia, e ${n(coloni)} famiglie vennero a stabilirsi nelle sue terre.`);
+  if (coloni) put(3, `Il suo grano sfamò i feudi vicini nella carestia, e ${n(coloni)} famiglie vennero a stabilirsi nelle sue terre.`);
   if (feed) {
-    if (feed.delta > 0) s.push(`Distribuì al popolo ${n(feed.qty)} misure, più delle ${n(feed.demand)} che chiedeva, e nelle case nacquero ${n(feed.delta)} bambini.`);
-    else if (feed.delta < 0) s.push(`Ma il pane non bastò: diede ${n(feed.qty)} misure contro le ${n(feed.demand)} che il popolo chiedeva, e ${n(feed.delta)} servi morirono di fame.`);
-    else s.push(`Diede al popolo ${n(feed.qty)} misure di grano, e il popolo restò com'era.`);
+    if (feed.delta > 0) put(3, `Distribuì al popolo ${n(feed.qty)} misure, più delle ${n(feed.demand)} che chiedeva, e nelle case nacquero ${n(feed.delta)} bambini.`);
+    else if (feed.delta < 0) put(3, `Il pane non bastò: diede ${n(feed.qty)} misure contro le ${n(feed.demand)} che il popolo chiedeva, e ${n(feed.delta)} servi morirono di fame.`);
+    else put(0, `Diede al popolo ${n(feed.qty)} misure di grano, e il popolo restò com'era.`);
   }
 
-  for (const f of py.of('fattoAnnuo')) s.push(annualSentence(f.kind, f.amount));
-  for (const f of py.of('pactTribute')) s.push(`Come protetto dell'Impero d'Oriente, versò ai Bizantini ${n(f.amount)} scudi di tributo.`);
+  for (const f of py.of('fattoAnnuo')) put(3, annualSentence(f.kind, f.amount));
+  for (const f of py.of('pactTribute')) put(3, f.giogo
+    ? `Sotto il giogo, versò ${aThe(f.faction)} metà delle sue rendite: ${n(f.amount)} scudi.`
+    : f.clausole ? `Per le clausole nascoste negli accordi, versò ai mercanti saraceni ${n(f.amount)} scudi delle sue rendite.`
+    : `Come protetto dell'Impero d'Oriente, versò ai Bizantini ${n(f.amount)} scudi di tributo.`);
   for (const f of py.of('pactEnd')) {
-    const line = { vassallo: 'Finì il suo vassallaggio verso il duca longobardo.', protettorato: "Scadde il protettorato dell'Impero d'Oriente.", accordi: 'Scaddero gli accordi commerciali con i Saraceni.', matrimonio: 'La parentela con i Franchi non lo protesse più.', devastati: 'I campi devastati dagli Ungari tornarono a dare frutto.' }[f.kind as string];
-    if (line) s.push(line);
+    const line = { vassallo: 'Finì il suo vassallaggio verso il duca longobardo.', protettorato: "Scadde il protettorato dell'Impero d'Oriente.", accordi: 'Scaddero gli accordi commerciali con i Saraceni.', clausole: 'Scaddero, con gli accordi, le clausole dei mercanti saraceni.', matrimonio: 'La parentela con i Franchi non lo protesse più.', devastati: 'I campi devastati dagli Ungari tornarono a dare frutto.', giogo: `Finì il giogo: le sue rendite tornarono tutte sue.` }[f.kind as string];
+    if (line) put(3, line);
   }
   for (const f of py.of('granaio')) {
-    if (f.over > 0) s.push(`I suoi granai non bastarono a tanto grano: ${n(f.over)} misure marcirono all'aperto${f.rot > 0 ? `, e altre ${n(f.rot)} se le presero ratti e muffa` : ''}.`);
+    if (f.over > 0) put(3, `I suoi granai non bastarono a tanto grano: ${n(f.over)} misure marcirono all'aperto${f.rot > 0 ? `, e altre ${n(f.rot)} se le presero ratti e muffa` : ''}.`);
   }
-  for (const f of py.of('spoil')) s.push(`Con il tesoro in debito i granai restarono senza riparo, e marcirono ${n(f.qty)} misure di grano.`);
+  for (const f of py.of('spoil')) put(3, `Con il tesoro in debito i granai restarono senza riparo, e marcirono ${n(f.qty)} misure di grano.`);
 
   // rendite
   const income = py.of('income')[0];
   if (income) {
-    s.push(income.amount > 0
+    put(1, income.amount > 0
       ? `Le gabelle fruttarono ${n(income.amount)} scudi${income.tribute ? `, e i vassalli gli versarono ${n(income.tribute)} scudi di tributo` : ''}.`
       : `Le gabelle non fruttarono nulla${income.tribute ? `, ma i vassalli gli versarono ${n(income.tribute)} scudi di tributo` : ''}.`);
   }
 
   // il sensale di piazza
-  for (const x of py.of('sensale')) s.push(sensaleSentence(x.who, x.cost));
+  for (const x of py.of('sensale')) put(1.8, sensaleSentence(x.who, x.cost));
 
   // costruzioni
   const count = (k: string) => py.of('build').filter(b => b.kind === k).length;
@@ -249,15 +306,14 @@ function quotidiano(py: PlayerYear, players: Player[], view: ExpansionView | nul
   if (parts.length || t) {
     const built = parts.length ? `Fece edificare ${parts.join(', ').replace(/, ([^,]*)$/, ' e $1')}` : '';
     const land = t ? `${built ? ' e acquistò' : 'Acquistò'} ${n(t * 25)} acri di terra` : '';
-    s.push(`${built}${land}.`);
-    // palazzo reale: i servi accorsi per i nuovi piani
+    // palazzo reale: i servi accorsi per i nuovi piani (nella stessa frase, così il trafiletto non li separa)
     const came = py.of('build').reduce((sum, b) => sum + (b.servi ?? 0), 0);
-    if (came) s.push(`La fama del palazzo attirò nel feudo ${n(came)} servi.`);
+    put(came ? 3 : 2, `${built}${land}.${came ? ` La fama del palazzo attirò nel feudo ${n(came)} servi.` : ''}`);
   }
 
   // mercanti: chi se ne va per le gabelle, chi arriva perché si fida
   for (const f of py.of('mercanti')) {
-    s.push(f.delta < 0
+    put(3, f.delta < 0
       ? 'Stanchi delle gabelle sul commerzio, i mercanti chiusero uno dei suoi mercati.'
       : 'Attirato dalla sua fama di signore onesto, un mercante forestiero aprì un nuovo mercato nel feudo.');
   }
@@ -267,21 +323,23 @@ function quotidiano(py: PlayerYear, players: Player[], view: ExpansionView | nul
     for (const f of py.of('ext')) {
       if (inPrima.has(f)) continue;
       const line = view.chronicle(f, players);
-      if (line) s.push(line);
+      if (line) put(3, line);
     }
   }
 
   // fine dell'anno
   if (end) {
-    if (end.usury > 0) s.push(`Gli usurai pretesero ${n(end.usury)} scudi d'interesse sui suoi debiti.`);
-    if (end.seized) s.push(seizedSentence(end.seized));
+    if (end.usury > 0) put(3, `Gli usurai pretesero ${n(end.usury)} scudi d'interesse sui suoi debiti.`);
+    if (end.seized) put(3, seizedSentence(end.seized));
     if (end.tribute.length) {
       const payers = end.tribute.map(t => esc(players[t.from].name)).join(', ').replace(/, ([^,]*)$/, ' e $1');
-      s.push(`Come signore di rango più alto, riscosse tributo da ${payers}.`);
+      put(3, `Come signore di rango più alto, riscosse tributo da ${payers}.`);
     }
-    if (!end.won) s.push(end.scudi < 0 ? `Chiuse l'anno con un debito di ${n(end.scudi)} scudi.` : `Chiuse l'anno con ${n(end.scudi)} scudi nelle casse e ${n(end.servi)} servi.`);
+    if (!end.won) put(1.5, end.scudi < 0 ? `Chiuse l'anno con un debito di ${n(end.scudi)} scudi.` : `Chiuse l'anno con ${n(end.scudi)} scudi nelle casse e ${n(end.servi)} servi.`);
   }
-  return s;
+  // il trafiletto è un riempitivo: al più VITA_FRASI frasi, le più pesanti, nell'ordine del racconto
+  const keep = new Set([...s].sort((x, y) => y.w - x.w).slice(0, VITA_FRASI));
+  return s.filter(x => keep.has(x)).map(x => x.text);
 }
 
 // ---------------------------------------------------------------- notizie del regno
@@ -404,8 +462,9 @@ function articolo(a: Articolo, players: Player[], cls: string, mini: boolean, ta
   const chi = (b: Parte) => `${titleName(players[b.who].title)} ${esc(players[b.who].name)} da ${FEUDI[players[b.who].feudo]}.`;
   const len = lead.length + blocchi.reduce((s, b) => s + chi(b).length + b.text.length + 2, 0);
   const coda = chiuse(a.tono, len, target, a.title).join(' ');
+  const titolo = a.titolo ? a.titolo(luoghi(blocchi.map(b => FEUDI[players[b.who].feudo]))) : a.title;
   const corpo = blocchi.map((b, k) => `<p><span class="gz-chi">${chi(b)}</span> ${b.text}${k === blocchi.length - 1 && coda ? ` ${coda}` : ''}</p>`).join('');
-  return `<article class="chr-entry gz-articolo${cls}"><h3 class="gz-rubrica">${a.title}</h3>${mini ? miniatura(a) : ''}<p class="gz-attacco">${lead}</p>${corpo}</article>`;
+  return `<article class="chr-entry gz-articolo${cls}"><h3 class="gz-rubrica">${titolo}</h3>${mini ? miniatura(a) : ''}<p class="gz-attacco">${lead}</p>${corpo}</article>`;
 }
 
 /**
@@ -428,8 +487,7 @@ export function renderChronicle(state: GameState, year: number, view: ExpansionV
   const [apertura, ...altri] = articoli;
   const intro = `Qui si narrano i fatti accaduti nell'anno del Signore ${year} nei feudi del regno, come li raccolse il cronista dalla voce dei messi e dai registri dei camerlenghi. Iddio guardi chi legge e perdoni chi scrive.`;
   const trafiletto = vita.map(({ py, lines }) => {
-    const tag = py.p.bot ? ` <span class="chr-bot">computer, ${py.p.bot}</span>` : '';
-    return `<p><span class="gz-chi">${titleName(py.p.title)} ${esc(py.p.name)} da ${FEUDI[py.p.feudo]}.</span>${tag} ${lines.join(' ')}</p>`;
+    return `<p><span class="gz-chi">${titleName(py.p.title)} ${esc(py.p.name)} da ${FEUDI[py.p.feudo]}.</span> ${lines.join(' ')}</p>`;
   }).join('');
   return `
   <div class="gz-rotolo">

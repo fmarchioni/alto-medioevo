@@ -24,15 +24,16 @@
  * Il sensale e i pignoramenti degli usurai sono ora nel gioco base.
  */
 import { INT } from '../../domain/economy';
-import type { BotCtx, ExpansionRules } from '../../domain/expansion';
+import { growPerPlayer, type BotCtx, type ExpansionRules } from '../../domain/expansion';
 import type { BotLevel } from '../../domain/types';
-import { acriPerBotteghe, ACRI_PER_ACQUISTO, COSTS, MAX_ACRI, MAX_PALAZZO, roomFor } from '../../domain/investments';
+import { ANNI_LIMITE, type DispaccioCasata } from '../../domain/prestiti';
+import { acriPerBotteghe, ACRI_PER_ACQUISTO, canInvest, COSTS, MAX_ACRI, MAX_PALAZZO, roomFor } from '../../domain/investments';
 import { FORECLOSURE_MIN_ACRI } from '../../domain/pignoramenti';
 import { victoryRule, wealthIndex } from '../../domain/rank';
 import type { Game } from '../../domain/turn';
 import type { ActionResult, Player } from '../../domain/types';
 import {
-  buyLot as buyLotOf, emptyCantina, yearlyOutput, PREZZO_PASSAGGIO, MERCI, maxVigneti, passingPrices, plantVineyard, postLot as postLotOf, produce, sellToPassing, settleCaravans, spoilWine, UNITA, VIGNETO_COST,
+  buyLot as buyLotOf, buyFromPassing, passingLeft, emptyCantina, yearlyOutput, PREZZO_PASSAGGIO, MERCI, maxVigneti, passingPrices, plantVineyard, postLot as postLotOf, produce, sellToPassing, settleCaravans, spoilWine, UNITA, VIGNETO_COST,
   sellerShare, sellUnsold, withdrawLot as withdrawLotOf, type Merce,
 } from './merci';
 import { bonusOf } from './geografia';
@@ -101,7 +102,9 @@ export type Dispatch =
   | FieraDispatch
   | ImpresaDispatch
   /** si può celebrare il nuovo titolo */
-  | { k: 'festaTitolo'; rango: number };
+  | { k: 'festaTitolo'; rango: number }
+  /** Dinastia: prestiti di casata (src/domain/prestiti.ts) */
+  | { k: 'casata'; d: DispaccioCasata };
 
 export interface MercantiState extends FieraState, ConsumiState, ImpreseState {
   /** anno (q) dell'ultimo pignoramento degli usurai già punito nel prestigio */
@@ -318,6 +321,27 @@ export function postLot(g: Game, good: Merce, qty: number, price: number): Actio
 
 export const withdrawLot = (g: Game, good: Merce) => withdrawLotOf(g, ms(g), good);
 
+/**
+ * I mercanti di passaggio sono concorrenti dei mercanti forestieri: non vendono a chi è entrato alla fiera
+ * dell'anno (ne ha visto i contratti) né a chi ha contratti della fiera ancora da spedire. Così la merce per
+ * la fiera si produce, e al più si compra "alla cieca", prima di vedere i contratti. null: vendono.
+ */
+export function passingBlock(g: Game, i = g.state.current): string | null {
+  const st = ms(g), f = fairOpen(st, g.state.q);
+  if (f && (f.quote[i] ?? -1) >= 0) return "siete entrati alla fiera: i mercanti di passaggio non fanno affari con chi tratta con i forestieri";
+  if (impegniOf(st, i).some(x => !x.spedito)) return 'avete contratti della fiera da spedire: i mercanti di passaggio non vi vendono la merce per i forestieri';
+  return null;
+}
+
+/** Compra dai mercanti di passaggio al fondaco (senza la Dinastia): poca merce, subito. */
+export function buyPassing(g: Game, good: Merce, qty: number): ActionResult & { cost?: number } {
+  const block = passingBlock(g);
+  if (block && !g.state.options.dinastia) return { ok: false, reason: block };
+  const r = buyFromPassing(g, ms(g), good, qty);
+  if (r.ok) note(g, g.state.current, 'passingBuy', { good: MERCI.indexOf(good), qty, cost: r.cost! });
+  return r;
+}
+
 export function buyLot(g: Game, lotId: number, qty: number): ActionResult {
   const st = ms(g), me = g.state.current;
   const lot = st.lots.find(l => l.id === lotId);
@@ -488,11 +512,19 @@ function botSell(c: BotCtx, afterFair = false): void {
   }
 }
 
-/** Compra al fondaco la merce che costa meno di quanto la pagano i mercanti di passaggio (per rivenderla). */
+/**
+ * Compra al fondaco la merce che costa meno di quanto la pagano i mercanti di passaggio (per rivenderla).
+ * Medio e difficile comprano dai mercanti di passaggio i manufatti che mancano al prossimo piano del palazzo.
+ */
 function botBuyLots(c: BotCtx): void {
   const { g, level, log } = c;
-  if (level !== 'difficile') return;
+  if (level === 'facile') return;
   const st = ms(g), me = g.state.current, p = g.player, prices = passingPrices(g.state.q);
+  if (!passingBlock(g) && canInvest(p, 'palazzo').ok) {
+    const qty = Math.min(passingLeft(g, st, me, 'manufatti'), palaceNeeds(p, st.cantine[me], committed(st, me, 'manufatti')).comprati);
+    if (qty > 0 && p.scudi > COSTS.palazzo && buyPassing(g, 'manufatti', qty).ok) log.push(`compra ${qty} manufatti dai mercanti di passaggio, per il palazzo`);
+  }
+  if (level !== 'difficile') return;
   for (const lot of st.lots.filter(l => l.seller !== me && l.price < prices[l.good])) {
     const qty = Math.min(lot.qty, Math.floor(Math.max(0, p.scudi - 500) / lot.price));
     const seller = g.state.players[lot.seller].name, good = lot.good, price = lot.price;
@@ -711,6 +743,12 @@ export const rules: ExpansionRules = {
     };
   },
 
+  addPlayer(state, i) {
+    growPerPlayer(state.ext as MercantiState, i, {
+      acquisti: () => null, cantine: emptyCantina, prestigio: () => 0, disonore: () => -1, banchetti: () => -1, feste: () => null, richieste: () => [], imprese: () => [], annacqua: () => -1,
+    });
+  },
+
   onTurnStart(g) {
     const st = ms(g), me = g.state.current, p = g.player;
     // le carovane arrivate alle piazze si fanno pagare; la fiera è aperta
@@ -795,6 +833,28 @@ export const rules: ExpansionRules = {
     p.scudi -= need.scudi;
     note(g, g.state.current, 'palaceGoods', { piano: p.palazzo + 1, manufatti: need.manufatti, comprati: need.comprati, scudi: need.scudi });
     return { ok: true };
+  },
+
+  // Dinastia: casata madre e rami cadetti si prestano vino e manufatti (al più due anni della produzione di chi chiede)
+  prestiti: {
+    beni: ['vino', 'manufatti'],
+    ha: (g, i, bene) => ms(g).cantine[i]?.[bene as Merce] ?? 0,
+    limite: (g, chi, _a, bene) => ANNI_LIMITE * yearlyOutput(g.state.players[chi], ms(g).cantine[chi])[bene as Merce],
+    sposta(g, da, a, bene, qty) {
+      const c = ms(g).cantine;
+      c[da][bene as Merce] -= qty;
+      c[a][bene as Merce] += qty;
+    },
+    dispaccio: (g, to, d) => send(ms(g), to, { k: 'casata', d }),
+    // il computer chiede la merce che gli manca per i contratti della fiera (oltre a un anno di produzione)
+    bisogno(g, i) {
+      const st = ms(g), c = st.cantine[i], out = yearlyOutput(g.state.players[i], c);
+      for (const good of MERCI) {
+        const need = promised(st, i, good) - c[good] - out[good];
+        if (need > 0) return { bene: good, qty: Math.ceil(need) };
+      }
+      return null;
+    },
   },
 
   // Dinastia: l'erede si trasferisce: i vigneti restano ai fratelli, la merce in magazzino lo segue

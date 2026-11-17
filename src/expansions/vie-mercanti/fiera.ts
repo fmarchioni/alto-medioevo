@@ -23,6 +23,7 @@
  *   parente gioca dopo di lui (così fa in tempo a spedire), e va accettata.
  */
 import { INT } from '../../domain/economy';
+import { Mulberry32 } from '../../domain/rng';
 import type { Game } from '../../domain/turn';
 import type { ActionResult } from '../../domain/types';
 import { late, rollJourney, type EventoViaggio } from './carovane';
@@ -118,6 +119,8 @@ export interface Fiera {
   offerte: Offerta[];
   /** consoli comprati: il signore vince quel contratto al prezzo base, se non si scopre */
   console?: { player: number; contract: number }[];
+  /** chi ha bandito la fiera (indice di PROMOTORI; assente nei salvataggi vecchi) */
+  promotori?: number;
 }
 
 /** Un contratto vinto: la merce da spedire, poi la carovana verso la piazza. */
@@ -187,6 +190,25 @@ export interface FairCtx {
   note(i: number, kind: string, data: Record<string, number>): void;
 }
 
+/**
+ * Chi bandisce la fiera. Dal committente si intuisce che cosa chiederà: `vino` è la probabilità che un
+ * contratto sia di vino (gli altri sono di manufatti). Il testo non lo dice: lo lascia capire.
+ */
+export const PROMOTORI: readonly { chi: string; perche: string; vino: number }[] = [
+  { chi: 'i mercanti di Palermo e di Messina', perche: "che riempiono di botti le navi in partenza per l'Africa", vino: 0.75 },
+  { chi: 'gli abati di Montecassino', perche: 'per i monasteri che dipendono da loro, da Capua alla Marsica, e per le mense dei pellegrini', vino: 0.7 },
+  { chi: 'gli osti e i vinai della via Francigena', perche: 'che a ogni tappa dissetano i pellegrini diretti a Roma', vino: 0.8 },
+  { chi: 'i consoli di Genova e di Pisa', perche: 'che caricano le loro navi di ogni mercanzia', vino: 0.5 },
+  { chi: 'i mercanti di Venezia', perche: 'che comprano di tutto per rivenderlo oltremare', vino: 0.5 },
+  { chi: 'i maestri comacini', perche: 'che innalzano cattedrali e palazzi in tutto il regno', vino: 0.25 },
+  { chi: 'gli armaioli e i tessitori di Pavia', perche: 'che vestono e armano la corte del re', vino: 0.2 },
+  { chi: "i mercanti del Corno d'Oro", perche: "venuti da Costantinopoli in cerca di stoffe e di lavori d'artigiano", vino: 0.3 },
+];
+/** Chi bandisce la fiera dell'anno q: fisso per l'anno (non tocca il caso dell'espansione). */
+export function promotoriDi(q: number): number {
+  return Math.floor(new Mulberry32(((q + 1) * 2246822519) ^ 0xf1e7).next() * PROMOTORI.length);
+}
+
 const between = (rnd: () => number, [a, b]: readonly [number, number], step = 1) => a + step * Math.floor((rnd() * (b - a + step)) / step);
 
 /**
@@ -196,10 +218,11 @@ const between = (rnd: () => number, [a, b]: readonly [number, number], step = 1)
  * quasi nessuno ha.
  */
 export function makeFair(rnd: () => number, q: number, nextId: () => number, players: number): Fiera {
-  const contratti: Contratto[] = [];
+  const contratti: Contratto[] = [], promotori = promotoriDi(q), share = PROMOTORI[promotori].vino;
   const add = (fascia: 0 | 1 | 2, f: { qty: readonly [number, number]; base: readonly [number, number]; tempo: number }, speciale = false) => {
     const piazza = speciale && rnd() < 0.5 ? 'costantinopoli' : PIAZZE[Math.floor(rnd() * PIAZZE.length)].id;
-    const drawn = MERCI[Math.floor(rnd() * MERCI.length)];
+    // vino o manufatti, secondo chi ha bandito la fiera
+    const drawn: Merce = rnd() < share ? 'vino' : 'manufatti';
     // alla prima fiera quasi nessuno ha opifici: un contratto su due (in ogni quota) è di vino
     const good: Merce = q === FIERA_DAL && contratti.length % 2 === 0 ? 'vino' : drawn;
     contratti.push({
@@ -210,7 +233,7 @@ export function makeFair(rnd: () => number, q: number, nextId: () => number, pla
   };
   FASCE.forEach((f, i) => { for (let k = 0; k < f.n; k++) add(i as 0 | 1 | 2, f); });
   add(2, SPECIALE, true);
-  return { q, contratti, quote: Array.from({ length: players }, () => -1), offerte: [] };
+  return { q, contratti, quote: Array.from({ length: players }, () => -1), offerte: [], promotori };
 }
 
 /** Valore medio (al prezzo base) dei contratti che una quota fa vedere: si conosce prima di pagare. */

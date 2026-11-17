@@ -67,6 +67,10 @@ button {
 button.primary { background: var(--btn-bg); border-color: var(--btn-bg); color: var(--btn-ink); }
 button, input, select { font-family: var(--font); }
 button.ghost { border-color: var(--line); font-size: .9rem; }
+/* volume della musica e dei suoni, fra i comandi */
+label.volume { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; color: inherit; }
+label.volume input[type="range"] { width: 90px; accent-color: var(--gold); }
+label.volume output { min-width: 2.2em; text-align: right; font-variant-numeric: tabular-nums; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 input, select { font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; }
 input[type="number"] { width: 8em; }
@@ -670,6 +674,38 @@ b, strong { color: var(--gold); }
 .nozze-list li small { color: var(--muted); flex: 1 1 260px; }
 .famiglia td { padding: 3px 8px 3px 0; vertical-align: top; }
 .famiglia .erede { color: var(--gold); }
+/* albero genealogico della Dinastia: un ramo per generazione, con le linee che scendono dal genitore */
+/* albero della casata, dall'alto in basso: ogni generazione una riga, unite da linee; scorre di lato se è largo */
+.genealogia-wrap { overflow-x: auto; padding: 4px 0 10px; }
+.genealogia, .genealogia ul { list-style: none; margin: 0; padding: 0; display: flex; justify-content: center; }
+.genealogia { width: max-content; min-width: 100%; }
+.genealogia ul { position: relative; padding-top: 16px; }
+.genealogia li { position: relative; display: flex; flex-direction: column; align-items: center; padding: 16px 4px 0; }
+.genealogia li::before, .genealogia li::after { content: ''; position: absolute; top: 0; right: 50%; width: 50%; height: 16px; border-top: 2px solid var(--line, #b8902e); }
+.genealogia li::after { right: auto; left: 50%; border-left: 2px solid var(--line, #b8902e); }
+.genealogia li:only-child::before, .genealogia li:only-child::after { display: none; }
+.genealogia li:only-child { padding-top: 0; }
+.genealogia li:first-child::before, .genealogia li:last-child::after { border: 0 none; }
+.genealogia li:last-child::before { border-right: 2px solid var(--line, #b8902e); border-radius: 0 6px 0 0; }
+.genealogia li:first-child::after { border-radius: 6px 0 0 0; }
+.genealogia ul::before { content: ''; position: absolute; top: 0; left: 50%; height: 16px; border-left: 2px solid var(--line, #b8902e); }
+.genealogia > li { padding-top: 0; }
+.genealogia > li::before, .genealogia > li::after { display: none; }
+/* il nipote erede: legato con una linea tratteggiata */
+.genealogia li.nipote::before, .genealogia li.nipote::after { border-top-style: dashed; }
+.gen-nodo { width: 124px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: 4px 3px; border-radius: 6px; line-height: 1.25; }
+.gen-nodo.breve { width: 84px; }
+.gen-nodo.breve .gen-volto { width: 34px; height: 34px; }
+.gen-nodo.voi { background: rgba(201, 154, 46, .16); box-shadow: inset 0 0 0 2px var(--gold); }
+.gen-volti { display: flex; align-items: flex-end; justify-content: center; }
+.gen-volto { flex: none; width: 48px; height: 48px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .4)); }
+.gen-volto.sposo { width: 34px; height: 34px; margin-left: -8px; }
+.gen-nodo.voi .gen-volto:not(.sposo) { width: 58px; height: 58px; }
+.gen-volto.morto { filter: grayscale(.9) drop-shadow(0 1px 2px rgba(0, 0, 0, .4)); opacity: .7; }
+.gen-testo { font-size: .82em; overflow-wrap: anywhere; }
+.gen-testo small { color: var(--muted); }
+.gen-nodo.voi .gen-testo b:first-child { color: var(--gold); }
+.gen-testo .erede, .gen-voi { color: var(--gold); }
 .ripudio-box { border: 2px solid var(--red); border-radius: 6px; padding: 8px 12px; }
 
 /* ---------- espansioni: pannelli nella Delibera ---------- */
@@ -1026,6 +1062,8 @@ img.deed-seal { width: 54px; height: 54px; transform: rotate(-8deg); filter: dro
 }
 @media (max-width: 700px) { .giornale { padding: 48px 36px 30px; } .gz-testata { font-size: 40px; } }
 .exp-mini.dipinta { aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: 0 2px 4px rgba(0, 0, 0, .35); }
+/* la miniatura dopo la distribuzione del grano: culle piene o morti di fame */
+.esito-grano { display: block; width: min(100%, 380px); height: auto; margin: 0 auto 12px; box-shadow: 0 2px 4px rgba(0, 0, 0, .35); }
 .notice .investitura { margin: 2px 0 8px; animation: none; }
 
 /* Delibera: comprare e vendere affiancati, nutrire il popolo su una riga intera, tutto più compatto */
@@ -1045,3 +1083,9 @@ img.deed-seal { width: 54px; height: 54px; transform: rotate(-8deg); filter: dro
 .benvenuto .advisor.dipinto { align-items: flex-start; }
 .benvenuto .advisor.dipinto .speech { margin-top: 4px; margin-bottom: 28px; }
 .benvenuto .advisor.dipinto .speech::before { top: -4px; bottom: -27px; transform: none; }
+
+/* la pagina della fiera, dopo Fra signori: il dipinto a sinistra, il testo accanto; le tabelle sotto, a tutta larghezza */
+.fiera-pagina { display: flow-root; }
+.fiera-quadro { float: left; width: 40%; max-width: 300px; margin: 0 16px 10px 0; }
+.fiera-quadro img { display: block; width: 100%; height: auto; border: 3px solid #5a3d26; border-radius: 4px; box-shadow: 0 3px 8px rgba(0, 0, 0, .35); }
+.fiera-pagina .ext-table, .fiera-pagina .btns, .fiera-pagina h3 { clear: both; }

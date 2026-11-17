@@ -8,6 +8,9 @@
  *   artigiani sono contenti. I manufatti non si guastano.
  * - Mercanti di passaggio: ogni anno comprano qualunque quantità, pagando
  *   subito ma poco (il prezzo cambia di anno in anno).
+ * - Al fondaco (senza la Dinastia) ci sono sempre anche i mercanti di passaggio che
+ *   vendono: poca merce, al più FORESTIERI_MAX unità l'anno per merce, un poco più cara
+ *   di quanto si spunta al fondaco; si paga e si riceve subito.
  * - Fondaco: ogni signore mette in vendita vino o manufatti al prezzo che
  *   vuole. Chi compra paga subito; la merce parte con una carovana e il
  *   venditore incassa solo quando la carovana arriva. La merce che nessun
@@ -51,6 +54,11 @@ export interface Cantina {
   prodotto?: { q: number; vino: number; manufatti: number };
 }
 
+/** Mercanti di passaggio che vendono al fondaco: al più tante unità l'anno per merce e per signore, e il ricarico sul loro prezzo d'acquisto. */
+export const FORESTIERI_MAX = 50;
+export const FORESTIERI_MIN = 20;
+export const FORESTIERI_RICARICO = 3;
+
 /** Merce al fondaco; q: anno in cui è stata portata (assente nei salvataggi vecchi). */
 export interface Lot { id: number; seller: number; good: Merce; qty: number; price: number; q?: number }
 
@@ -83,6 +91,8 @@ export interface MerciState {
   lots: Lot[];
   carovane: Carovana[];
   nextId: number;
+  /** merce comprata quest'anno dai mercanti di passaggio, per signore (assente nei salvataggi vecchi) */
+  acquisti?: ({ q: number; vino: number; manufatti: number } | null)[];
 }
 
 export const emptyCantina = (): Cantina => ({ vino: 0, manufatti: 0, vigneti: 0 });
@@ -95,6 +105,43 @@ export function passingPrices(q: number): Record<Merce, number> {
   const r = new Mulberry32(((q + 1) * 2654435761) ^ 0x7e1a);
   const pick = (m: Merce) => PREZZO_PASSAGGIO[m].min + Math.floor(r.next() * (PREZZO_PASSAGGIO[m].max - PREZZO_PASSAGGIO[m].min + 1));
   return { vino: pick('vino'), manufatti: pick('manufatti') };
+}
+
+/**
+ * Merce che i mercanti di passaggio vendono al fondaco nell'anno q, uguale per tutti: da FORESTIERI_MIN a
+ * FORESTIERI_MAX unità per merce, a FORESTIERI_RICARICO scudi più di quanto la pagano (un banco del fondaco
+ * chiede di solito uno o due scudi in più).
+ */
+export function passingOffer(q: number): Record<Merce, { qty: number; price: number }> {
+  const r = new Mulberry32(((q + 1) * 40503) ^ 0x51f0), buy = passingPrices(q);
+  const one = (m: Merce) => ({ qty: FORESTIERI_MIN + Math.floor(r.next() * (FORESTIERI_MAX - FORESTIERI_MIN + 1)), price: buy[m] + FORESTIERI_RICARICO });
+  return { vino: one('vino'), manufatti: one('manufatti') };
+}
+
+/** Quanta merce i mercanti di passaggio vendono ancora quest'anno al signore i (0: niente, o con la Dinastia). */
+export function passingLeft(g: Game, st: MerciState, i: number, good: Merce): number {
+  if (g.state.options.dinastia) return 0;
+  const a = st.acquisti?.[i], q = g.state.q;
+  return Math.max(0, passingOffer(q)[good].qty - (a?.q === q ? a[good] : 0));
+}
+
+/** Compra dai mercanti di passaggio: si paga e si riceve subito. */
+export function buyFromPassing(g: Game, st: MerciState, good: Merce, qty: number): ActionResult & { cost?: number } {
+  const no = fondacoOpen(g);
+  if (no) return no;
+  if (g.state.options.dinastia) return { ok: false, reason: 'con la Dinastia i mercanti di passaggio non vendono' };
+  const me = g.state.current, p = g.player, q = g.state.q, left = passingLeft(g, st, me, good);
+  if (!isCount(qty)) return { ok: false, reason: 'quantità non valida' };
+  if (qty > left) return { ok: false, reason: left ? `quest'anno ne hanno ancora ${left}` : `quest'anno non hanno più ${UNITA[good][1]}` };
+  const cost = qty * passingOffer(q)[good].price;
+  if (!canSpend(p, cost)) return { ok: false, reason: 'spesa oltre il credito concesso' };
+  p.scudi -= cost;
+  st.cantine[me][good] += qty;
+  const a = (st.acquisti ??= []);
+  while (a.length <= me) a.push(null);
+  if (a[me]?.q !== q) a[me] = { q, vino: 0, manufatti: 0 };
+  a[me]![good] += qty;
+  return { ok: true, cost };
 }
 
 /** Abbondanza dell'annata per la vite: da 0,5 a 1,5 (raccolto rispetto al massimo possibile). */

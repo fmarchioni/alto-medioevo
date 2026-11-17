@@ -9,11 +9,14 @@ import type { ActionResult, GameState, Player } from '../../domain/types';
 import { helmet, person, shield, spear } from '../../ui/comics';
 import { MAP_POS, MAP_SIZE, mapBackground, markerPos } from '../../ui/map';
 import { dispatchScrolls, type ScrollItem } from '../../ui/scrolls';
-import { pick, speechBox, type Speaker } from '../../ui/speaker';
+import { dispaccioCasata } from '../../ui/prestiti';
+import { piuForte } from '../../ui/stacchi';
+import { isPainted, pick, speechBox, type Speaker } from '../../ui/speaker';
+import { illustrationUrl } from '../../ui/citta/assets';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
 import {
   answerPeace, offerPeace, peaceBlock, BOMBARD_KILL, buildCatapults, CATAPULT_COST, CATAPULT_MAX, CATAPULT_UPKEEP, CATAPULTS_PER_RING, catapultsOf, catAwayOf, FALL_SERVI, liftSiege, PEACE_PER_SOLDIER, peacePrice,
-  SIEGE_FALL_WINS, SIEGE_KILL, siegesBy, siegesOn, WALL_BONUS, WALL_MEN,
+  SIEGE_FALL_WINS, SIEGE_KILL, SIEGE_MORALE_MAX, SIEGE_MORALE_YEARS, SIEGE_SERVI_STEPS, SIEGE_SOLDATI_STEP, siegeNeed, siegesBy, siegesOn, WALL_BONUS, WALL_MEN,
   ARMY_MAX_SHARE, awayOf, campaignsBy, MILITIA, recruitRoom, volunteersOf, warLooms, buildTower, TORRE_COST, TORRI_MAX, torriOf, towerAlerts, type Campaign, MARCH_SICKNESS, travelYears, BRIGAND_BAND, BRIGAND_PAY, BRIGAND_TAX, buildWall, CAMPAIGN_COST, declareWar, defenseOf, disband, driveBrigands,
   LOOT_GRANO, LOOT_SCUDI, maxArmy, moveBrigands, MURA_COST, MURA_MAX, neighbors, payBrigands, RECRUIT_COST, recruit, SOLDIER_VS_HORDE, WALL_VS_HORDE,
   SOLDO, SPY_COST, SPY_YEARS, DESTROY_FROM_Q, USURA_CAMPAGNA, USURA_MINACCIA, USURA_PACE,
@@ -160,6 +163,12 @@ function miniMap(g: Game, opts: { highlight?: number[] } = {}): string {
     ${lines}${dots}${band}</svg>`;
 }
 
+/**
+ * Dipinto dell'esito di una guerra (vista moderna): il feudo saccheggiato se l'assalto riesce; se è
+ * respinto, i difensori in festa sulle mura, o le mura che reggono all'assedio.
+ */
+export const battleArt = (w: Pick<WarResult, 'win' | 'round'>): string => (w.win ? 'esito-sconfitta' : (w.round ?? 1) > 1 ? 'esito-mura' : 'esito-vittoria');
+
 /** Scena di battaglia per l'esito di una guerra. */
 export function battleScene(w: WarResult, ps: Player[]): string {
   const BLUE = '#2e5fa3', RED = '#8b2a1e';
@@ -195,6 +204,9 @@ export function battleScene(w: WarResult, ps: Player[]): string {
     <text x="150" y="40" font-size="20" fill="${w.win ? '#2e5fa3' : '#8b2a1e'}" text-anchor="middle">${w.win ? 'VITTORIA!' : 'RESPINTI!'}</text>
   </svg>`;
 }
+
+/** Quante vittorie fanno cadere un feudo assediato (siegeNeed), a parole. */
+const needRule = `da 1 a ${SIEGE_FALL_WINS} vittorie: una, più una per cerchia di mura in piedi (fino a due), una o due se il feudo ha più di ${n(SIEGE_SERVI_STEPS[0])} o ${n(SIEGE_SERVI_STEPS[1])} servi, una se ha almeno ${SIEGE_SOLDATI_STEP} soldati; una in meno per ogni sconfitta subita negli ultimi ${SIEGE_MORALE_YEARS} anni nelle guerre per le risorse (fino a ${SIEGE_MORALE_MAX}), perché il morale è a terra. Mura abbattute e servi uccisi avvicinano la caduta`;
 
 // ---------------------------------------------------------------- testi
 
@@ -270,13 +282,16 @@ function battleTaleBody(w: WarResult, head: string, spoils: string): string {
 }
 
 function dispatchItem(d: Dispatch, st: GameState): ScrollItem {
+  if (d.k === 'casata') return dispaccioCasata(d.d, st);
   if (d.k === 'attacked') return { title: d.war.win ? (d.war.siege ? 'Sotto assedio' : 'Il feudo è stato saccheggiato') : 'Assalto respinto', from: 'dalle mura', body: warText(d.war, st.players, false) };
   if (d.k === 'battle') return { title: d.war.fell ? 'Il feudo nemico è caduto' : d.war.win ? `Vittoria a ${FEUDI[st.players[d.war.defender].feudo]}` : `Sconfitta a ${FEUDI[st.players[d.war.defender].feudo]}`, from: 'dal campo di battaglia', body: warText(d.war, st.players, true) };
   if (d.k === 'siege') return { title: d.war.fell ? 'Il feudo nemico è caduto' : d.war.win ? "L'assalto è riuscito" : "L'assalto è fallito", from: "dal campo dell'assedio", body: warText(d.war, st.players, true) };
   if (d.k === 'returned') return {
     title: 'I soldati sono tornati',
     from: 'dalla strada',
-    body: `Dopo ${d.anni === 1 ? 'un anno' : 'due anni'} di marcia dal feudo di ${who(st.players[d.from])}, <b>${plural(d.n, 'soldato è tornato', 'soldati sono tornati')}</b> al fortino${d.cat ? ` con ${plural(d.cat, 'catapulta', 'catapulte')}` : ''}${d.lost ? `; ${plural(d.lost, 'è morto', 'sono morti')} di malattia per via` : ', tutti sani'}. Di nuovo difendono il feudo e si possono mandare in guerra o congedare.`,
+    body: d.franchi
+      ? `Dalla guerra dei Franchi contro gli Ungari <b>${plural(d.n, 'soldato è tornato', 'soldati sono tornati')}</b> al fortino: gli altri sono rimasti sui campi di battaglia. Di nuovo difendono il feudo e si possono mandare in guerra o congedare.`
+      : `Dopo ${d.anni === 1 ? 'un anno' : 'due anni'} di marcia dal feudo di ${who(st.players[d.from])}, <b>${plural(d.n, 'soldato è tornato', 'soldati sono tornati')}</b> al fortino${d.cat ? ` con ${plural(d.cat, 'catapulta', 'catapulte')}` : ''}${d.lost ? `; ${plural(d.lost, 'è morto', 'sono morti')} di malattia per via` : ', tutti sani'}. Di nuovo difendono il feudo e si possono mandare in guerra o congedare.`,
   };
   if (d.k === 'peaceAnswer') return d.ok
     ? { title: 'Pace accettata', from: "dal campo dell'assedio", body: `${who(st.players[d.by])} ha accettato la vostra proposta: pagati <b>${n(d.scudi)} scudi</b>, il suo esercito toglie l'assedio e torna a casa.` }
@@ -410,7 +425,7 @@ function guerraPanel(g: Game, st: SpadeState): string {
     const actions = pact
       ? `<small>trattato di pace fino al ${900 + pact.fino}: niente guerra</small>`
       : siege
-      ? `<small>assediato da ${n(siege.n)} vostri soldati (${siege.wins} di ${SIEGE_FALL_WINS} vittorie)</small><br>
+      ? `<small>assediato da ${n(siege.n)} vostri soldati (${siege.wins} di ${siegeNeed(g, i)} vittorie)</small><br>
         ${done ? '' : `<button data-act="ext" data-op="war" data-target="${i}" data-goal="distruzione" ${s + mercsOf(g, st, me) < WAR_MIN ? 'disabled' : ''}>Mandate rinforzi</button>`}
         <button data-act="ext" data-op="lift" data-target="${i}">Togliete l'assedio</button>`
       : done ? '' : `<button data-act="ext" data-op="war" data-target="${i}" data-goal="bottino" ${s + mercsOf(g, st, me) < WAR_MIN ? 'disabled' : ''}>Per le risorse</button>
@@ -433,7 +448,7 @@ function guerraPanel(g: Game, st: SpadeState): string {
   const formRest = done ? '' : `
       <ul class="ext-ledger">
         <li><b>Per le risorse</b>: chi vince porta via fino a ${LOOT_SCUDI} scudi e ${LOOT_GRANO} misure di grano per soldato rimasto in piedi; poi l'esercito torna a casa.</li>
-        <li><b>Per la distruzione</b>: se vincete, l'esercito resta ad assediare e torna all'assalto all'inizio di ogni vostro anno. Ogni vittoria saccheggia, uccide il ${Math.round(SIEGE_KILL * 100)}% dei servi, brucia i granai e, con almeno ${CATAPULTS_PER_RING} catapulte, abbatte una cerchia. Dopo ${SIEGE_FALL_WINS} vittorie, o quando restano meno di ${FALL_SERVI} servi, il feudo cade: prendete terre, tesoro e metà dei servi, e il suo signore esce dalla partita. Potete togliere l'assedio quando volete; l'assediato può proporvi la pace a ${PEACE_PER_SOLDIER} scudi per soldato assediante, e siete voi a decidere se accettarla.${early ? ` <b>Non prima dell'anno ${900 + DESTROY_FROM_Q}</b>: nei primi ${DESTROY_FROM_Q} anni ogni signore ha tempo per fortificarsi.` : ''}</li>
+        <li><b>Per la distruzione</b>: se vincete, l'esercito resta ad assediare e torna all'assalto all'inizio di ogni vostro anno. Ogni vittoria saccheggia, uccide il ${Math.round(SIEGE_KILL * 100)}% dei servi, brucia i granai e, con almeno ${CATAPULTS_PER_RING} catapulte, abbatte una cerchia. Il feudo cade dopo ${needRule}, o quando gli restano meno di ${FALL_SERVI} servi: prendete terre, tesoro e metà dei servi, e il suo signore esce dalla partita. Potete togliere l'assedio quando volete; l'assediato può proporvi la pace a ${PEACE_PER_SOLDIER} scudi per soldato assediante, e siete voi a decidere se accettarla.${early ? ` <b>Non prima dell'anno ${900 + DESTROY_FROM_Q}</b>: nei primi ${DESTROY_FROM_Q} anni ogni signore ha tempo per fortificarsi.` : ''}</li>
       </ul>
       <p class="hint"><b>Le battaglie si combattono alla chiusura dell'anno</b>, quando tutti i signori hanno giocato: l'esercito parte a fine turno, e contro un confinante combatte alla fine dell'anno prossimo, contro un feudo lontano alla fine di quello dopo. Fino ad allora il nemico può arruolare e alzare mura, e se ha torri di guardia vi vedrà arrivare.</p>
       <p class="hint">Avete ${n(s)} soldati e ${plural(cat, 'catapulta', 'catapulte')}${s + merc < WAR_MIN ? ` (servono almeno ${WAR_MIN} soldati: arruolateli nell'esercito)` : ''}. La campagna costa ${CAMPAIGN_COST} scudo a soldato. Al ritorno i soldati restano in marcia e non difendono il feudo: un anno da un confinante, due da un feudo lontano, e la malattia ne porta via fino al ${Math.round(MARCH_SICKNESS * 100)}% per anno di viaggio. In battaglia la forza dei due campi varia del 30% in più o in meno: per stare tranquilli mandate una volta e mezza la difesa nemica.</p>`;
@@ -456,10 +471,10 @@ function assedioPanel(g: Game, st: SpadeState): string {
     const peace = block
       ? `<p class="hint">Pace: ${block}${x.offerta ? ` (${n(x.offerta.price)} scudi, che pagherete solo se accetta)` : ''}.</p>`
       : `<div class="btns"><button data-act="ext" data-op="peace" data-target="${x.owner}" ${p.scudi + p.credito < price ? 'disabled' : ''}>Proponete la pace (${n(price)} scudi)</button></div>`;
-    return `<li><b>${who(ps[x.owner])}</b> vi assedia con ${n(x.n)} soldati${x.cat ? ` e ${plural(x.cat, 'catapulta', 'catapulte')}` : ''}: ha vinto ${x.wins} assalti su ${SIEGE_FALL_WINS}. La vostra difesa contro di lui: <b>${n(def)}</b>.
+    return `<li><b>${who(ps[x.owner])}</b> vi assedia con ${n(x.n)} soldati${x.cat ? ` e ${plural(x.cat, 'catapulta', 'catapulte')}` : ''}: ha vinto ${x.wins} assalti: il feudo cade al ${Math.max(x.wins + 1, siegeNeed(g, me))}° se non cambia nulla. La vostra difesa contro di lui: <b>${n(def)}</b>.
       ${peace}</li>`;
   }).join('');
-  return `<p>Un esercito nemico è accampato sotto le vostre mura e tornerà all'assalto all'inizio del suo anno. A ogni vittoria saccheggia, uccide il ${Math.round(SIEGE_KILL * 100)}% dei servi, brucia i granai e, con le catapulte, abbatte una cerchia. Dopo ${SIEGE_FALL_WINS} vittorie il feudo cade e uscite dalla partita.</p>
+  return `<p>Un esercito nemico è accampato sotto le vostre mura e tornerà all'assalto all'inizio del suo anno. A ogni vittoria saccheggia, uccide il ${Math.round(SIEGE_KILL * 100)}% dei servi, brucia i granai e, con le catapulte, abbatte una cerchia. Il feudo cade dopo ${needRule}, e uscite dalla partita.</p>
     <ul class="ext-ledger">${rows}</ul>
     <p class="hint">Per resistere: arruolate soldati e alzate le mura nel menu Guerra, dopo i dispendimenti. Oppure proponete la pace: se l'assediante accetta prende gli scudi e torna a casa, se rifiuta l'assedio continua (e potrete riprovare l'anno prossimo).</p>`;
 }
@@ -563,6 +578,29 @@ export const view: ExpansionView = {
     ] as ExtCard[]).map(c => ({ ...c, menu: 'guerra' as const }));
   },
 
+  // le notizie d'inizio turno: un assalto respinto o subito, una battaglia vinta o perduta
+  musicaDispacci(g) {
+    return piuForte(ss(g).inbox.map(d => {
+      switch (d.k) {
+        case 'attacked': return d.war.win ? 'scongiuro' : 'festa';
+        case 'battle': case 'siege': return d.war.win ? 'festa' : 'scongiuro';
+        case 'brigandsIn': return 'scongiuro';
+        case 'peaceAnswer': case 'treatyAnswer': return d.ok ? 'festa' : null;
+        case 'casata': return d.d.k === 'negato' || d.d.k === 'mancato' ? 'scongiuro' : null;
+        default: return null;
+      }
+    }));
+  },
+
+  // e il loro effetto sonoro: le catapulte sulle mura, o le spade
+  effettoDispacci(g) {
+    const fx = ss(g).inbox.map(d => {
+      if (d.k === 'attacked' || d.k === 'battle' || d.k === 'siege') return d.war.cat || d.war.rings || d.war.fell ? 'crollo' : 'spade';
+      return d.k === 'brigandsIn' ? 'colpi' : null;
+    });
+    return (['crollo', 'spade', 'colpi'] as const).find(s => fx.includes(s)) ?? null;
+  },
+
   dispatches(g, animate) {
     const st = ss(g);
     return dispatchScrolls(st.inbox.map(d => dispatchItem(d, g.state)), animate, "Ser Ardengo, capitano d'armi");
@@ -637,7 +675,7 @@ export const view: ExpansionView = {
     const d = ps[s.target], def = defenseOf(d, st.soldati[s.target], st.mura[s.target], s.cat);
     return {
       title: 'Ambasceria di pace',
-      body: `${h(p)}, un messo di ${who(d)} è giunto al nostro campo. Vi offre <b>${n(s.offerta!.price)} scudi</b> perché togliate l'assedio. Avete ${n(s.n)} soldati${s.cat ? ` e ${plural(s.cat, 'catapulta', 'catapulte')}` : ''} e ${s.wins} vittorie su ${SIEGE_FALL_WINS}; la sua difesa conta ${n(def)} uomini. Se accettate, l'esercito torna a casa con gli scudi; se rifiutate, l'assedio continua.`,
+      body: `${h(p)}, un messo di ${who(d)} è giunto al nostro campo. Vi offre <b>${n(s.offerta!.price)} scudi</b> perché togliate l'assedio. Avete ${n(s.n)} soldati${s.cat ? ` e ${plural(s.cat, 'catapulta', 'catapulte')}` : ''} e ${s.wins} vittorie su ${Math.max(s.wins + 1, siegeNeed(g, s.target))}; la sua difesa conta ${n(def)} uomini. Se accettate, l'esercito torna a casa con gli scudi; se rifiutate, l'assedio continua.`,
       options: [
         { label: `Accetto la pace (${n(s.offerta!.price)} scudi)`, op: 'peaceAccept', target: s.target },
         { label: "Continuo l'assedio", op: 'peaceReject', target: s.target, primary: true },
@@ -666,7 +704,10 @@ export const view: ExpansionView = {
     return st.wars.filter(w => w.q === year - 900).map(w => {
       const place = FEUDI[state.players[w.defender].feudo];
       const title = (w.round ?? 1) > 1 ? `Assedio di ${place}` : `Battaglia di ${place}`;
-      return { title, html: `<figure class="battle">${battleScene(w, state.players)}</figure><p>${battleTale(w, state.players)}</p>` };
+      const scene = isPainted()
+        ? `<figure class="comic illustrata battaglia"><img class="comic-art" src="${illustrationUrl(battleArt(w))}" alt="${title}" width="1000" height="667"></figure>`
+        : `<figure class="battle">${battleScene(w, state.players)}</figure>`;
+      return { title, html: `${scene}<p>${battleTale(w, state.players)}</p>` };
     });
   },
 
@@ -735,6 +776,7 @@ export const view: ExpansionView = {
         const r = recruit(g, k);
         return {
           say: reaction(r, `${n(k)} uomini lasciano i campi e prendono le armi.`, p),
+          suono: r.ok ? 'metallo' : undefined,
           notice: r.ok ? { title: 'Bando di arruolamento', body: `${plural(k, 'servo lascia', 'servi lasciano')} i campi e ${k === 1 ? 'prende' : 'prendono'} le armi, per ${n(k * RECRUIT_COST)} scudi di armi. Nel fortino ci sono ora <b>${n(st.soldati[me])} soldati</b>. ${treasury(p)}` } : undefined,
         };
       }
@@ -747,6 +789,7 @@ export const view: ExpansionView = {
         const r = buildCatapults(g, k);
         return {
           say: reaction(r, `I carpentieri hanno montato ${plural(k, 'catapulta', 'catapulte')}, ${h(p)}. Nessuna mura ci fermerà.`, p),
+          suono: r.ok ? 'colpi' : undefined,
           notice: r.ok ? { title: 'Ordine ai carpentieri', body: `I carpentieri hanno costruito ${plural(k, 'catapulta', 'catapulte')} per ${n(k * CATAPULT_COST)} scudi. Nel fortino ce ne sono ora <b>${n(catapultsOf(st, me))}</b>. ${treasury(p)}` } : undefined,
         };
       }
@@ -810,13 +853,14 @@ export const view: ExpansionView = {
         const r = declareWar(g, Number(data.target), num('war-sent'), data.goal as WarGoal, num('war-cat'), num('war-merc'));
         if (!r.ok) return { say: reaction(r, '', p) };
         const c = r.campaign!, place = FEUDI[g.state.players[c.target].feudo], when = c.arrive === g.state.q + 1 ? 'alla fine dell\'anno prossimo' : `alla fine del ${900 + c.arrive}`;
-        if (r.joined) return { say: `I rinforzi partono per il campo sotto ${place}, ${h(p)}: si uniranno all'assedio ${when}.` };
-        return { say: pick([`L'esercito è partito, ${h(p)}! Si combatterà sotto ${place} ${when}.`, `Le schiere sono in marcia verso ${place}, ${h(p)}. La battaglia sarà ${when}: preghiamo.`]) };
+        if (r.joined) return { say: `I rinforzi partono per il campo sotto ${place}, ${h(p)}: si uniranno all'assedio ${when}.`, suono: 'corno' };
+        return { suono: 'corno', say: pick([`L'esercito è partito, ${h(p)}! Si combatterà sotto ${place} ${when}.`, `Le schiere sono in marcia verso ${place}, ${h(p)}. La battaglia sarà ${when}: preghiamo.`]) };
       }
       case 'mercHire': {
         const r = hireMercs(g);
         return {
           say: reaction(r, `La compagnia si accampa nel fortino, ${h(p)}: ${n(r.n ?? 0)} spade in più, e nessuna spia lo saprà.`, p),
+          suono: r.ok ? 'metallo' : undefined,
           notice: r.ok ? { title: 'Condotta firmata', body: `Avete assoldato <b>${n(r.n ?? 0)} mercenari</b>. Difendono il fortino, o partono con l'esercito dal pannello Guerra; dopo la prima battaglia se ne vanno. ${treasury(p)}` } : undefined,
         };
       }
@@ -828,7 +872,7 @@ export const view: ExpansionView = {
         return { say: reaction(invokeTruce(g), `Il vescovo ha proclamato la tregua di Dio sul nostro feudo, ${h(p)}: per quest'anno nessuno ci assalirà.`, p) };
       case 'drive': {
         const r = driveBrigands(g);
-        return { say: reaction(r, r.win ? `I briganti sono in fuga! Abbiamo perduto ${plural(r.lost ?? 0, 'uomo', 'uomini')}.` : `La banda ha resistito, ${h(p)}: abbiamo perduto ${plural(r.lost ?? 0, 'uomo', 'uomini')}. Riproveremo l'anno prossimo, o pagheremo.`, p), panel: r.ok && r.win ? null : undefined };
+        return { suono: r.ok ? 'spade' : undefined, say: reaction(r, r.win ? `I briganti sono in fuga! Abbiamo perduto ${plural(r.lost ?? 0, 'uomo', 'uomini')}.` : `La banda ha resistito, ${h(p)}: abbiamo perduto ${plural(r.lost ?? 0, 'uomo', 'uomini')}. Riproveremo l'anno prossimo, o pagheremo.`, p), panel: r.ok && r.win ? null : undefined };
       }
       case 'pay': {
         const r = payBrigands(g);
@@ -884,7 +928,8 @@ export const view: ExpansionView = {
       case 'peaceAccepted': return `Accettò ${n(d.scudi)} scudi da ${P(d.target)} e tolse l'assedio.`;
       case 'conquest': return `Il feudo di ${P(d.target)} passò sotto il suo dominio: ${n(d.acri)} acri e ${n(d.servi)} servi.`;
       case 'fallen': return 'Il suo feudo cadde in guerra: perse ogni cosa e uscì dalla storia del regno.';
-      case 'returned': return `Le sue schiere tornarono dalla campagna contro ${P(d.from)}${d.lost ? `; per via ${plural(d.lost, 'soldato morì', 'soldati morirono')} di malattia` : ''}.`;
+      case 'leva': return null;
+      case 'returned': return d.franchi ? `Tornarono dalla guerra dei Franchi ${n(d.n)} dei suoi uomini.` : `Le sue schiere tornarono dalla campagna contro ${P(d.from)}${d.lost ? `; per via ${plural(d.lost, 'soldato morì', 'soldati morirono')} di malattia` : ''}.`;
     }
     return null;
   },
@@ -900,9 +945,9 @@ export const view: ExpansionView = {
     const d = f.data, luogo = (i: number) => FEUDI[players[i]?.feudo ?? 0];
     const coppia = (k: string, a: number, b: number) => `${k}-${Math.min(a, b)}-${Math.max(a, b)}`;
     switch (f.kind) {
-      case 'war': return { prio: 1, title: d.fell ? `La caduta di ${luogo(d.target)}` : `La battaglia di ${luogo(d.target)}`, art: d.win ? 'esito-vittoria' : 'esito-sconfitta', group: coppia('guerra', me, d.target) };
-      case 'besieged': return { prio: 1, title: `La battaglia di ${luogo(me)}`, art: d.held ? 'esito-mura' : 'esito-sconfitta', group: coppia('guerra', me, d.attacker) };
-      case 'conquest': return { prio: 1, title: `La caduta di ${luogo(d.target)}`, art: 'esito-vittoria', group: coppia('guerra', me, d.target) };
+      case 'war': return { prio: 1, title: d.fell ? `La caduta di ${luogo(d.target)}` : `La battaglia di ${luogo(d.target)}`, art: battleArt({ win: !!d.win, round: d.round }), group: coppia('guerra', me, d.target) };
+      case 'besieged': return { prio: 1, title: `La battaglia di ${luogo(me)}`, art: battleArt({ win: !d.held, round: d.round }), group: coppia('guerra', me, d.attacker) };
+      case 'conquest': return { prio: 1, title: `La caduta di ${luogo(d.target)}`, art: 'esito-sconfitta', group: coppia('guerra', me, d.target) };
       case 'fallen': return { prio: 1, title: `La caduta di ${luogo(me)}`, art: 'esito-sconfitta' };
       case 'brigandsDriven': return { prio: 1, title: `I briganti a ${luogo(me)}`, art: 'briganti' };
       case 'treaty': return { prio: 1, title: `La pace fra ${luogo(me)} e ${luogo(d.other)}`, art: 'esito-patto', group: coppia('pace', me, d.other) };

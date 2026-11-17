@@ -35,15 +35,15 @@ export function c64ify(html: string): string {
   return html.replace(RE, ch => MAP[ch]);
 }
 
-/** Vista: la classica (schede e vedute disegnate) o la moderna (città isometrica). Separata dal tema. */
+/** Vista: la classica (schede e vedute disegnate) o la moderna (città isometrica, la predefinita). Separata dal tema. */
 export type Vista = 'classica' | 'moderna';
 const VISTA_KEY = 'alto-medioevo/vista';
 
 export function loadVista(): Vista {
   try {
-    return localStorage.getItem(VISTA_KEY) === 'moderna' ? 'moderna' : 'classica';
+    return localStorage.getItem(VISTA_KEY) === 'classica' ? 'classica' : 'moderna';
   } catch {
-    return 'classica';
+    return 'moderna';
   }
 }
 

@@ -8,20 +8,22 @@ import { fiduciaOf, livelloOf, sereno, umoreOf, type Livello } from '../domain/g
 import type { FactionOption } from '../domain/fazioni';
 import type { Sorte } from '../domain/fatti';
 import { effettiStrip, fattoBadges, fattoCaption, fattoOptionText, fattoScene } from './fatti';
-import { crest, factionBadges, factionOutcomeText, forcesBox, INFO as FACTION_INFO, optionText, pactsStrip, renderFactionOutcome } from './fazioni';
+import { cignoHead, cignoText, crest, factionBadges, factionOutcomeText, forcesBox, INFO as FACTION_INFO, optionText, pactsStrip, renderFactionOutcome } from './fazioni';
 import { EVENTS } from '../domain/events';
 import { COSTS, type InvestmentKind } from '../domain/investments';
 import { DEBITO_ARRESTO, FEUDI, rankOf, titleName, wealthIndex } from '../domain/rank';
 import { C64Rnd, Mulberry32, ORIGINAL_SEED, type Rng } from '../domain/rng';
 import { Game, MAX_PLAYERS, type NewPlayer } from '../domain/turn';
-import { GAME_OPTIONS, type BotLevel, type Gender, type Player } from '../domain/types';
+import { GAME_OPTIONS, type BotLevel, type ChronicleFact, type Gender, type Player } from '../domain/types';
 import { playBotTurn } from '../domain/bots';
 import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
 import { dinastiaAside, renderDinastiaEnd, renderObiettivi, renderSuccessione, type Obiettivo } from './dinastia';
 import { nozzeDecision, renderCasata, type CasataUi } from './casata';
+import { esitoRichiestaText, prestitoDecision } from './prestiti';
+import { PRESTITO_ANNI, quantoBene, type BeneCasata } from '../domain/prestiti';
 import { notaioNotice } from './notaio';
-import type { Sposo } from '../domain/famiglia';
+import { sposabili, type Sposo } from '../domain/famiglia';
 import type { Expansion, ExtCard, ExtUi } from '../expansions/types';
 import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
 import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
@@ -43,12 +45,26 @@ import { renderTutorial, renderWelcome, TUTORIAL_PAGES, welcomeText } from './tu
 import { ANSELMO } from './advisor';
 import { isPainted, setPainted, speechBox } from './speaker';
 import { miniaturizza } from './miniatura';
-import { coronaNotice, scenaFigure, titoloNotice } from './investiture';
+import { aggiornaVolumeMusica, cambiaMusica, lasciaStacco, modalitaMusica, musicaAccesa, preparaMusica, suonaStacco } from './musica';
+import { effettoDi } from './effetti';
+import { impostaVolumeMusica, impostaVolumeSuoni, preparaSuoni, suonaEffetto, volumeMusica, volumeSuoni } from './suoni';
+import { staccoDi } from './stacchi';
+import { coronaNotice, famigliaNotice, scenaFigure, titoloNotice } from './investiture';
 import { comicText, effectBadges, fitComic, outcomeText, renderEventComic, renderOutcomeComic, type ComicText } from './comics';
 import { changedKinds, currentRates, KINDS, presets, previewRates, renderRendite, spoilsFor, treasurerGreeting, treasurerReaction, updateLive, type RenditeUi } from './rendite';
 import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderSignoriBuildCard, renderTrade, type TradeUi } from './trade';
 
 /** Pagina "Fra signori": le carte dell'espansione per gli affari con gli altri signori. */
+/** Dinastia: dopo le gabelle, nei dispendimenti, la scheda che apre il menu della casata (albero, nozze, ripudio). */
+function dinastiaCard(g: Game): string {
+  const d = g.state.dinastia!, me = g.state.current, q = g.state.q;
+  const nozze = sposabili(d, me, q).length, proposte = (d.proposte ?? []).filter(x => x.da === me).length;
+  const sub = nozze ? `${nozze} ${nozze === 1 ? 'membro da accasare' : 'membri da accasare'}` : proposte ? 'nozze in attesa di risposta' : "l'albero della casata, nozze e ripudi";
+  const art = `<svg viewBox="0 0 64 48" class="card-art" aria-hidden="true"><path d="M32 8 v12 M16 20 h32 M16 20 v8 M48 20 v8 M32 20 v8" stroke="#7a5412" stroke-width="3" fill="none"/>
+    <circle cx="32" cy="8" r="6" fill="#c99a2e" stroke="#7a5412" stroke-width="2"/><circle cx="16" cy="34" r="6" fill="#1f3f8a"/><circle cx="32" cy="34" r="6" fill="#a3221a"/><circle cx="48" cy="34" r="6" fill="#1f3f8a"/></svg>`;
+  return `<h3 class="ext-cards-title">Dinastia</h3><div class="action-cards ext-cards"><button class="action-card" data-act="casata">${art}<span class="card-title">La Dinastia</span><span class="card-sub">${sub}</span></button></div>`;
+}
+
 const signoriPage = (cards: ExtCard[], back: string) => `<h2>Fra signori</h2>${renderExtCards(cards, '')}
   <div class="btns"><button data-act="signoriMenu" data-close="1" class="primary">${back}</button></div>`;
 
@@ -98,6 +114,8 @@ interface UiState {
   /** turno in cui si è già mostrata l'investitura (o la corona) */
   titleKey?: string;
   coronaKey?: string;
+  /** turno in cui si è già mostrata la vignetta dei lutti e delle nascite in famiglia (Dinastia) */
+  famigliaKey?: string;
   /** turno in cui l'espansione ha già mostrato il suo avviso nei dispendimenti */
   reminderKey?: string;
 }
@@ -170,6 +188,9 @@ function rateBadgesFor(g: Game): RateBadges {
 }
 
 export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
+  // la musica di sottofondo parte al primo clic; gli effetti leggono la loro configurazione
+  preparaMusica(root.ownerDocument);
+  preparaSuoni();
   const startRng: RngKind = opts.rngKind ?? 'mulberry';
   const ui: UiState = {
     game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], expansion: null, obiettivo: 'regno' },
@@ -214,7 +235,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     const ph = g?.state.phase;
     if (g && ph?.kind === 'evento') {
       const key = `${turnKey(g)}-${ph.eventId}`;
-      if (ui.comic.key !== key) ui.comic = { key, event: comicText(ph.eventId, g.player, ph.outcome?.scudi) };
+      if (ui.comic.key !== key) ui.comic = { key, event: ph.cigno && ph.faction ? cignoText(ph.faction, g.player, !!ph.leva) : comicText(ph.eventId, g.player, ph.outcome?.scudi) };
       if (ph.outcome?.choice && !ph.faction && !ui.comic.outcome) ui.comic.outcome = outcomeText(ph.outcome, g.player);
       // attacco di una fazione: dopo la scelta la vignetta racconta l'esito, non più l'arrivo
       if (ph.faction && ph.outcome && !ph.awaitingChoice && !ui.comic.outcome) ui.comic.outcome = factionOutcomeText(ph.outcome, g.player);
@@ -290,7 +311,15 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       }
       if (!ui.notice && ui.coronaKey !== turnKey(g)) {
         ui.coronaKey = turnKey(g);
-        if (facts.some(f => f.t === 'corona')) ui.notice = coronaNotice(g.player);
+        const a = g.prossimoAnnuncio();
+        if (a) ui.notice = coronaNotice(g, a);
+      }
+      // Dinastia: i lutti e le nascite di quest'anno (decisi a inizio turno) si vedono subito, non solo nel giornale
+      if (!ui.notice && ui.famigliaKey !== turnKey(g)) {
+        ui.famigliaKey = turnKey(g);
+        const fam = (g.state.chronicle ?? []).filter(e => e.year === g.year && e.player === g.state.current).map(e => e.fact)
+          .filter((f): f is Extract<ChronicleFact, { t: 'famiglia' }> => f.t === 'famiglia' && (f.k === 'lutto' || f.k === 'nascita'));
+        if (fam.length) ui.notice = famigliaNotice(g.player, fam);
       }
     }
     // dispendimenti: l'ultima occasione per qualcosa che l'espansione ricorda (es. la merce da spedire)
@@ -304,13 +333,43 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       const a = g.prossimoAvviso();
       if (a) ui.notice = notaioNotice(a, g);
     }
-    const decision = onTurn ? nozzeDecision(g) ?? exp?.view.decision?.(g) ?? null : null;
+    const decision = onTurn ? nozzeDecision(g) ?? prestitoDecision(g) ?? exp?.view.decision?.(g) ?? null : null;
     const modal = !g || ui.tutorial ? '' : ui.confirm ? renderConfirm(ui.confirm) : ui.notice ? renderNotice(ui.notice) : decision ? renderDecision(decision) : '';
     // vista moderna: colonna e finestra scorrono per conto loro; il ridisegno non deve riportarle in cima finché la schermata è la stessa
-    const screen = moderna && g ? [turnKey(g), g.state.phase.kind, ui.tutorial?.page, ui.chronicleYear, !!ui.realmReview, ui.ext.panel, ui.ext.menu, ui.ext.signori, ui.casata.open, ui.trade.mode].join('|') : '';
+    const screen = moderna && g ? [turnKey(g), g.state.phase.kind, ui.tutorial?.page, ui.chronicleYear, !!ui.realmReview, ui.ext.panel, ui.ext.step, ui.ext.menu, ui.ext.signori, ui.casata.open, ui.trade.mode].join('|') : '';
     const scrolled = ['.m-col', '.m-window'].map(sel => (screen && screen === lastScreen ? root.querySelector(sel)?.scrollTop ?? 0 : 0));
     lastScreen = screen;
     root.innerHTML = c64ify(page + deed + overlay + modal);
+    // il sottofondo della modalità della partita (gioco base o espansione)
+    modalitaMusica(g?.state.expansion ?? 'base');
+    // la traccia breve del momento (un imprevisto, un lutto, la corona...) sopra la musica di base
+    if (g && (onTurn || g.state.phase.kind === 'fine') && !ui.tutorial && !ui.interlude && ui.chronicleYear === null) {
+      const s = staccoDi(g, ui.notice?.musica ?? null, ui.ext.seen ? null : exp?.view.musicaDispacci?.(g) ?? null);
+      if (s) suonaStacco(s.tipo, s.key);
+      else lasciaStacco();
+    } else if (!ui.tutorial && ui.chronicleYear === null) lasciaStacco();
+    // (cronaca e guida aperte sopra il momento: la traccia continua)
+    // effetti sonori: la pergamena che si apre e si chiude, la mappa del regno fra un anno e l'altro, la cronaca, la schermata del momento
+    if (!!modal !== modalPrima) suonaEffetto(modal ? 'pergamena' : 'pergamenaChiudi');
+    modalPrima = !!modal;
+    const anno = ui.interlude && !ui.interlude.closing ? ui.interlude.year : null;
+    if (anno !== null && anno !== mappaPrima) suonaEffetto('mappa');
+    mappaPrima = anno;
+    if (ui.chronicleYear !== null && ui.chronicleYear !== cronacaPrima) suonaEffetto('pagina');
+    cronacaPrima = ui.chronicleYear;
+    if (g && onTurn && !ui.tutorial && !ui.interlude && ui.chronicleYear === null) {
+      // le notizie d'inizio turno dell'espansione (un assalto, le catapulte sulle mura), o la schermata del momento
+      const d = g.state.phase.kind === 'commercio' && !ui.ext.seen ? exp?.view.effettoDispacci?.(g) ?? null : null;
+      const e = d ? { suono: d, key: `${turnKey(g)}-dispacci` } : effettoDi(g);
+      if (e) suonaEffetto(e.suono, e.key);
+    }
+    // l'albero della casata, se è più largo della pagina, si apre centrato sul signore di turno
+    root.querySelectorAll<HTMLElement>('.genealogia-wrap').forEach(w => {
+      const v = w.querySelector<HTMLElement>('.gen-nodo.voi');
+      if (!v || w.scrollWidth <= w.clientWidth) return;
+      const a = v.getBoundingClientRect(), b = w.getBoundingClientRect();
+      w.scrollLeft += a.left + a.width / 2 - (b.left + b.width / 2);
+    });
     if (moderna && g) {
       ['.m-col', '.m-window'].forEach((sel, i) => {
         const el = root.querySelector(sel);
@@ -339,6 +398,8 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   };
 
   let lastScreen = '';
+  // per gli effetti sonori: cosa c'era al disegno precedente
+  let modalPrima = false, mappaPrima: number | null = null, cronacaPrima: number | null = null;
   window.addEventListener('resize', () => fitComic(root));
   // i font C64 arrivano dopo il primo disegno e cambiano le altezze dei testi
   document.fonts?.ready.then(() => fitComic(root));
@@ -346,6 +407,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   const act = (fn: () => { ok: boolean; reason?: string } | void) => {
     const r = fn();
     ui.message = r && !r.ok ? (r.reason ?? 'azione non valida') : '';
+    if (r && !r.ok) suonaEffetto('errore');
     render();
   };
 
@@ -378,6 +440,8 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   };
 
   root.addEventListener('change', e => {
+    // il cursore dei suoni, lasciato: un clic di prova
+    if ((e.target as HTMLInputElement).name === 'vol-suoni') return suonaEffetto('click');
     if (ui.game) return;
     const t = e.target as HTMLInputElement;
     rememberSetup(t);
@@ -393,6 +457,17 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   // cursore e campo numerico restano allineati; l'anteprima si aggiorna senza ridisegnare
   root.addEventListener('input', e => {
     const t = e.target as HTMLInputElement;
+    // i cursori del volume, in fondo alla pagina: valgono subito, senza ridisegnare
+    if (t.name === 'vol-musica' || t.name === 'vol-suoni') {
+      const v = Number(t.value);
+      if (t.name === 'vol-musica') {
+        impostaVolumeMusica(v);
+        aggiornaVolumeMusica();
+      } else impostaVolumeSuoni(v);
+      const out = t.parentElement?.querySelector('output');
+      if (out) out.textContent = `${Math.round(v)}`;
+      return;
+    }
     const g = ui.game;
     if (!g) return rememberSetup(t);
     if (t.name?.startsWith('r-') && g.state.phase.kind === 'rendite') {
@@ -428,6 +503,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     // con una pergamena aperta valgono solo i suoi pulsanti (un doppio clic non compra due volte)
     const modal = root.querySelector('.notice-backdrop');
     if (modal && !modal.contains(btn)) return;
+    suonaEffetto('click');
     handle(btn.dataset, num, false);
   });
 
@@ -526,7 +602,29 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
           c.ripudio = undefined;
         } else if (op === 'appoggio') {
           const v = root.querySelector<HTMLSelectElement>('[name="appoggio"]')?.value ?? '';
-          say(g!.appoggia(v === '' ? undefined : Number(v)), 'Appoggio registrato.');
+          say(g!.appoggia(v === '' ? undefined : Number(v)), 'Il vostro voto è registrato.');
+        } else if (op === 'testamento') {
+          const v = root.querySelector<HTMLSelectElement>('[name="testamento"]')?.value ?? '';
+          say(g!.testamento(v === '' ? undefined : Number(v)), v === '' ? 'Nessun testamento.' : 'Il notaio ha messo il testamento sotto sigillo.');
+        } else if (op === 'appannaggio') {
+          say(g!.appannaggio(Number(btn.dataset.id)), "L'appannaggio è concesso: non tramerà contro il vostro erede.");
+        } else if (op === 'prestito') {
+          const a = Number(btn.dataset.a);
+          const bene = (root.querySelector<HTMLSelectElement>(`[name="prBene-${a}"]`)?.value ?? 'scudi') as BeneCasata;
+          const qty = Number(root.querySelector<HTMLInputElement>(`[name="prQty-${a}"]`)?.value ?? 0);
+          const r = g!.chiediPrestito(a, bene, qty);
+          say(r, esitoRichiestaText(g!, a, r, bene, qty));
+        } else if (op === 'prestitoSi' || op === 'prestitoNo') {
+          const si = op === 'prestitoSi', req = (g!.state.dinastia?.richiesteCasata ?? []).find(x => x.id === Number(btn.dataset.target));
+          const r = g!.rispondiPrestito(Number(btn.dataset.target), si);
+          if (!r.ok) ui.message = r.reason ?? '';
+          else if (req) {
+            const who = g!.state.players[req.da].name;
+            ui.notice = si
+              ? { title: 'Prestito concesso', body: `Avete prestato a ${who} ${quantoBene(req.bene, req.qty)}: ve li renderà fra ${PRESTITO_ANNI} anni.` }
+              : { title: 'Prestito negato', body: r.rotto ? `Avete negato il prestito a ${who}, e il vincolo fra le casate si è rotto: non siete più parenti, il suo prestigio non va più alla vostra casata, e ${who} se ne tiene offeso.` : `Avete negato il prestito a ${who}. Il vincolo per ora tiene, ma ${who} non lo dimentica.` };
+          }
+          return render();
         } else if (op === 'nozzeSi' || op === 'nozzeNo') {
           const r = g!.rispondiNozze(Number(btn.dataset.target), op === 'nozzeSi');
           ui.message = r.ok ? '' : r.reason ?? '';
@@ -568,6 +666,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         ui.ext.say = r.say;
         if (r.panel !== undefined) ui.ext.panel = r.panel;
         if (r.notice) ui.notice = r.notice;
+        if (r.suono) suonaEffetto(r.suono);
         ui.message = '';
         render();
         // la risposta del consigliere sta in cima al pannello: se il modulo l'ha spinta fuori schermo, la si riporta in vista
@@ -643,7 +742,15 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         return render();
       }
       case 'afterFeed': return act(() => g!.continueAfterFeeding());
-      case 'afterSignori': return act(() => g!.continueAfterSignori());
+      case 'afterSignori': {
+        // prima della fine degli affari, la pagina propria dell'espansione (la fiera), se quest'anno c'è
+        const exp = findExpansion(g!.state.expansion), step = !ui.ext.step ? exp?.view.afterSignori?.(g!) ?? null : null;
+        if (exp && step) {
+          ui.ext = { ...ui.ext, step: true, panel: step, say: exp.view.open(g!, step) };
+          return render();
+        }
+        return act(() => g!.continueAfterSignori());
+      }
       case 'faction': return act(() => { g!.chooseFaction(btn.dataset.opt as FactionOption); });
       case 'pugna': return act(() => g!.chooseEvent('pugna'));
       case 'riscatto': return act(() => g!.chooseEvent('riscatto'));
@@ -712,6 +819,9 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'theme':
         ui.theme = ui.theme === 'c64' ? 'pergamena' : 'c64';
         saveTheme(ui.theme);
+        return render();
+      case 'musica':
+        cambiaMusica();
         return render();
       case 'vista':
         ui.vista = ui.vista === 'moderna' ? 'classica' : 'moderna';
@@ -1001,6 +1111,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     }
     case 'esitoNutrimento':
       body = `<h2>Nello anno</h2>
+        <img class="esito-grano" src="${miniatureUrl(sc.natiMorti >= 0 ? 'nascita' : 'peste')}" alt="miniatura: ${sc.natiMorti >= 0 ? 'le culle piene' : 'i morti di fame'}">
         <p class="big">${sc.natiMorti >= 0 ? 'Sono nati' : 'Sono morti'} ${fmt(Math.abs(sc.natiMorti))} servi.</p>
         ${renderFeedingOutcome(trade.advisor)}`;
       break;
@@ -1010,14 +1121,14 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       const proceed = (!ph.awaitingChoice && exp?.view.eventPanel?.(g)) || PROSEGUI_EVENTO;
       const out = ph.outcome;
       if (ph.faction) {
-        const f = ph.faction, info = FACTION_INFO[f];
+        const f = ph.faction, info = ph.cigno ? { ...FACTION_INFO[f], ...cignoHead(f, !!ph.leva) } : FACTION_INFO[f];
         const head = `<div class="faction-head">${crest(f, 56)}<div><h2>${info.name}</h2><p class="faction-sub">${info.headline} Prendono di mira: ${info.target}.</p></div></div>`;
         if (ph.awaitingChoice) {
           const winP = g.factionWinChance();
           const cards = g.factionOptions().map(o => {
-            const t = optionText(p, f, o.id, winP, g.luckCap());
+            const t = optionText(p, f, o.id, winP, g.luckCap(), g.levaSoldati());
             return `<button class="action-card" data-act="faction" data-opt="${o.id}" ${o.ok ? '' : 'disabled'}><span class="card-emblem" aria-hidden="true">${t.emblem}</span>
-              <span class="card-title">${t.label}</span><span class="card-sub">${o.ok ? t.sub : 'non avete abbastanza scudi in contanti'}</span></button>`;
+              <span class="card-title">${t.label}</span><span class="card-sub">${o.ok ? t.sub : o.id === 'concedere' ? 'fra soldati e servi non arrivate a mille uomini: è guerra' : 'non avete abbastanza scudi in contanti'}</span></button>`;
           }).join('');
           const forces = forcesBox(f, ph.nemici ?? 0, g.factionDefense(), winP, p.servi);
           body = `${head}${renderEventComic(ev.id, ev.title, comic.event!)}${forces}<div class="action-cards ${cards.length > 3 ? 'four' : ''}">${cards}</div>`;
@@ -1076,7 +1187,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
       else if (ext.menu === 'guerra' && war.length) {
         body = `<h2>Guerra</h2>${exp?.view.alert?.(g, 'guerra') ?? ''}${renderExtCards(war, '')}
           <div class="btns"><button data-act="warMenu" data-close="1">Torna ai dispendimenti</button><button data-act="next" class="primary">Proximus: fine dell'anno</button></div>`;
-      } else body = `<h2>Dispendimenti</h2>${exp?.view.alert?.(g, 'dispendimenti') ?? ''}${renderCantiere(g, cantiere, war.length > 0, renderSignoriBuildCard(signori))}${renderExtCards(rest)}`;
+      } else body = `<h2>Dispendimenti</h2>${exp?.view.alert?.(g, 'dispendimenti') ?? ''}${renderCantiere(g, cantiere, war.length > 0, renderSignoriBuildCard(signori))}${st.dinastia?.persone ? dinastiaCard(g) : ''}${renderExtCards(rest)}`;
       break;
     }
   }
@@ -1084,6 +1195,9 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     ? `<ul class="others">${st.players.map((x, i) => `<li class="${i === st.current ? 'cur' : ''}">${fullName(x)} · rango ${rankOf(x)} · ${fmt(wealthIndex(x))}</li>`).join('')}</ul>` : '';
   const tools = `<button data-act="openTutorial" class="ghost">Insegnamento</button>
     <button data-act="vista" class="ghost">Vista: ${vista}</button>
+    <button data-act="musica" class="ghost" aria-pressed="${musicaAccesa()}">Musica: ${musicaAccesa() ? 'si' : 'no'}</button>
+    <label class="volume">Musica <input type="range" name="vol-musica" min="0" max="100" step="5" value="${volumeMusica()}" aria-label="volume della musica"><output>${volumeMusica()}</output></label>
+    <label class="volume">Suoni <input type="range" name="vol-suoni" min="0" max="100" step="5" value="${volumeSuoni()}" aria-label="volume degli effetti sonori"><output>${volumeSuoni()}</output></label>
     ${moderna ? '' : `<button data-act="theme" class="ghost">Stile: ${theme === 'c64' ? 'C64' : 'pergamena'}</button>`}
     <button data-act="new" class="ghost">Nuova partita</button>`;
   if (moderna) return renderModerna(g, exp, tools, body, message, end, over, others,

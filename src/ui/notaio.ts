@@ -4,13 +4,13 @@
  * prima battaglia...). Ogni avviso compare una volta sola per casata.
  */
 import {
-  ANNO_FINE, CADETTI_SENZA_FIGLI, PRESTIGIO_RANGO, PRESTIGIO_RE, QUOTA_CADETTO, QUOTA_MAX, RISCHIO_BATTAGLIA, RISCHIO_CONGIURA, RISCHIO_RIVOLTA, type Avviso,
+  ANNO_FINE, APPANNAGGIO, CADETTI_SENZA_FIGLI, CONGIURA_FRATELLI, PRESTIGIO_RANGO, RANGO_ELEGGIBILE, TESTAMENTO_BONUS, PRESTIGIO_RE, QUOTA_CADETTO, QUOTA_MAX, RISCHIO_BATTAGLIA, RISCHIO_CONGIURA, RISCHIO_RIVOLTA, type Avviso,
 } from '../domain/dinastia';
 import {
   CASUS_ANNI, ETA_MAGGIORE, ETA_NOZZE, NOZZE_FAZIONE, PRESTIGIO_NOZZE, PRESTIGIO_RIPUDIO, REGGENZA_QUOTA,
 } from '../domain/famiglia';
 import { RIVALI } from '../domain/fazioni';
-import { THRONE_THRESHOLD } from '../domain/rank';
+import { THRONE_THRESHOLD, titleName } from '../domain/rank';
 import type { Game } from '../domain/turn';
 import { honorific } from './advisor';
 import { INFO } from './fazioni';
@@ -113,11 +113,27 @@ function testo(a: Avviso, g: Game): { title: string; text: string[] } {
       };
     case 'elezione':
       return {
-        title: "L'elezione del re",
+        title: "La corona d'Italia",
         text: [
-          `${h}, la corona d'Italia non si eredita. Chi ha oltre ${fmt(THRONE_THRESHOLD)} di ricchezza e il palazzo completo si candida, se il trono è vacante; alla fine dell'anno votano tutti i signori in gioco, ciascuno con tanti voti quanto il suo rango.`,
-          'Ognuno vota per sé, se è candidato; altrimenti per la casata che appoggia (lo scegliete nel pulsante della casata), poi per un parente, poi per il più ricco. Nessuno vota per chi l\'ha offeso con un ripudio. Alla morte del re si vota di nuovo.',
-          `Ogni corona vale ${PRESTIGIO_RE} di prestigio alla casata.`,
+          `${h}, il regno ha il suo primo re: chi per primo ha avuto oltre ${fmt(THRONE_THRESHOLD)} di ricchezza e il palazzo completo. Ogni corona vale ${PRESTIGIO_RE} di prestigio alla casata.`,
+          `Ma la corona non si eredita da sola. Alla morte del re i grandi del regno votano il successore: il suo erede legittimo, o un signore di rango almeno ${titleName(RANGO_ELEGGIBILE)}. Vota ogni signore, con tanti voti quanto il suo rango, e nessuno per sé; a pari voti vince il più ricco.`,
+          `Il re vota con il suo testamento, che vale il suo rango più ${TESTAMENTO_BONUS} voti; senza testamento la sua casata non vota. Un erede bambino trova meno voti. Per chi votate voi lo scegliete nel pulsante della casata; se non scegliete, voto secondo i vostri legami e il buon senso.`,
+        ],
+      };
+    case 'testamento':
+      return {
+        title: 'Il testamento del re',
+        text: [
+          `${h}, è prudente lasciare una direzione al reame. Alla vostra morte i grandi voteranno il successore, e la vostra parola vale ${TESTAMENTO_BONUS} voti più del vostro rango: indicate nel testamento il vostro erede legittimo, o un altro signore se lo ritenete più degno.`,
+          'Se non lo farete, la vostra casata non voterà, e il vostro erede dovrà conquistarsi la corona come tutti gli altri. Il testamento si fa nel pulsante della casata, e si può cambiare quando volete.',
+        ],
+      };
+    case 'malumori':
+      return {
+        title: 'Malumori a corte',
+        text: [
+          `${h}, gli anni passano, e a corte i fratelli del vostro erede fanno i loro conti. Alla vostra morte chi è adulto, senza nozze e senza appannaggio potrebbe tramare per prendergli il posto: circa il ${pct(CONGIURA_FRATELLI.ciascuno)} per ciascuno, fino al ${pct(CONGIURA_FRATELLI.max)}, di più se l'erede è un bambino.`,
+          `Un fratello sposato non trama più, né chi ha ricevuto un appannaggio (${fmt(APPANNAGGIO)} scudi, nel pulsante della casata). Una congiura scoperta manda il colpevole in esilio, e il regno si stringe intorno all'erede; una congiura riuscita mette sul trono di famiglia chi ha tramato, ma i grandi non lo votano volentieri.`,
         ],
       };
     case 'ripudiato':

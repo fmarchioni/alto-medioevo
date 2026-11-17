@@ -13,7 +13,8 @@
 import { SELL_DEBT_LIMIT, trustFactor, type RateKind } from './economy';
 import { fiduciaOf, livelloMid, livelloOf, MARKET_MULT, OPIFICIO_MULT, workFactor } from './gabelle';
 import { granaryCapacity, MACINA_MOOD_WEIGHT, RIOT_MOOD, SETTLER_MEDIA_PRICE, umoreOf } from './gabelle';
-import { BATTLE_OPTIONS, CITY_WEIGHTS, FACTIONS, marriageCost, type FactionId, type FactionOption } from './fazioni';
+import { BATTLE_OPTIONS, CITY_WEIGHTS, FACTIONS, LEVA_SOLDATI, marriageCost, type FactionId, type FactionOption } from './fazioni';
+import { botPrestiti, debitoCasata } from './prestiti';
 import { etaP, fazioniSposabili, figliDi, nozzeDi, pretendenti, prudente, ripudiabili, signoreP, sposabili, type Sposo } from './famiglia';
 import { canInvest, COSTS, type InvestmentKind } from './investments';
 import { scadenza } from './imprese';
@@ -208,6 +209,14 @@ function factionChoice(c: Ctx, level: BotLevel, f: FactionId): FactionOption {
   const careful = prudente(g.state, g.state.current);
   const win = careful && g.factionWinChance() < PRUDENZA_VITTORIA ? 0 : g.factionWinChance();
   const fight = opts.find(o => BATTLE_OPTIONS.includes(o))!;
+  // cigno nero: il difficile resiste se è più probabile vincere che perdere, il medio tira a sorte con la sua probabilità
+  // la leva dei Franchi: chi ha i soldati nel fortino li dà; chi dovrebbe arruolare i servi li dà solo se la guerra è persa in partenza
+  if (has('concedere')) {
+    if (level === 'medio') return rnd() < win ? 'resistere' : 'concedere';
+    return g.levaSoldati() >= LEVA_SOLDATI || win < 0.35 ? 'concedere' : 'resistere';
+  }
+  if (has('resistere') && !has('sottomettersi')) return 'resistere'; // la leva senza uomini da dare: è guerra
+  if (has('resistere')) return (level === 'medio' ? rnd() < win : win >= 0.5) ? 'resistere' : 'sottomettersi';
   const trade = p.mercato - 1 + (p.opificio - 1);
   if (level === 'medio') {
     if (rnd() < win) return fight;
@@ -448,6 +457,10 @@ function invest(c: Ctx, level: BotLevel): void {
   const p = g.player;
   g.rules?.botBeforeInvest?.({ g, level, rnd, log });
   nozze(c, level);
+  const prestito = botPrestiti(g, level);
+  if (prestito) log.push(prestito);
+  // Dinastia: gli scudi avuti in prestito dalla casata si tengono da parte per renderli
+  const owed = debitoCasata(g.state, g.state.current);
   const built: Record<InvestmentKind, number> = { terre: 0, mercato: 0, opificio: 0, palazzo: 0, granaio: 0 };
   const buy = (k: InvestmentKind) => {
     if (!g.invest(k).ok) return false;
@@ -464,17 +477,17 @@ function invest(c: Ctx, level: BotLevel): void {
   if (level === 'facile') {
     for (let i = 0; i < 4; i++) {
       const k = kinds[Math.floor(rnd() * kinds.length)];
-      if (rnd() < 0.5 && canInvest(p, k).ok && p.scudi - COSTS[k] >= 0) buy(k);
+      if (rnd() < 0.5 && canInvest(p, k).ok && p.scudi - COSTS[k] >= owed) buy(k);
     }
   } else if (level === 'medio' && c.svista === 'cantiere') {
     // svista: o non costruisce nulla, o spende tutto in pietre che non rendono (palazzo e terre)
     if (rnd() < 0.5) {
-      while (canInvest(p, 'palazzo').ok && p.scudi >= COSTS.palazzo && buy('palazzo'));
-      while (canInvest(p, 'terre').ok && p.scudi >= COSTS.terre && buy('terre'));
+      while (canInvest(p, 'palazzo').ok && p.scudi >= COSTS.palazzo + owed && buy('palazzo'));
+      while (canInvest(p, 'terre').ok && p.scudi >= COSTS.terre + owed && buy('terre'));
     }
   } else if (level === 'medio') {
     // prudente: tiene una riserva e spesso rimanda
-    const reserve = 2000;
+    const reserve = 2000 + owed;
     for (let i = 0; i < 6; i++) {
       // con il palazzo reale il palazzo serve per il trono: lo considera come gli altri beni
       const options = kinds.filter(k => (k !== 'palazzo' || reale) && canInvest(p, k).ok && p.scudi - COSTS[k] >= reserve);
@@ -483,7 +496,7 @@ function invest(c: Ctx, level: BotLevel): void {
     }
   } else {
     // nessun debito; si tiene una riserva per comprare il grano dell'anno prossimo
-    const reserve = Math.max(800, (p.acri * 75 * 0.5 * 35) / 1000);
+    const reserve = Math.max(800, (p.acri * 75 * 0.5 * 35) / 1000) + owed;
     for (let i = 0; i < 40; i++) {
       const can = (k: InvestmentKind) => canInvest(p, k).ok && p.scudi - COSTS[k] >= reserve;
       let pick: InvestmentKind | null = null;

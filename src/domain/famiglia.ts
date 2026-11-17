@@ -35,6 +35,10 @@ export interface Persona {
   /** id del padre o della madre signore */
   genitore?: number;
   morto?: number;
+  /** fratello o sorella dell'erede del re a cui il re ha dato un appannaggio: non trama alla successione */
+  appannaggio?: true;
+  /** ha tramato contro l'erede del re ed è stato scoperto: vive in esilio (casa -1) */
+  esule?: true;
 }
 
 export type Sposo = { k: 'casata'; id: number } | { k: 'fazione'; f: FactionId } | { k: 'locale' };
@@ -265,9 +269,11 @@ export function nomeConsorte(d: DinastiaState, m: Matrimonio, id: number): strin
 /** Casata del coniuge nel matrimonio (null: fazione o nobiltà del luogo). */
 const casaDi = (d: DinastiaState, m: Matrimonio) => [personaOf(d, m.a).casa, m.con.k === 'casata' ? personaOf(d, m.con.id).casa : null] as const;
 
-/** Le casate i e j sono imparentate (un matrimonio in corso fra loro). */
+/** Le casate i e j sono imparentate: un matrimonio in corso fra loro, o un ramo cadetto legato dal vincolo. */
 export function parenti(d: DinastiaState, i: number, j: number): boolean {
   if (i === j) return false;
+  const vincolo = (a: number, b: number) => d.casate[a]?.ramo?.di === b && d.casate[a].ramo!.rotto === undefined;
+  if (vincolo(i, j) || vincolo(j, i)) return true;
   return (d.matrimoni ?? []).some(m => {
     if (m.fine !== undefined || m.con.k !== 'casata') return false;
     const [a, b] = casaDi(d, m);

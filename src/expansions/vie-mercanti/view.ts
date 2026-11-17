@@ -8,13 +8,16 @@ import type { Game } from '../../domain/turn';
 import type { ActionResult, GameState, Player } from '../../domain/types';
 import { MAP_POS, mapObstacles, PIAZZA_POS, playerColor, transitRoutes, type Transit } from '../../ui/map';
 import { dispatchScrolls } from '../../ui/scrolls';
+import { illustrationUrl } from '../../ui/citta/assets';
+import { dispaccioCasata, titoloDispaccioCasata } from '../../ui/prestiti';
+import { piuForte } from '../../ui/stacchi';
 import { pick, speechBox, type Speaker } from '../../ui/speaker';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
 import {
-  banquet, bid, divisibili, divisioniA, splitAnswer, splitOffer, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, MERCANTI_FALLIMENTO, merchantsTake, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
+  banquet, bid, divisibili, divisioniA, splitAnswer, splitOffer, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, buyPassing, passingBlock, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, MERCANTI_FALLIMENTO, merchantsTake, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
 } from './rules';
 import {
-  ACRI_GRANO_MIN, caravansFrom, caravansTo, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, passingTakes, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
+  ACRI_GRANO_MIN, caravansFrom, caravansTo, FORESTIERI_MAX, FORESTIERI_MIN, passingLeft, passingOffer, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, passingTakes, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
 } from './merci';
 import { specialitaText, SPECIALITA, travelYears, ZONA_FEUDO, ZONA_NOME } from './geografia';
 import { VIAGGIO, type EventoViaggio } from './carovane';
@@ -129,6 +132,7 @@ function dispatchText(d: Dispatch, st: GameState): string {
   if (isFair(d)) return fairDispatchText(d, st);
   if (isImpresa(d)) return impresaDispatchText(d);
   switch (d.k) {
+    case 'casata': return dispaccioCasata(d.d, st).body;
     case 'festaTitolo': return festaTitoloText(d.rango);
     case 'lotSold': return `${P(d.buyer)} ha comprato al fondaco ${qtyOf(d.good, d.qty)}: la carovana parte ora e incasserete <b>${n(d.gain)} scudi</b> al suo arrivo, nell'anno ${yearOf(d.arrive)}.`;
     case 'lotBack': return `Il fondaco vi rende ${qtyOf(d.good, d.qty)} rimasti invenduti.`;
@@ -161,6 +165,7 @@ function dispatchHead(d: Dispatch): { from: string; title: string } {
   if (isFair(d)) return fairDispatchHead(d);
   if (isImpresa(d)) return impresaDispatchHead(d);
   switch (d.k) {
+    case 'casata': return { from: 'dalla casata', title: titoloDispaccioCasata(d.d) };
     case 'festaTitolo': return { from: 'dalla corte', title: 'Un titolo da celebrare' };
     case 'lotSold': return { from: 'dal fondaco', title: 'Merce venduta' };
     case 'lotBack': return { from: 'dal fondaco', title: 'Merce invenduta' };
@@ -275,7 +280,22 @@ function fondaco(g: Game, st: MercantiState): string {
     ...caravansTo(st, me).map(k => `<li>In arrivo da ${who(ps[k.seller])}: ${qtyOf(k.good, k.qty)}, nell'anno ${yearOf(k.arrive)}.</li>`),
     ...caravansFrom(st, me).map(k => `<li>In viaggio verso ${who(ps[k.buyer])}: ${qtyOf(k.good, k.qty)}; incasserete ${n(k.paid)} scudi nell'anno ${yearOf(k.arrive)}.</li>`),
   ].join('');
-  return `<h3>Merci in vendita</h3>${table}${going ? `<h3>Carovane in viaggio</h3><ul class="ext-ledger">${going}</ul>` : ''}
+  const offer = passingOffer(g.state.q);
+  const blocked = passingBlock(g);
+  const passing = g.state.options.dinastia ? '' : blocked ? `<h3>Mercanti di passaggio</h3><p class="hint">Non vendono a voi: ${blocked}.</p>` : `<h3>Mercanti di passaggio</h3>
+    <table class="ext-table"><thead><tr><th>Merce</th><th>Ne vendono ancora</th><th>Prezzo</th><th>Comprare</th></tr></thead><tbody>${MERCI.map(good => {
+      const left = passingLeft(g, st, me, good), price = offer[good].price;
+      const max = Math.min(left, Math.max(0, Math.floor((p.scudi + p.credito) / price)));
+      return `<tr>
+        <th scope="row" data-label="Merce">${NOME[good][0].toUpperCase()}${NOME[good].slice(1)}</th>
+        <td data-label="Ne vendono ancora">${qtyOf(good, left)}</td>
+        <td data-label="Prezzo">${price} scudi l'unità</td>
+        <td data-label="Comprare"><input type="number" name="pass-${good}" min="0" max="${max}" value="${max}" inputmode="numeric" aria-label="quantità da comprare">
+          <button data-act="ext" data-op="buyPassing" data-good="${good}" ${max === 0 ? 'disabled' : ''}>Compra</button></td>
+      </tr>`;
+    }).join('')}</tbody></table>
+    <p class="hint">Ogni anno passano dal fondaco mercanti con un poco di vino e di manufatti (da ${FORESTIERI_MIN} a ${FORESTIERI_MAX} unità per merce): costano qualche scudo più di un banco del fondaco, ma si pagano e si ricevono subito, senza carovana. Non vendono a chi tratta con i mercanti forestieri: a chi è entrato alla fiera dell'anno, o ha contratti della fiera da spedire.</p>`;
+  return `${passing}<h3>Merci in vendita</h3>${table}${going ? `<h3>Carovane in viaggio</h3><ul class="ext-ledger">${going}</ul>` : ''}
     <h3>Il vostro banco</h3>${mine}
     <p class="hint">Chi compra paga subito; la merce viaggia con una carovana e il venditore incassa al suo arrivo. Il viaggio dura un anno nella stessa zona, due in una zona vicina, tre a due zone di distanza e quattro fra il Nord e le Isole; un anno in meno da o per un porto. Il vostro feudo è nella zona ${ZONA_NOME[ZONA_FEUDO[p.feudo]]}. Gli altri signori hanno la precedenza; la merce che nessuno compra, al vostro prossimo turno, la prendono i mercanti di passaggio e la pagano subito, se non chiedete più di quanto pagano loro quest'anno (${prices.vino} scudi la botte di vino, ${prices.manufatti} il pezzo di manufatti). Altrimenti torna in magazzino.</p>
     <p class="hint">Per strada può succedere di tutto: briganti e botti rotte portano via fino a un decimo del carico (${Math.round((VIAGGIO.briganti.p + VIAGGIO.rotture.p) * 100)}% dei viaggi), temporali e ponti crollati fanno ritardare di un anno (${Math.round((VIAGGIO.temporali.p + VIAGGIO.ponte.p) * 100)}%), a volte si arriva prima. La merce perduta non si paga. Chi vende risponde della carovana: consegna puntuale e intatta ${signed(PRESTIGIO.consegna)} di prestigio mercantile, ritardo o merce perduta ${signed(PRESTIGIO.ritardo)}.</p>`;
@@ -323,7 +343,7 @@ export function caravanRoutes(state: GameState): string {
   for (const imp of st.impegni ?? []) {
     const s = imp.spedito;
     if (!s || ps[imp.player]?.caduto !== undefined) continue;
-    out.push({ from: MAP_POS[ps[imp.player].feudo], to: PIAZZA_POS[imp.c.piazza], t: step(s.q, s.previsti), color: playerColor(imp.player), good: imp.c.good, label: label(imp.c.good, s.qty) });
+    out.push({ from: MAP_POS[ps[imp.player].feudo], to: PIAZZA_POS[imp.c.piazza], t: step(s.q, s.previsti), color: playerColor(imp.player), good: imp.c.good, label: label(imp.c.good, s.qty), piazza: imp.c.piazza });
   }
   return out.length ? transitRoutes(out, mapObstacles(ps.filter(p => p.caduto === undefined).map(p => p.feudo))) : '';
 }
@@ -353,11 +373,19 @@ export const view: ExpansionView = {
       { panel: 'cantina', title: 'Magazzino', sub: `${n(c.vino)} botti, ${n(c.manufatti)} pezzi`, art: cantinaArt },
       { panel: 'fondaco', title: 'Fondaco', sub: lots ? `${lots} ${lots === 1 ? 'banco aperto' : 'banchi aperti'}` : 'vendete agli altri signori', art: fondacoArt },
     ];
-    cards.push({ panel: 'fiera', title: 'Fiera', sub: fairCardSub(g, st), art: fieraArt });
     cards.push({ panel: 'feste', title: 'Feste', sub: festeCardSub(g, st), art: festeArt });
     if (g.state.phase.kind === 'investimenti') cards.push({ panel: 'vigne', title: 'Vigne', sub: `${c.vigneti} ${c.vigneti === 1 ? 'vigneto' : 'vigneti'}`, art: vigneArt });
     cards.push({ panel: 'banco', title: 'Banco', sub: offers ? `${offers} ${offers === 1 ? 'prestito offerto' : 'prestiti offerti'}` : 'prestare e farsi prestare', art: bancoArt });
-    return cards.map(c => ({ ...c, menu: 'signori' as const }));
+    const out: ExtCard[] = cards.map(c => ({ ...c, menu: 'signori' as const }));
+    // la fiera ha una pagina sua dopo Fra signori; nei dispendimenti, quando le casse sono piene, una tessera a parte
+    if (g.state.phase.kind === 'investimenti') out.push({ panel: 'fiera', title: 'Fiera', sub: fairCardSub(g, st), art: fieraArt });
+    return out;
+  },
+
+  // la fiera, dopo Fra signori: nell'anno della fiera per entrare e fare le offerte, poi per spedire la merce
+  afterSignori(g) {
+    const st = ms(g), me = g.state.current;
+    return fairOpen(st, g.state.q) || impegniOf(st, me).some(x => !x.spedito) ? 'fiera' : null;
   },
 
   aside(g) {
@@ -387,6 +415,21 @@ export const view: ExpansionView = {
       { ico: crate, value: n(c.manufatti), label: 'manufatti' },
       { ico: seal, value: n(prestigeOf(g)), label: 'prestigio mercantile' },
     ];
+  },
+
+  // le notizie d'inizio turno: contratti vinti e pagati, penali, pignoramenti, inganni scoperti
+  musicaDispacci(g) {
+    return piuForte(ms(g).inbox.map(d => {
+      switch (d.k) {
+        case 'fieraVinta': case 'fieraPagata': case 'consoleFatto': case 'caravanPaid': case 'repaid': case 'offerTaken': return 'festa';
+        case 'merchantsRepaid': return d.fallito ? 'scongiuro' : 'festa';
+        case 'fieraMancata': case 'vinoScoperto': case 'seizedFrom': case 'disonore': return 'scongiuro';
+        case 'consoleScoperto': return 'intrigo';
+        case 'fieraAperta': return 'sorpresa';
+        case 'casata': return d.d.k === 'negato' || d.d.k === 'mancato' ? 'scongiuro' : d.d.k === 'concesso' ? 'festa' : null;
+        default: return null;
+      }
+    }));
   },
 
   dispatches(g, animate) {
@@ -422,8 +465,17 @@ export const view: ExpansionView = {
   panel(g, ui: ExtUi) {
     const panel = PANELS[ui.panel ?? ''];
     if (!panel) return '';
+    // la pagina della fiera dopo Fra signori: il dipinto a sinistra (la fiera aperta, o le merci che partono)
+    if (ui.step) {
+      const open = !!fairOpen(ms(g), g.state.q);
+      return `<h2>${open ? 'La fiera dei mercanti forestieri' : 'Le merci per la fiera'}</h2>
+        <div class="fiera-pagina"><figure class="fiera-quadro"><img src="${illustrationUrl(open ? 'fiera-aperta' : 'fiera-spedizioni')}" alt="${open ? 'la fiera sotto le mura della città' : 'i carri carichi di botti e casse partono per la fiera'}"></figure>
+        <div>${speechBox(IACOPO, ui.say)}<div class="ext-panel">${panel.render(g, ms(g))}</div></div></div>
+        <div class="btns"><button data-act="afterSignori" class="primary">Prosegui</button></div>`;
+    }
+    const back = ui.signori || g.state.phase.kind !== 'investimenti' ? 'Torna a Fra signori' : 'Torna ai dispendimenti';
     return `<h2>${panel.title}</h2>${speechBox(IACOPO, ui.say)}<div class="ext-panel">${panel.render(g, ms(g))}</div>
-      <div class="btns"><button data-act="extClose" class="primary">Torna a Fra signori</button></div>`;
+      <div class="btns"><button data-act="extClose" class="primary">${back}</button></div>`;
   },
 
   // Dinastia: un contratto conteso solo fra parenti si può dividere; il parente risponde nel suo turno
@@ -480,6 +532,11 @@ export const view: ExpansionView = {
       }
       case 'withdrawLot':
         return { say: reaction(withdrawLot(g, data.good as Merce), 'La merce è tornata nei vostri magazzini.', p) };
+      case 'buyPassing': {
+        const good = data.good as Merce, qty = field(`pass-${good}`);
+        const r = buyPassing(g, good, qty);
+        return { say: reaction(r, `Dai mercanti di passaggio: ${qtyOf(good, qty)} per ${n(r.cost ?? 0)} scudi, già nei vostri magazzini.`, p) };
+      }
       case 'buyLot': {
         const id = Number(data.id), qty = field(`lot-${id}`), lot = st.lots.find(l => l.id === id);
         const r = buyLot(g, id, qty);
@@ -573,6 +630,7 @@ export const view: ExpansionView = {
       case 'vineyard': return d.n === 1 ? 'Piantò il suo primo vigneto.' : `Piantò nuove vigne: i vigneti del feudo divennero ${d.n}.`;
       case 'passing': return `Vendette ai mercanti di passaggio ${qtyOf(MERCI[d.good], d.qty)}, per ${n(d.gain)} scudi.`;
       case 'lotPost': return `Portò al fondaco ${qtyOf(MERCI[d.good], d.qty)}, a ${d.price} scudi l'unità.`;
+      case 'passingBuy': return `Comprò dai mercanti di passaggio ${qtyOf(MERCI[d.good], d.qty)}, per ${n(d.cost)} scudi.`;
       case 'lotBuy': return `Comprò al fondaco ${qtyOf(MERCI[d.good], d.qty)} dal banco di ${P(d.seller)}, a ${d.price} scudi l'unità.`;
       case 'loanOffer': return `Offrì al banco un prestito di ${n(d.amount)} scudi al ${d.rate}%.`;
       case 'loanMerchants': return `Prestò ${n(d.amount)} scudi ai mercanti di passaggio, che si impegnarono a renderne ${n(d.due)}.`;

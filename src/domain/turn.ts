@@ -10,23 +10,25 @@ import {
   CIAMBELLANO_THEFT_CHANCE, DECIMA, expireEffetti, fattiHarvestFactor, fattiRandom, fattoOptionOk, fattoOptions, hasEffetto, initFatti, pickFatto,
   pilgrimIncome, resolveFatto, rollTargets, theftAmount,
 } from './fatti';
-import { abitudineOf, DEBT_SPOIL_MAX, FAMINE_MAX_DEATHS, FIDUCIA_START, grainPrices, LEAVE_CHANCE, livelloOf, MERCHANT_CHANCE, MOOD_DRIFT, stepCapriccio, tolleranzaMercanti, tolleranzaServi, nextAbitudine, nextFiducia, nextUmore, ricarico, riotSlots, umoreOf, UMORE_START } from './gabelle';
+import { abitudineOf, DEBT_SPOIL_MAX, FAMINE_MAX_DEATHS, FIDUCIA_START, grainPrices, LEAVE_CHANCE, livelloOf, MERCHANT_CHANCE, MOOD_DRIFT, stepCapriccio, tolleranzaMercanti, tolleranzaServi, nextAbitudine, nextFiducia, nextUmore, ricarico, riotSlots, fugaSlots, umoreOf, UMORE_START } from './gabelle';
 import type { ExpansionRules, MacinaRule } from './expansion';
 import { applyFixedEvent, ATTACK, capLuck, EVENTS, drawEvent, eventKey, fattoKey, haRicorrenza, inPausa, luckCap, resolveChoice, rollEvent, segnaRicorrenza, type RandomEvent } from './events';
 import {
-  attackSlots, defenseFrom, expirePacts, FACTION_EVENT, FACTION_OPTIONS, harvestFactor, hasPact, hordeSize, optionAvailable, pickFaction, PROTETTORATO_TRIBUTE,
+  attackSlots, CLAUSOLE_QUOTA, LEVA_OPTIONS, LEVA_QUOTA, LEVA_SOLDATI, LEVA_UMORE, CIGNO_CHANCE, CIGNO_MULT, CIGNO_OPTIONS, CIGNO_RANK, defenseFrom, expirePacts, FACTION_EVENT, FACTION_OPTIONS, GIOGO_QUOTA, harvestFactor, hasPact, hordeSize, optionAvailable, pickFaction, PROTETTORATO_TRIBUTE,
   resolveFaction, winChance, type Defense, type FactionOption,
 } from './fazioni';
 import { Mulberry32 } from './rng';
 import { canInvestTimes, invest, roomFor, type InvestmentKind } from './investments';
 import { bottino, cartaInMano, COMPLICE_CHANCE, IMPRESA_SUCCESSO, impresaOfEvent, multa, scadenza, silenzioDal } from './imprese';
-import { calculateVassalTribute, DEBITO_ARRESTO, FEUDI, endOfPlayerYear, PALAZZO_SERVI, victoryRule, wealthIndex } from './rank';
+import { calculateVassalTribute, DEBITO_ARRESTO, FEUDI, endOfPlayerYear, PALAZZO_SERVI, rankOf, victoryRule, wealthIndex } from './rank';
 import {
-  accettaNozze, annoFamiglia, casusBelli, celebra, doteCasata, doteForestiera, nozzeBlock, parenti, personaOf, REGGENZA_QUOTA, ripudia, ripudiabili, signoreP, type Sposo,
+  accettaNozze, annoFamiglia, casusBelli, celebra, doteCasata, doteForestiera, ETA_MAGGIORE, etaP, nozzeBlock, nozzeDi, parenti, personaOf, REGGENZA_QUOTA, ripudia, ripudiabili, signoreP, type Sposo,
 } from './famiglia';
-import { cittaLibere, rischioCongiura, trasferisci, type Avviso } from './dinastia';
+import { cittaLibere, cittaRamo, fondaRamo, fondatoreRamo, rischioCongiura, trasferisci, type Avviso } from './dinastia';
 import { sposabili } from './famiglia';
-import { addPericolo, annotaRango, candidaAlTrono, casataVincitrice, eleggiRe, initDinastia, inReggenza, prestigioOf, rinominaErede, RISCHIO_BATTAGLIA, RISCHIO_RIVOLTA, rollMorte, signoreOf, succedi, type Pericolo, type Successione } from './dinastia';
+import { chiediPrestito, quantoBene, rispondiPrestito, scadenzePrestiti, type BeneCasata, type EsitoRichiesta } from './prestiti';
+import { APPANNAGGIO, congiuraSuccessione, congiurati, fratelliErede, eleggibili, eleggiSuccessore, ETA_MALUMORI, etaOf, nasceRamo, primoRe, type AnnuncioCorona } from './dinastia';
+import { addPericolo, annotaRango, candidaAlTrono, casataVincitrice, initDinastia, inReggenza, prestigioOf, rinominaErede, RISCHIO_BATTAGLIA, RISCHIO_RIVOLTA, rollMorte, signoreOf, succedi, type Pericolo, type Successione } from './dinastia';
 import { RIOT_EVENT } from './gabelle';
 import type { Rng } from './rng';
 import type { ActionResult, BotLevel, ChronicleFact, GameState, Gender, Options, Player, Strategia } from './types';
@@ -41,8 +43,9 @@ export interface NewPlayer {
   strategia?: Strategia;
 }
 
-/** al più 8 signori: con 9 città ne resta sempre almeno una libera */
-export const MAX_PLAYERS = 8;
+
+/** signori all'inizio della partita (con la Dinastia i rami cadetti arrivano fino a MAX_CITTA, dinastia.ts) */
+export const MAX_PLAYERS = 6;
 
 /** Riga 80: stato iniziale di ogni signore. */
 export function createPlayer(np: NewPlayer, feudo: number): Player {
@@ -68,6 +71,20 @@ export function createPlayer(np: NewPlayer, feudo: number): Player {
     credito: 0,
   };
 }
+
+/** Un signore nuovo con le dotazioni delle opzioni della partita (riforma delle gabelle, fazioni, fatti...). */
+export function newLord(options: Options, np: NewPlayer, feudo: number): Player {
+  let p = createPlayer(np, feudo);
+  if (options.gabelle) p = { ...p, umore: UMORE_START, fiducia: FIDUCIA_START, abitudine: 0 };
+  if (options.fazioni) p = { ...p, patti: [] };
+  if (options.fatti) p = { ...p, effetti: [] };
+  if (options.commercio) p = { ...p, granai: 0 };
+  if (options.botteghe) p = { ...p, botteghe: true };
+  if (np.bot) p = { ...p, strategia: np.strategia ?? (feudo % 2 ? 'mercante' : 'macina') };
+  return p;
+}
+
+const BOT_FORZA: Record<BotLevel, number> = { facile: 0, medio: 1, difficile: 2 };
 
 const isQuantity = (n: number) => Number.isInteger(n) && n >= 0;
 
@@ -96,16 +113,7 @@ export class Game {
     const state: GameState = {
       version: 1,
       options: { ...options },
-      players: players.map((np, i) => {
-        let p = createPlayer(np, feudi[i]);
-        if (options.gabelle) p = { ...p, umore: UMORE_START, fiducia: FIDUCIA_START, abitudine: 0 };
-        if (options.fazioni) p = { ...p, patti: [] };
-        if (options.fatti) p = { ...p, effetti: [] };
-        if (options.commercio) p = { ...p, granai: 0 };
-        if (options.botteghe) p = { ...p, botteghe: true };
-        if (np.bot) p = { ...p, strategia: np.strategia ?? (feudi[i] % 2 ? 'mercante' : 'macina') };
-        return p;
-      }),
+      players: players.map((np, i) => newLord(options, np, feudi[i])),
       q: 0,
       current: 0,
       phase: { kind: 'commercio' },
@@ -187,6 +195,8 @@ export class Game {
     const st = this.state;
     // Dinastia: il signore può morire prima di cominciare l'anno; l'erede gioca il turno con quello che gli resta
     const succ = this.deathAtTurnStart();
+    // Dinastia: i prestiti di casata scaduti si rendono da soli (prima dei dispacci dell'espansione)
+    scadenzePrestiti(this);
     if (st.options.annate) st.annate ??= initAnnate(st);
     const annata = st.annate ? annataOf(st.annate, st.current, st.q) : undefined;
     startOfTurn(this.player, st.scalars, this.rng, annata);
@@ -239,16 +249,96 @@ export class Game {
     // il notaio di corte avverte quando una regola della Dinastia comincia a contare
     if (rischioCongiura(this.player) > 0) this.spiega(st.current, 'congiura');
     if (d.persone && (sposabili(d, st.current, st.q).length || (d.proposte ?? []).some(x => x.a === st.current))) this.spiega(st.current, 'nozze');
+    this.avvisiDelRe();
+    // i fratelli dell'erede che potrebbero tramare, se il signore è il re (prima che la successione li cambi)
+    const fratelli = d.re === st.current ? congiurati(d, st.current, st.q) : [];
     const causa = rollMorte(d, st.current, this.player, st.q);
     if (!causa) return null;
     const s = succedi(st, d, st.current, causa);
-    this.record({ t: 'successione', morto: s.morto, gender: s.gender, rel: s.rel, causa, eta: s.eta, anni: s.anni, erede: s.erede, cadetti: s.eredita.cadetti, scudi: s.eredita.scudi, acri: s.eredita.acri, corona: s.corona });
+    // la notte della successione: se nasce un ramo cadetto il suo fondatore (il maggiore dei fratelli) se ne va e non trama;
+    // i fratelli minori adulti e senza nozze restano alla corte del re (ramoCadetto), e possono tramare
+    const fondatore = s.corona && !s.eredita.intera && nasceRamo(st, d, st.current, s.rel, s.eredita.cadetti) ? fratelliErede(d, st.current)[0] : undefined;
+    const congiura = s.corona ? congiuraSuccessione(st, d, st.current, s, fratelli.filter(x => x.id !== fondatore?.id)) : null;
+    this.record({ t: 'successione', morto: s.morto, gender: s.gender, rel: s.rel, ...(s.assassino ? { assassino: s.assassino.nome, ag: s.assassino.gender } : {}), causa, eta: s.eta, anni: s.anni, erede: s.erede, cadetti: s.eredita.cadetti, scudi: s.eredita.scudi, acri: s.eredita.acri, corona: s.corona });
     this.log(`muore ${s.morto} (${causa}): gli succede ${s.erede}`);
     if (s.reggenza !== undefined) this.record({ t: 'famiglia', k: 'reggenza', chi: s.erede });
     this.spiega(st.current, 'successione');
     if (s.trasferibile) this.spiega(st.current, 'trasferimento');
     if (s.reggenza !== undefined) this.spiega(st.current, 'reggenza');
+    if (congiura) {
+      const x = congiura.chi;
+      this.record(congiura.esito === 'riuscita'
+        ? { t: 'famiglia', k: 'usurpazione', chi: x.nome, gender: x.gender, con: congiura.vittima }
+        : { t: 'famiglia', k: 'esilio', chi: x.nome, gender: x.gender });
+      this.log(congiura.esito === 'riuscita' ? `${x.nome} trama contro ${congiura.vittima} e prende il suo posto` : `${x.nome} trama contro l'erede: scoperto, va in esilio`);
+    }
+    if (s.corona) this.eleggiSuccessore(congiura?.esito === 'fallita');
     return s;
+  }
+
+  /** Alla morte del re: i grandi del regno votano il successore, e ogni giocatore lo apprende all'inizio del suo turno. */
+  private eleggiSuccessore(simpatia: boolean): void {
+    const st = this.state, d = st.dinastia!, casaRe = st.current;
+    const e = eleggiSuccessore(st, d, casaRe, simpatia);
+    const voti = Object.entries(e.voti).map(([k, v]) => [Number(k), v] as [number, number]);
+    this.note(e.re, { t: 'corona', voti, casaRe });
+    this.annuncia({ re: e.re, casaRe, voti, ...(e.testamento !== undefined ? { testamento: e.testamento } : {}) });
+    this.state.log.push(`${this.year} · ${st.players[e.re].name}: è eletto re d'Italia${e.re === casaRe ? ' (erede legittimo)' : ''}`);
+  }
+
+  /** La corona da annunciare a ogni giocatore in gioco (all'inizio del suo turno). */
+  private annuncia(a: AnnuncioCorona): void {
+    const d = this.state.dinastia!;
+    this.state.players.forEach((p, i) => {
+      if (p.bot || p.caduto !== undefined || !d.casate[i]) return;
+      d.casate[i].annuncio = a;
+    });
+  }
+
+  /** La corona da annunciare al signore di turno; la toglie (si vede una volta). */
+  prossimoAnnuncio(): AnnuncioCorona | null {
+    const c = this.state.dinastia?.casate[this.state.current];
+    const a = c?.annuncio;
+    if (!c || !a) return null;
+    delete c.annuncio;
+    return a;
+  }
+
+  /**
+   * Il notaio e il re: un anno dopo l'incoronazione, se non ha fatto testamento, glielo ricorda (una volta per regno); con il
+   * re anziano e dei fratelli dell'erede che potrebbero tramare, avverte dei malumori a corte (una volta per casata).
+   */
+  private avvisiDelRe(): void {
+    const st = this.state, d = st.dinastia!, i = st.current, c = d.casate[i];
+    if (d.re !== i || st.players[i].bot) return;
+    if (d.testamento === undefined && !d.ricordato && d.reDal !== undefined && st.q >= d.reDal + 1) {
+      d.ricordato = true;
+      (c.daSpiegare ??= []).push('testamento');
+    }
+    if (etaOf(signoreOf(d, i), st.q) >= ETA_MALUMORI && congiurati(d, i, st.q).length) this.spiega(i, 'malumori');
+  }
+
+  /** Il re indica il successore nel testamento: la sua casata (l'erede legittimo) o un signore che possa essere eletto; undefined: nessuno. */
+  testamento(j: number | undefined): ActionResult {
+    const st = this.state, d = st.dinastia;
+    if (!d || d.re !== st.current) return { ok: false, reason: 'solo il re fa testamento' };
+    if (j !== undefined && !eleggibili(st, st.current).includes(j)) return { ok: false, reason: 'scegliete il vostro erede o un signore di rango almeno duca' };
+    if (j === undefined) delete d.testamento;
+    else d.testamento = j;
+    return { ok: true };
+  }
+
+  /** Il re dà un appannaggio a un fratello o una sorella del suo erede: non tramerà alla successione. */
+  appannaggio(id: number): ActionResult {
+    const st = this.state, d = st.dinastia;
+    if (!d || d.re !== st.current) return { ok: false, reason: 'solo il re' };
+    const x = congiurati(d, st.current, st.q).find(y => y.id === id);
+    if (!x) return { ok: false, reason: 'non trama contro il vostro erede' };
+    if (this.player.scudi < APPANNAGGIO) return { ok: false, reason: `servono ${APPANNAGGIO.toLocaleString('it-IT')} scudi` };
+    this.player.scudi -= APPANNAGGIO;
+    x.appannaggio = true;
+    this.log(`dà un appannaggio a ${x.nome}`);
+    return { ok: true };
   }
 
   // ---------- avvisi del notaio di corte (una volta sola per argomento e per casata)
@@ -370,6 +460,24 @@ export class Game {
     return { ok: true };
   }
 
+  // ---------- prestiti di casata (src/domain/prestiti.ts)
+
+  /** Il signore di turno chiede un prestito alla casata madre o a un suo ramo cadetto. */
+  chiediPrestito(a: number, bene: BeneCasata, qty: number): ActionResult & Partial<EsitoRichiesta> {
+    const no = this.dinastiaPhase();
+    if (no) return no;
+    const r = chiediPrestito(this, a, bene, qty);
+    if (r.ok) this.log(`chiede in prestito ${quantoBene(bene, qty)} a ${this.state.players[a].name}`);
+    return r;
+  }
+
+  /** Il signore di turno risponde a una richiesta di prestito ricevuta. */
+  rispondiPrestito(id: number, si: boolean): ActionResult & Partial<EsitoRichiesta> {
+    const no = this.dinastiaPhase();
+    if (no) return no;
+    return rispondiPrestito(this, id, si);
+  }
+
   /** Dote che la casata di turno pagherebbe (o riceverebbe) sposando `con`. */
   doteNozze(membro: number, con: Sposo): number {
     const st = this.state, d = st.dinastia!, x = personaOf(d, membro);
@@ -397,7 +505,7 @@ export class Game {
     return { ok: true };
   }
 
-  /** All'elezione del re la casata di turno appoggia la casata j (undefined: sceglie da sé). */
+  /** Alla morte del re la casata di turno vota la casata j (la casata del re: il suo erede legittimo; undefined: sceglie da sé). */
   appoggia(j: number | undefined): ActionResult {
     const d = this.state.dinastia;
     if (!d) return { ok: false, reason: 'solo nella Dinastia' };
@@ -423,26 +531,68 @@ export class Game {
   /** Dopo la successione comincia il turno dell'erede; il giocatore può dargli un altro nome. */
   continueAfterSuccessione(nome?: string): ActionResult {
     this.expect('successione');
-    const st = this.state, d = st.dinastia!;
+    const st = this.state, d = st.dinastia!, ph = st.phase as Extract<GameState['phase'], { kind: 'successione' }>;
     if (nome !== undefined && nome.trim() && nome.trim() !== signoreOf(d, st.current).nome) {
       if (!rinominaErede(st, d, st.current, nome)) return { ok: false, reason: 'il nome deve avere da 1 a 12 lettere' };
       const e = [...(st.chronicle ?? [])].reverse().find(x => x.player === st.current && x.fact.t === 'successione');
       if (e?.fact.t === 'successione') e.fact.erede = this.player.name;
     }
+    this.ramoCadetto(ph.s);
     st.phase = { kind: 'commercio' };
     if (!this.impresaAtTurnStart()) this.applyFattiToTurn();
     this.sync();
     return { ok: true };
   }
 
-  /** Fine anno con il trono vacante: i grandi del regno eleggono il re fra i candidati. */
+  /**
+   * Ramo cadetto (Dinastia con la famiglia): il primo dei fratelli dell'erede prende la parte dei cadetti
+   * ed entra in gioco come signore del computer, in una città libera vicina o in quella lasciata
+   * dall'erede che si è trasferito. Gioca dal suo turno di quest'anno, dopo gli altri.
+   */
+  private ramoCadetto(s: Successione): number | null {
+    const st = this.state, d = st.dinastia!, i = st.current;
+    const citta = cittaRamo(st, i, s);
+    if (citta === null) return null;
+    const f = fondatoreRamo(st, d, i, s);
+    if (!f) return null;
+    // alla morte del re i fratelli minori adulti e senza nozze restano a corte, vicino alla corona
+    if (s.corona) f.fratelli = f.fratelli.filter(x => etaP(x, st.q) < ETA_MAGGIORE || !!nozzeDi(d, x.id));
+    const e = s.eredita, t = s.trasferito;
+    // il livello del computer: quello del più forte già in gioco
+    const bots = st.players.map(p => p.bot).filter((b): b is BotLevel => !!b);
+    const bot = bots.length ? bots.reduce((a, b) => (BOT_FORZA[b] > BOT_FORZA[a] ? b : a)) : 'medio';
+    const p = newLord(st.options, { name: f.persona.nome, gender: f.persona.gender, bot }, citta);
+    // la città ha i suoi campi e i suoi servi; il cadetto vi porta la sua parte, e se l'erede è partito anche ciò che ha lasciato
+    p.scudi += e.scudi;
+    p.grano += e.grano;
+    p.acri += e.acri + (t?.acri ?? 0);
+    p.servi += e.servi + (t?.servi ?? 0);
+    if (t) {
+      p.mercato += t.mercati;
+      p.opificio += t.opifici;
+      p.palazzo = t.palazzo;
+      if (p.granai !== undefined) p.granai = t.granai;
+    }
+    s.eredita = { ...e, scudi: 0, grano: 0, acri: 0, servi: 0 };
+    const n = st.players.length;
+    st.players.push(p);
+    // lo stato per signore delle regole e dell'espansione si allunga
+    st.annate?.seq.push('');
+    this.rules?.addPlayer?.(st, n);
+    fondaRamo(st, d, i, n, f);
+    this.record({ t: 'famiglia', k: 'cadetto', chi: f.persona.nome, gender: f.persona.gender, citta, casa: n });
+    this.log(`il ramo cadetto di ${f.persona.nome} si insedia a ${FEUDI[citta]}`);
+    return n;
+  }
+
+  /** Fine anno con il trono vacante: è re il più ricco fra chi ha le condizioni del trono; da qui alla sua morte si pensa al successore. */
   private electKing(): void {
-    const e = eleggiRe(this.state, this.state.dinastia!);
-    if (e === null) return;
+    const re = primoRe(this.state, this.state.dinastia!);
+    if (re === null) return;
     this.state.players.forEach((_, i) => this.spiega(i, 'elezione'));
-    const re = e.re;
-    this.note(re, { t: 'corona', voti: Object.entries(e.voti).map(([k, v]) => [Number(k), v] as [number, number]) });
-    this.state.log.push(`${this.year} · ${this.state.players[re].name}: è eletto re d'Italia`);
+    this.note(re, { t: 'corona' });
+    this.annuncia({ re });
+    this.state.log.push(`${this.year} · ${this.state.players[re].name}: sale al trono d'Italia`);
   }
 
   /** Il 962: vince la casata con più prestigio. */
@@ -724,15 +874,16 @@ export class Game {
   /** Estrae l'evento dell'anno (dopo il nutrimento, ed eventualmente gli affari fra signori). */
   private drawYearEvent(): void {
     const p = this.player;
+    if (this.cignoNero()) return;
     // un'impresa temeraria arriva solo a chi non ne ha già una in serbo o in corso; con un'espansione ci sono solo le sue
     const impresa = !!this.state.options.imprese && !this.rules && !p.impresa;
-    const riot = p.umore === undefined ? 0 : riotSlots(umoreOf(p)), attack = p.patti ? attackSlots(p) : -1;
+    const riot = p.umore === undefined ? 0 : riotSlots(umoreOf(p)), fuga = fugaSlots(p), attack = p.patti ? attackSlots(p) : -1;
     // ricorrenza: un imprevisto non militare non torna dallo stesso signore prima di RICORRENZA_ANNI anni
     const q = this.state.q, ricorrenza = !!this.state.options.ricorrenza;
     const pausa = (e: RandomEvent) => ricorrenza && haRicorrenza(e) && inPausa(p, eventKey(e.id), q);
     let ev = this.state.options.mazzo
-      ? drawEvent(this.rng, { q, riot, attack, impresa, extra: this.rules?.deck?.(this), ...(ricorrenza ? { inPausa: pausa } : {}) })
-      : rollEvent(this.rng, this.state.options, riot, attack, impresa);
+      ? drawEvent(this.rng, { q, riot, fuga, attack, impresa, extra: this.rules?.deck?.(this), ...(ricorrenza ? { inPausa: pausa } : {}) })
+      : rollEvent(this.rng, this.state.options, riot, attack, impresa, fuga);
     this.sync();
     // senza mazzo la casella resta vuota (il numero di RND non cambia)
     if (ev && pausa(ev)) ev = null;
@@ -771,9 +922,32 @@ export class Game {
       this.rules?.onEvent?.(this, ev.id, outcome);
       this.tame(outcome);
       this.log(`evento: ${ev.title}`);
-      this.record({ t: 'event', id: ev.id, scudi: outcome.scudi, servi: outcome.servi, ...(outcome.grano ? { grano: outcome.grano } : {}) });
+      this.record({ t: 'event', id: ev.id, scudi: outcome.scudi, servi: outcome.servi, ...(outcome.grano ? { grano: outcome.grano } : {}), ...(outcome.mercati ? { mercati: outcome.mercati } : {}), ...(outcome.opifici ? { opifici: outcome.opifici } : {}) });
       this.state.phase = { kind: 'evento', eventId: ev.id, awaitingChoice: false, outcome };
     }
+  }
+
+  /**
+   * Cigno nero (solo con le fazioni): un principe, a un passo dal trono, una volta nella partita può
+   * vedersi arrivare il grande esercito di una fazione che teme la sua ascesa (fazioni.ts).
+   */
+  private cignoNero(): boolean {
+    const p = this.player;
+    if (!p.patti || p.cignoNero !== undefined || rankOf(p) < CIGNO_RANK) return false;
+    const come = this.rng.next() < CIGNO_CHANCE;
+    this.sync();
+    if (!come) return false;
+    // con un'espansione di guerra, metà delle volte è la leva dei Franchi (se non sono parenti)
+    const leva = !!this.rules?.leva && this.rng.next() < LEVA_QUOTA && !hasPact(p, 'parentela', 'franchi') && !hasPact(p, 'matrimonio', 'franchi');
+    const f = leva ? 'franchi' : pickFaction(p, this.rng.next());
+    this.sync();
+    if (!f) return false;
+    p.cignoNero = this.state.q;
+    const nemici = Math.round(hordeSize(f, this.state.q, this.rng.next()) * (this.rules?.cignoNero ?? CIGNO_MULT));
+    this.sync();
+    this.log(leva ? 'cigno nero: la leva dei Franchi' : `cigno nero: il grande esercito dei ${f}`);
+    this.state.phase = { kind: 'evento', eventId: FACTION_EVENT[f], awaitingChoice: true, faction: f, nemici, cigno: true, ...(leva ? { leva: true } : {}) };
+    return true;
   }
 
   /** Forze del signore di turno contro un'orda: servi, soldati e mura. */
@@ -793,7 +967,15 @@ export class Game {
   factionOptions(): { id: FactionOption; ok: boolean }[] {
     const ph = this.state.phase;
     if (ph.kind !== 'evento' || !ph.faction) return [];
+    // la leva: si danno gli uomini solo se fra fortino e servi ce ne sono abbastanza, altrimenti è guerra
+    if (ph.leva) return LEVA_OPTIONS.map(id => ({ id, ok: id !== 'concedere' || this.levaSoldati() + Math.max(0, this.player.servi) >= LEVA_SOLDATI }));
+    if (ph.cigno) return CIGNO_OPTIONS.map(id => ({ id, ok: true }));
     return FACTION_OPTIONS[ph.faction].map(id => ({ id, ok: optionAvailable(this.player, id) }));
+  }
+
+  /** Leva dei Franchi: soldati nel fortino del signore di turno (0 senza un'espansione di guerra). */
+  levaSoldati(): number {
+    return Math.max(0, this.rules?.leva?.soldati(this) ?? 0);
   }
 
   /** Risponde all'attacco di una fazione. */
@@ -804,7 +986,18 @@ export class Game {
     if (!opt) return { ok: false, reason: 'scelta non prevista per questa fazione' };
     if (!opt.ok) return { ok: false, reason: 'scelta non possibile ora' };
     const difesa = this.factionDefense().total, nemici = ph.nemici ?? hordeSize(ph.faction, this.state.q, 0.5);
-    const outcome = resolveFaction(this.player, ph.faction, option, this.rng, this.state.q, winChance(difesa, nemici));
+    const outcome = resolveFaction(this.player, ph.faction, option, this.rng, this.state.q, winChance(difesa, nemici), !!ph.cigno);
+    if (option === 'concedere') {
+      // partono i soldati del fortino; quelli che mancano si arruolano a forza fra i servi, e il popolo s'infuria
+      const dalFortino = Math.min(this.levaSoldati(), LEVA_SOLDATI), servi = LEVA_SOLDATI - dalFortino;
+      this.rules?.leva?.parti(this, dalFortino, LEVA_SOLDATI);
+      if (servi > 0) {
+        this.player.servi -= servi;
+        outcome.servi -= servi;
+        if (this.player.umore !== undefined) this.player.umore = Math.min(this.player.umore, LEVA_UMORE);
+      }
+      outcome.leva = LEVA_SOLDATI;
+    }
     if (outcome.win !== undefined) {
       Object.assign(outcome, { nemici, difesa });
       this.pericolo(this.state.current, 'battaglia', outcome.win ? RISCHIO_BATTAGLIA.vinta : RISCHIO_BATTAGLIA.persa);
@@ -812,12 +1005,12 @@ export class Game {
     this.sync();
     this.rules?.onEvent?.(this, ph.eventId, outcome);
     // dote e corruzione sono spese scelte, con i loro vantaggi: restano intere
-    if (option !== 'matrimonio' && option !== 'corrompere') this.tame(outcome);
+    if (option !== 'matrimonio' && option !== 'corrompere' && !ph.cigno) this.tame(outcome);
     this.log(`fazione ${ph.faction}: ${option}${outcome.win === undefined ? '' : outcome.win ? ' (vittoria)' : ' (sconfitta)'}`);
     const { faction, win, mercati, opifici, palazzo, grano } = outcome;
     this.record({
       t: 'event', id: ph.eventId, scudi: outcome.scudi, servi: outcome.servi, faction, option,
-      ...(win === undefined ? {} : { win, nemici: outcome.nemici, difesa: outcome.difesa }), ...(grano ? { grano } : {}), ...(mercati ? { mercati } : {}), ...(opifici ? { opifici } : {}), ...(palazzo ? { palazzo } : {}),
+      ...(win === undefined ? {} : { win, nemici: outcome.nemici, difesa: outcome.difesa }), ...(grano ? { grano } : {}), ...(mercati ? { mercati } : {}), ...(opifici ? { opifici } : {}), ...(palazzo ? { palazzo } : {}), ...(ph.cigno ? { cigno: true } : {}), ...(ph.leva ? { leva: outcome.leva ?? 0 } : {}),
     });
     this.state.phase = { ...ph, awaitingChoice: false, outcome };
     return { ok: true };
@@ -891,6 +1084,19 @@ export class Game {
       const amount = INT(ph.preview.totale * PROTETTORATO_TRIBUTE);
       this.player.scudi -= amount;
       this.record({ t: 'pactTribute', faction: 'bizantini', amount });
+    }
+    // accordi saraceni con le clausole nascoste: una parte della rendita ai mercanti saraceni
+    if (hasPact(this.player, 'clausole') && ph.preview.totale > 0) {
+      const amount = INT(ph.preview.totale * CLAUSOLE_QUOTA);
+      this.player.scudi -= amount;
+      this.record({ t: 'pactTribute', faction: 'saraceni', amount, clausole: true });
+    }
+    // cigno nero: sotto il giogo, metà della rendita va alla fazione
+    const giogo = (this.player.patti ?? []).find(x => x.kind === 'giogo');
+    if (giogo && ph.preview.totale > 0) {
+      const amount = INT(ph.preview.totale * GIOGO_QUOTA);
+      this.player.scudi -= amount;
+      this.record({ t: 'pactTribute', faction: giogo.faction, amount, giogo: true });
     }
     this.fattiAtIncome(ph.preview.totale);
     this.moodAndTrust();
@@ -1007,7 +1213,7 @@ export class Game {
       if (end.won) {
         end.won = false;
         end.tribute = calculateVassalTribute(st.players, st.current, kin);
-        if (candidaAlTrono(din, st.current)) this.spiega(st.current, 'elezione');
+        candidaAlTrono(din, st.current);
       }
     }
     // con più signori chi supera la soglia attende la fine dell'anno: se sono più d'uno, vince il più ricco

@@ -35,6 +35,8 @@ export interface ExtUi {
   seen?: boolean;
   /** i dispacci sono stati archiviati per questo turno */
   archived?: boolean;
+  /** pagina propria dopo Fra signori (afterSignori), aperta con il pannello `panel` */
+  step?: boolean;
 }
 
 export interface ExtActionResult {
@@ -43,6 +45,8 @@ export interface ExtActionResult {
   panel?: string | null;
   /** pergamena da chiudere prima di continuare (conferma di un acquisto: evita i doppi clic) */
   notice?: { title: string; body: string };
+  /** effetto sonoro dell'azione riuscita (src/ui/suoni.ts) */
+  suono?: import('../ui/suoni').Suono;
 }
 
 export interface ExpansionView {
@@ -53,7 +57,13 @@ export interface ExpansionView {
   /** regole in breve, mostrate all'avvio */
   summary: string[];
   cards(g: Game): ExtCard[];
+  /** pagina propria dopo Fra signori, prima dell'imprevisto (es. la fiera): il pannello da aprire, null se quest'anno non c'è */
+  afterSignori?(g: Game): string | null;
   /** notizie per il signore di turno, in cima alla Delibera ('' se nessuna); animate: solo alla prima apparizione */
+  /** traccia breve per le notizie d'inizio turno (una battaglia vinta, un contratto perduto...); null: nessuna */
+  musicaDispacci?(g: Game): import('../ui/musica').Stacco | null;
+  /** effetto sonoro per le stesse notizie (un assalto, le catapulte sulle mura...); null: nessuno */
+  effettoDispacci?(g: Game): import('../ui/suoni').Suono | null;
   dispatches(g: Game, animate: boolean): string;
   /** riquadro dopo l'esito di un imprevisto: finché non è null sostituisce il pulsante Prosegui */
   eventPanel?(g: Game): string | null;

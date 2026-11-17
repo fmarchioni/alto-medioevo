@@ -56,9 +56,12 @@ export const uiUrl = (name: string): string => spriteUrl(`ui/${name}`);
 
 /** Illustrazioni degli imprevisti (public/sprites/fatti), per numero dell'evento. */
 const ILLUSTRAZIONI: Record<number, string> = {
-  1: 'longobardi', 2: 'doni-saraceni', 3: 'peste', 4: 'campagna', 5: 'alluvione', 6: 'cloaca', 7: 'briganti', 8: 'ciambellano', 9: 'rivolta',
+  1: 'longobardi', 2: 'doni-saraceni', 3: 'peste', 4: 'campagna', 5: 'alluvione', 6: 'cloaca', 7: 'briganti', 8: 'ciambellano', 9: 'rivolta', 17: 'fuga-mercanti',
   10: 'franchi', 11: 'ungari', 12: 'longobardi', 13: 'bizantini', 14: 'saraceni', 15: 'decime-abate', 16: 'commercio-segreto',
   101: 'mercenari', 102: 'traditore', 103: 'tregua',
+  // le vie dei mercanti: richieste (le nozze sono lo stesso dipinto della Dinastia) e imprese
+  111: 'nozze', 112: 'cattedrale', 113: 'legato',
+  121: 'annacquato', 122: 'contrabbando', 123: 'console', 124: 'fallito',
 };
 export const illustrationUrl = (name: string): string => `${BASE}sprites/fatti/${name}.jpg`;
 export const eventIllustration = (eventId: number): string | undefined => (ILLUSTRAZIONI[eventId] ? illustrationUrl(ILLUSTRAZIONI[eventId]) : undefined);

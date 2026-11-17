@@ -7,6 +7,7 @@ import type { CausaMorte, DinastiaState, Successione } from './dinastia';
 import type { FactionId, FactionOption, Pact } from './fazioni';
 import type { Effetto, FattiState, FattoId, FattoOutcome, Sorte } from './fatti';
 import type { EsitoImpresa, Impresa, ImpresaId } from './imprese';
+import type { BeneCasata } from './prestiti';
 import type { Foreclosure } from './pignoramenti';
 import type { SensaleHire, SensaleId } from './sensale';
 
@@ -75,6 +76,8 @@ export interface Player {
   abitudine?: number;
   /** patti con le fazioni in vigore (solo con `fazioni`) */
   patti?: Pact[];
+  /** cigno nero: anno (q) in cui una fazione ha mandato il grande esercito (una volta sola) */
+  cignoNero?: number;
   /** effetti dei fatti del reame in corso (solo con `fatti`) */
   effetti?: Effetto[];
   /** anno (q) dell'ultima volta di ogni imprevisto o fatto non militare: chiave `e<id>` o `f:<fatto>` (opzione `ricorrenza`) */
@@ -237,7 +240,7 @@ export type Phase =
   | { kind: 'successione'; s: Successione }
   /** chiuso il mercato del grano: gli affari fra signori di un'espansione (`signori`), prima dell'imprevisto */
   | { kind: 'signori' }
-  | { kind: 'evento'; eventId: number; awaitingChoice: boolean; outcome?: EventOutcome; faction?: FactionId; nemici?: number }
+  | { kind: 'evento'; eventId: number; awaitingChoice: boolean; outcome?: EventOutcome; faction?: FactionId; nemici?: number; /** cigno nero: il grande esercito */ cigno?: boolean; /** cigno nero: la leva dei Franchi */ leva?: boolean }
   | { kind: 'rendite'; preview: RenditePreview }
   | { kind: 'reame'; returnTo: 'investimenti' }
   | { kind: 'investimenti' }
@@ -270,6 +273,8 @@ export interface EventOutcome {
   mercati?: number;
   opifici?: number;
   palazzo?: number;
+  /** leva dei Franchi: uomini partiti (soldati e servi arruolati) */
+  leva?: number;
   pacts?: Pact[];
   choice?: 'pugna' | 'riscatto';
 }
@@ -316,10 +321,10 @@ export type ChronicleFact =
   | {
       t: 'event'; id: number; scudi: number; servi: number; grano?: number; choice?: 'pugna' | 'riscatto';
       faction?: FactionId; option?: FactionOption; win?: boolean; mercati?: number; opifici?: number; palazzo?: number;
-      nemici?: number; difesa?: number;
+      nemici?: number; difesa?: number; cigno?: boolean; leva?: number;
     }
   /** tributo annuo pagato per un patto (protettorato bizantino) */
-  | { t: 'pactTribute'; faction: FactionId; amount: number }
+  | { t: 'pactTribute'; faction: FactionId; amount: number; /** il giogo del cigno nero (altrimenti il protettorato bizantino) */ giogo?: boolean; /** le clausole nascoste negli accordi saraceni */ clausole?: boolean }
   /** patti scaduti a inizio anno */
   | { t: 'pactEnd'; faction: FactionId; kind: Pact['kind'] }
   /** mercanti che chiudono (-1) o aprono (+1) un mercato, per la loro fiducia */
@@ -342,13 +347,15 @@ export type ChronicleFact =
   /** bancarotta: arrestato a fine anno per i debiti */
   | { t: 'bancarotta'; scudi: number }
   /** Dinastia: morte del signore e successione dell'erede */
-  | { t: 'successione'; morto: string; gender?: Gender; rel?: 'figlio' | 'figlia' | 'nipote'; causa: CausaMorte; eta: number; anni: number; erede: string; cadetti: number; scudi: number; acri: number; corona: boolean }
-  /** Dinastia: eletto re d'Italia a trono vacante; voti: [candidato, voti] */
-  | { t: 'corona'; voti?: [number, number][] }
+  | { t: 'successione'; morto: string; gender?: Gender; rel?: Successione['rel']; assassino?: string; ag?: Gender; causa: CausaMorte; eta: number; anni: number; erede: string; cadetti: number; scudi: number; acri: number; corona: boolean }
+  /** Dinastia: re d'Italia; il primo senza voto, poi eletto alla morte del re della casata casaRe (voti: [candidato, voti]) */
+  | { t: 'corona'; voti?: [number, number][]; casaRe?: number }
   /** Dinastia: fatti della famiglia (nascite, lutti, nozze, ripudi) */
   | {
-      t: 'famiglia'; k: 'nascita' | 'lutto' | 'nozze' | 'ripudio' | 'ripudiato' | 'rifiuto' | 'reggenza' | 'trasferimento';
+      t: 'famiglia'; k: 'nascita' | 'lutto' | 'nozze' | 'ripudio' | 'ripudiato' | 'rifiuto' | 'reggenza' | 'trasferimento' | 'cadetto' | 'prestito' | 'vincolo' | 'usurpazione' | 'esilio';
       chi: string; con?: string; casa?: number; fazione?: FactionId; dote?: number; rel?: string; gender?: Gender; citta?: number; da?: number;
+      /** prestiti di casata (prestiti.ts): bene, quantità, com'è andata; vincolo rotto: offeso o offensore */
+      bene?: BeneCasata; qty?: number; esito?: 'concesso' | 'prestato' | 'negato' | 'reso' | 'mancato' | 'offeso' | 'offensore';
     }
   /** sensale di piazza assoldato per l'anno */
   | { t: 'sensale'; who: SensaleId; cost: number }

@@ -60,15 +60,16 @@
 import { INT } from '../../domain/economy';
 import { RISCHIO_BATTAGLIA } from '../../domain/dinastia';
 import { legami, prudente, ripudiabili } from '../../domain/famiglia';
-import type { BotCtx, ExpansionRules } from '../../domain/expansion';
+import { growPerPlayer, type BotCtx, type ExpansionRules } from '../../domain/expansion';
 import { borders } from '../../domain/geography';
 import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI } from '../../domain/investments';
 import { wealthIndex } from '../../domain/rank';
 import { Mulberry32 } from '../../domain/rng';
 import type { Game } from '../../domain/turn';
+import type { DispaccioCasata } from '../../domain/prestiti';
 import { livelloOf, sereno } from '../../domain/gabelle';
 import type { ActionResult, EventOutcome, Player } from '../../domain/types';
-import { factionOfEvent } from '../../domain/fazioni';
+import { LEVA_ANNI, factionOfEvent } from '../../domain/fazioni';
 import {
   cardOf, CARTA_EVENT, CARTA_PESO, CARTE_ID, cartaOfEvent, discard, drawCard, expireCards, handOf, MERC_PAGA, mercsOf, playedThisYear, scadenzaCarta, TRADITORE_MURA, traitorsAt, truceOn, type CartaGuerra,
 } from './carte';
@@ -121,9 +122,18 @@ export const LOOT_GRANO = 20;
 /** assedio: servi uccisi e grano bruciato a ogni vittoria; vittorie per far cadere il feudo */
 export const SIEGE_KILL = 0.2;
 export const SIEGE_BURN = 0.3;
+/** al più tanti assalti vinti per far cadere un feudo (quanti ne servono lo dice siegeNeed) */
 export const SIEGE_FALL_WINS = 5;
+/** popolo e soldati che tengono in piedi un feudo assediato: ogni soglia vale un assalto in più */
+export const SIEGE_SERVI_STEPS = [1500, 3000] as const;
+export const SIEGE_SOLDATI_STEP = 100;
+/** le sconfitte subite negli ultimi anni nelle guerre per le risorse fiaccano il morale: una vittoria in meno ciascuna, fino a tante */
+export const SIEGE_MORALE_YEARS = 3;
+export const SIEGE_MORALE_MAX = 2;
 /** ogni anno d'assedio la malattia nel campo porta via fino a questa quota degli assedianti */
 export const SIEGE_ATTRITION = 0.08;
+/** leva dei Franchi: quota degli uomini che tornano a casa (minima e massima) */
+export const LEVA_RITORNO = [0.5, 0.8] as const;
 /** il feudo cade anche quando gli restano meno servi di così */
 export const FALL_SERVI = 300;
 /** la pace si compra a tanti scudi per soldato assediante */
@@ -203,11 +213,13 @@ export interface WarResult {
 
 /** Notizie per un signore, lette all'inizio del suo turno. */
 export type Dispatch =
+  /** Dinastia: prestiti di casata (src/domain/prestiti.ts) */
+  | { k: 'casata'; d: DispaccioCasata }
   | { k: 'attacked'; war: WarResult }
   | { k: 'siege'; war: WarResult }
   /** all'attaccante: l'esito della battaglia, combattuta alla chiusura dell'anno */
   | { k: 'battle'; war: WarResult }
-  | { k: 'returned'; n: number; lost: number; anni: number; from: number; cat?: number }
+  | { k: 'returned'; n: number; lost: number; anni: number; from: number; cat?: number; franchi?: boolean }
   /** salvataggi vecchi: l'assediato comprava la pace senza chiedere */
   | { k: 'peace'; by: number; scudi: number }
   /** all'assediato: l'assediante ha accettato (ok) o respinto la sua proposta di pace */
@@ -234,6 +246,8 @@ export interface March {
   anni: number;
   /** feudo assalito */
   from: number;
+  /** uomini dati in leva ai Franchi (cigno nero): tornano dalla guerra contro gli Ungari */
+  franchi?: boolean;
 }
 
 /** Un esercito in marcia verso il nemico: combatterà alla chiusura dell'anno `arrive`. */
@@ -657,8 +671,23 @@ function conquer(g: Game, attacker: number, target: number, w: WarResult): void 
   g.fall(target);
 }
 
+/**
+ * Quanti assalti vinti servono per far cadere il feudo, da 1 a SIEGE_FALL_WINS (5): uno, più uno per cerchia
+ * di mura ancora in piedi (fino a due), uno o due per un popolo numeroso, uno per una guarnigione;
+ * meno uno per ogni sconfitta recente nelle guerre per le risorse (il morale è a terra).
+ * Si ricalcola a ogni assalto: mura abbattute e servi uccisi avvicinano la caduta.
+ */
+export function siegeNeed(g: Game, target: number): number {
+  const st = ss(g), p = g.state.players[target];
+  const mura = Math.min(2, st.mura[target] ?? 0);
+  const popolo = SIEGE_SERVI_STEPS.filter(x => p.servi >= x).length;
+  const guarnigione = (st.soldati[target] ?? 0) >= SIEGE_SOLDATI_STEP ? 1 : 0;
+  const sconfitte = st.wars.filter(w => w.defender === target && w.win && w.goal !== 'distruzione' && w.q >= g.state.q - SIEGE_MORALE_YEARS).length;
+  return Math.max(1, Math.min(SIEGE_FALL_WINS, 1 + mura + popolo + guarnigione - Math.min(SIEGE_MORALE_MAX, sconfitte)));
+}
+
 /** Dopo un assalto vinto in distruzione: il feudo cade? */
-const falls = (g: Game, target: number, wins: number) => wins >= SIEGE_FALL_WINS || g.state.players[target].servi < FALL_SERVI;
+const falls = (g: Game, target: number, wins: number) => wins >= siegeNeed(g, target) || g.state.players[target].servi < FALL_SERVI;
 
 /** merc: mercenari del fortino che partono con l'esercito (anche da soli) */
 export function declareWar(g: Game, target: number, sent: number, goal: WarGoal, cat = 0, merc = 0): ActionResult & { campaign?: Campaign; joined?: boolean } {
@@ -1337,7 +1366,7 @@ const SERVO_VALUE = 5;
 function siegeValue(g: Game, s: Siege, chance: number): number {
   const d = g.state.players[s.target], p = g.state.players[s.owner];
   const prezzo = g.state.scalars.prezzo || 30;
-  const need = Math.max(1, SIEGE_FALL_WINS - s.wins);
+  const need = Math.max(1, siegeNeed(g, s.target) - s.wins);
   // a ogni vittoria: scudi e grano che i soldati possono portar via, finché ce ne sono
   const perWin = Math.min(Math.max(0, d.scudi), s.n * LOOT_SCUDI) + (Math.min(d.grano * 0.5, s.n * LOOT_GRANO) * prezzo) / 1000;
   const prize = Math.max(0, d.scudi) + Math.min(Math.max(0, d.acri), MAX_ACRI - p.acri) * (COSTS.terre / ACRI_PER_ACQUISTO)
@@ -1557,6 +1586,13 @@ export const rules: ExpansionRules = {
     };
   },
 
+  addPlayer(state, i) {
+    growPerPlayer(state.ext as SpadeState, i, {
+      mura: () => 0, soldati: () => 0, catapulte: () => 0, torri: () => 0, lastWar: () => -1, lastDrive: () => -1, spia: () => -1,
+      leve: () => null, giocata: () => -1, mercenari: () => null, tregue: () => -1, piani: () => null, carte: () => [],
+    });
+  },
+
   // mazzo dell'espansione: ogni carta che il signore non ha già in mano (traditore e tregua solo con altri signori)
   deck(g) {
     const st = ss(g), me = g.state.current, rivals = others(g, me).length > 0;
@@ -1584,8 +1620,8 @@ export const rules: ExpansionRules = {
         const lost = INT(m.n * MARCH_SICKNESS * m.anni * rnd());
         st.soldati[me] += m.n - lost;
         if (m.cat) (st.catapulte ??= g.state.players.map(() => 0))[me] = catapultsOf(st, me) + m.cat;
-        st.inbox.push({ k: 'returned', n: m.n - lost, lost, anni: m.anni, from: m.from, cat: m.cat ?? 0 });
-        note(g, me, 'returned', { n: m.n - lost, lost, anni: m.anni, from: m.from });
+        st.inbox.push({ k: 'returned', n: m.n - lost, lost, anni: m.anni, from: m.from, cat: m.cat ?? 0, ...(m.franchi ? { franchi: true } : {}) });
+        note(g, me, 'returned', { n: m.n - lost, lost, anni: m.anni, from: m.from, ...(m.franchi ? { franchi: 1 } : {}) });
       }
       st.marcia = st.marcia!.filter(m => !home.includes(m));
     }
@@ -1632,6 +1668,22 @@ export const rules: ExpansionRules = {
   // in guerra il denaro costa di più
   usuryExtra: g => warUsury(g, g.state.current),
 
+  // cigno nero: in guerra il grande esercito è enorme, perché i principi hanno soldati e mura
+  cignoNero: 4,
+
+  // cigno nero, la leva dei Franchi: gli uomini partono per la guerra contro gli Ungari; dopo LEVA_ANNI
+  // anni ne torna a casa una parte (dal 50 all'80%), come una schiera che rientra da una campagna
+  leva: {
+    soldati: g => ss(g).soldati[g.state.current],
+    parti(g, dalFortino, totale) {
+      const st = ss(g), me = g.state.current;
+      st.soldati[me] -= dalFortino;
+      const tornano = INT(totale * (LEVA_RITORNO[0] + (LEVA_RITORNO[1] - LEVA_RITORNO[0]) * roll(st)()));
+      (st.marcia ??= []).push({ owner: me, n: tornano, back: g.state.q + LEVA_ANNI, anni: 0, from: me, franchi: true });
+      note(g, me, 'leva', { n: totale, servi: totale - dalFortino });
+    },
+  },
+
   factionDefense(g) {
     const st = ss(g), me = g.state.current;
     return { soldati: (st.soldati[me] + mercsOf(g, st, me)) * SOLDIER_VS_HORDE, mura: 1 + WALL_VS_HORDE * st.mura[me] };
@@ -1663,6 +1715,24 @@ export const rules: ExpansionRules = {
   onYearClose: resolveBattles,
 
   botBeforeTrade: botBrigands,
+
+  // Dinastia: casata madre e rami cadetti si prestano soldati, al più metà di quelli nel fortino di chi presta
+  prestiti: {
+    beni: ['soldati'],
+    ha: (g, i) => ss(g).soldati[i] ?? 0,
+    limite: (g, _chi, a) => Math.floor((ss(g).soldati[a] ?? 0) / 2),
+    sposta(g, da, a, _bene, qty) {
+      const st = ss(g);
+      st.soldati[da] -= qty;
+      st.soldati[a] += qty;
+    },
+    dispaccio: (g, to, d) => send(ss(g), to, { k: 'casata', d }),
+    // il computer chiede soldati quando un assedio è più forte del suo fortino
+    bisogno(g, i) {
+      const st = ss(g), n = siegesOn(st, i).reduce((a, s) => a + s.n, 0);
+      return n > st.soldati[i] ? { bene: 'soldati', qty: n - st.soldati[i] } : null;
+    },
+  },
 
   botBeforeInvest(c) {
     botAnswerTreaties(c);

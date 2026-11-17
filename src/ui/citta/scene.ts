@@ -83,6 +83,8 @@ const EVENTI: Record<number, Copione> = {
   7: { nemici: true, gruppi: [g('brigante', 5, 'bosco', 'soglia-nord', 2.3, 'arriva', { torce: true })] },
   8: { tinta: 'notte', folla: 0.3, gruppi: [g('signore', 1, 'palazzo', 'nord', 3.2, 'va', { scia: true, attesa: 1 })] },
   9: { folla: 0.5, gruppi: [g('contadino', 4, 'case', 'granaio', 2.2, 'arriva', { torce: true }), g('contadina', 3, 'case', 'granaio', 2.2, 'arriva', { torce: true, attesa: 1 })], fuochi: [{ dove: 'granaio', n: 3 }] },
+  // i mercanti vessati lasciano la città: carri e asini carichi escono dal mercato verso sud
+  17: { folla: 0.2, gruppi: [g('carovana', 1, 'mercato', 'sud', 1.1, 'va'), g('mercante-asino', 2, 'mercato', 'sud', 1.2, 'va', { attesa: 1 }), g('carovana', 1, 'mercato', 'sud', 1.1, 'va', { attesa: 3 })] },
   15: { gruppi: [g('monaco', 3, 'chiesa', 'palazzo', 1.2)] },
   16: { tinta: 'notte', folla: 0.3, gruppi: [g('mercante-asino', 2, 'nord', 'mercato', 1.6)] },
   101: { gruppi: [g('cavaliere-pesante', 1, 'nord', 'soglia-nord', 2), g('soldato', 4, 'nord', 'soglia-nord', 2, 'arriva', { attesa: 1 })] },

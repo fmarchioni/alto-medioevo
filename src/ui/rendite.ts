@@ -82,7 +82,7 @@ export function treasurerGreeting(g: Game): string {
   if (p.umore !== undefined) {
     const u = livelloOf(umoreOf(p)), f = livelloOf(fiduciaOf(p));
     if (!sereno(u)) lines.push(`Il popolo è ${MOOD_WORD[u]}, ${h}: quest'anno potrebbe rivoltarsi.`);
-    if (!sereno(f)) lines.push(`I mercanti sono ${TRUST_WORD[f]}: qualcuno potrebbe chiudere bottega.`);
+    if (!sereno(f)) lines.push(`I mercanti sono ${TRUST_WORD[f]}: qualcuno potrebbe chiudere bottega, e se lasciano la città chiudono anche un opificio.`);
     if (p.scudi < 0) lines.push('Con il tesoro in debito i granai non si riparano: quest\'anno parte del grano è andata a male.');
     lines.push('Se volete sapere cosa comporta ciascuna gabella, chiedetemi pure (il "?" accanto a ognuna).');
   } else if (!g.state.options.spoilOncePerYear) {
@@ -174,9 +174,9 @@ export function rateHelp(g: Game, k: RateKind, _r: Rates): string {
     `Il commerzio tassa i banchi dei mercati e le botteghe degli opifici, ${h}.`,
     `I mercati però rendono secondo la fiducia dei mercanti, che cala se li spremete: rende bene un anno o due, poi se ne vanno. Oggi i mercanti sono ${TRUST_WORD[f]} (fiducia ${f}).`,
     `Se si fidano poco ci fanno pagare il grano più caro e ce lo comprano a meno, fino a ${pct(MAX_RICARICO)}.`,
-    `Con la fiducia ottima o buona nessuno se ne va, e se è ottima può arrivare un mercante forestiero ad aprire un mercato. Da normale in giù qualcuno chiude bottega, tanto più spesso quanto più sono scontenti.`,
+    `Con la fiducia ottima o buona nessuno se ne va, e se è ottima può arrivare un mercante forestiero ad aprire un mercato. Da normale in giù qualcuno chiude bottega, tanto più spesso quanto più sono scontenti; e come il popolo si rivolta, i mercanti vessati possono lasciare la città tutti insieme, chiudendo un mercato e un opificio.`,
     `I mercanti sopportano meglio la gabella se vendete loro grano: quello venduto quest'anno la rende più tollerabile (fino a un ${TOLLERANZA_MAX}% di malcontento in meno).`,
-    `Gli opifici invece non badano ai mercanti: rendono secondo l'umore degli artigiani.`,
+    `Gli opifici rendono secondo l'umore degli artigiani, ma se i mercanti se ne vanno perdono chi vende i loro manufatti.`,
   ].join(' ');
 }
 

@@ -6,7 +6,7 @@
  * come per gli imprevisti del listato.
  */
 import {
-  ACCORDI_MARKET_BONUS, bribeCost, DEVASTATION_HARVEST_LOSS, FACTION_EVENT, factionOfEvent, marriageCost, PROTETTORATO_TRADE_BONUS,
+  ACCORDI_MARKET_BONUS, CLAUSOLE_QUOTA, bribeCost, CIGNO_LOOT, LEVA_ANNI, LEVA_SOLDATI, DEVASTATION_HARVEST_LOSS, GIOGO_ANNI, GIOGO_QUOTA, FACTION_EVENT, factionOfEvent, marriageCost, PROTETTORATO_TRADE_BONUS,
   PACT_YEARS, PROTETTORATO_TRIBUTE, tributeCost, VASSALLO_HARVEST_TAX, type Defense, type FactionId, type FactionOption, type Pact, type PactKind,
 } from '../domain/fazioni';
 import type { ChronicleFact, EventOutcome, Player } from '../domain/types';
@@ -179,9 +179,16 @@ export interface OptionText {
   emblem: string;
 }
 
+/** Che cosa costa una battaglia perduta, per fazione (anche contro il grande esercito). */
+const LOSS_RISK: Record<FactionId, string> = {
+  franchi: 'denaro, servi e un piano del palazzo', ungari: 'molti servi, grano e campi devastati', longobardi: 'scudi e qualche servo',
+  bizantini: 'un mercato, un opificio e qualche servo', saraceni: 'servi portati via come schiavi e un mercato',
+};
+
 /** Etichetta e conseguenze di una scelta, con i numeri del feudo. */
 /** cap: inizio mite, scudi massimi che tributo e riscatto possono costare (Game.luckCap) */
-export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0.5, cap = Infinity): OptionText {
+/** fortino: soldati del signore, per la leva dei Franchi */
+export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0.5, cap = Infinity, fortino = 0): OptionText {
   const tribute = Math.min(cap, tributeCost(p, f));
   const chance = pct(winP);
   const fight = (label: string, risk: string) => ({ label, emblem: '⚔', sub: `vittoria ${chance} circa: bottino e meno attacchi per 6 anni. Se perdete: ${risk}` });
@@ -213,7 +220,21 @@ export function optionText(p: Player, f: FactionId, opt: FactionOption, winP = 0
     case 'saccheggio':
       return { label: 'Lasciare saccheggiare', emblem: '⚐', sub: 'nessun morto, ma bruciano un mercato e un opificio (o il 30% del grano, se non ne avete).' };
     case 'accordi':
-      return { label: 'Accordi commerciali', emblem: '☾', sub: `per ${yrs('accordi')} anni i mercati rendono il ${pct(ACCORDI_MARKET_BONUS)} in più, ma le vele saracene torneranno più spesso.` };
+      return { label: 'Accordi commerciali', emblem: '☾', sub: `per ${yrs('accordi')} anni i mercati rendono il ${pct(ACCORDI_MARKET_BONUS)} in più, ma le vele saracene torneranno più spesso. I mercanti saraceni sono astuti: chissà che cosa scrivono in piccolo.` };
+    // cigno nero: il grande esercito
+    case 'resistere':
+      return { label: 'Resistere', emblem: '⚔', sub: `vittoria ${chance} circa: un bottino ${CIGNO_LOOT === 3 ? 'triplo' : `×${CIGNO_LOOT}`} e la strada del trono è libera. Se perdete: ${LOSS_RISK[f]}, e per ${GIOGO_ANNI} anni metà delle rendite ${aThe(f)}.` };
+    case 'concedere': {
+      const servi = Math.max(0, LEVA_SOLDATI - fortino);
+      return {
+        label: `Dare ${n(LEVA_SOLDATI)} soldati`, emblem: '⚑',
+        sub: servi === 0
+          ? `partono ${n(LEVA_SOLDATI)} soldati del fortino; fra ${LEVA_ANNI} anni ne tornerà una parte.`
+          : `nel fortino avete ${n(fortino)} soldati: ${n(servi)} servi saranno arruolati a forza, e il popolo andrà su tutte le furie. Fra ${LEVA_ANNI} anni ne tornerà una parte.`,
+      };
+    }
+    case 'sottomettersi':
+      return { label: 'Sottomettersi', emblem: '⚖', sub: `nessuna battaglia, ma per ${GIOGO_ANNI} anni il ${pct(GIOGO_QUOTA)} delle rendite va ${aThe(f)}${p.credito > 0 ? ` (circa ${n(p.credito * GIOGO_QUOTA)} scudi l'anno)` : ''}.` };
   }
 }
 
@@ -231,21 +252,27 @@ export function pactText(x: Pact): string {
     case 'protettorato': return `Protettorato bizantino: quasi nessun attacco, commercio +${pct(PROTETTORATO_TRADE_BONUS)}, tributo del ${pct(PROTETTORATO_TRIBUTE)} (${until})`;
     case 'corrotti': return `Il governatore bizantino è stato comprato (${until})`;
     case 'accordi': return `Accordi con i Saraceni: mercati +${pct(ACCORDI_MARKET_BONUS)}, ma più incursioni (${until})`;
+    case 'clausole': return `Clausole nascoste negli accordi: il ${pct(CLAUSOLE_QUOTA)} delle rendite ai mercanti saraceni (${until})`;
     case 'devastati': return `Campi devastati dagli Ungari: raccolto -${pct(DEVASTATION_HARVEST_LOSS)} (${until})`;
     case 'parentela': return `Parentela con ${the}: non vi attaccano più, ma le loro rivali vengono più spesso (finché vivono gli sposi)`;
     case 'vendetta': return `${cap(the)} vendicano il ripudio: attaccano molto più spesso (${until})`;
+    case 'giogo': return `Sotto il giogo: il ${pct(GIOGO_QUOTA)} delle rendite va ${aThe(x.faction)} (${until})`;
   }
 }
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+/** "ai Franchi", "agli Ungari": la preposizione articolata davanti al nome della fazione. */
+export const aThe = (f: FactionId) => INFO[f].the.replace(/^i /, 'ai ').replace(/^gli /, 'agli ');
 
 /** Didascalia dell'esito di una scelta. */
 export function outcomeCaption(o: EventOutcome, p: Player): string {
   const f = o.faction!, h = honorific(p), the = INFO[f].the;
   const losses = lossText(o);
   const odds = o.nemici ? ` Le vostre forze (${n(o.difesa ?? 0)}) contro ${n(o.nemici)} nemici.` : '';
-  if (o.win === true) return pick([`Vittoria, ${h}! ${cap(the)} fuggono e lasciano un bottino di ${n(o.scudi)} scudi.`, `${cap(the)} sono respinti! Il bottino vale ${n(o.scudi)} scudi.`]) + (o.servi ? ` Sono caduti ${n(o.servi)} dei vostri.` : '') + odds;
-  if (o.win === false) return `La battaglia è perduta, ${h}. ${f === 'saraceni' ? `I Saraceni portano via ${n(o.servi)} servi come schiavi` : `Perdite: ${losses}`}.${odds}`;
+  const trono = o.option === 'resistere' ? ' Il grande esercito è in rotta, e la strada del trono è libera.' : '';
+  const giogo = (o.pacts ?? []).some(x => x.kind === 'giogo') ? ` E per ${GIOGO_ANNI} anni metà delle vostre rendite andrà ${aThe(f)}.` : '';
+  if (o.win === true) return pick([`Vittoria, ${h}! ${cap(the)} fuggono e lasciano un bottino di ${n(o.scudi)} scudi.`, `${cap(the)} sono respinti! Il bottino vale ${n(o.scudi)} scudi.`]) + (o.servi ? ` Sono caduti ${n(o.servi)} dei vostri.` : '') + trono + odds;
+  if (o.win === false) return `La battaglia è perduta, ${h}. ${f === 'saraceni' ? `I Saraceni portano via ${n(o.servi)} servi come schiavi` : `Perdite: ${losses}`}.${giogo}${odds}`;
   switch (o.option) {
     case 'tributo': return `Il tributo è pagato: ${n(o.scudi)} scudi. ${cap(the)} se ne vanno soddisfatti, e se ne ricorderanno.`;
     case 'matrimonio': return `Le nozze sono celebrate con gran pompa: la dote costa ${n(o.scudi)} scudi${o.palazzo ? ', e la sposa porta in dono un nuovo piano del palazzo' : ''}. I Franchi ora sono parenti.`;
@@ -256,7 +283,11 @@ export function outcomeCaption(o: EventOutcome, p: Player): string {
     case 'corrompere': return `Il governatore intasca ${n(o.scudi)} scudi, sorride e se ne torna da dove è venuto.`;
     case 'riscatto': return `Il riscatto è pagato (${losses}): le navi riprendono il largo.`;
     case 'saccheggio': return `I Saraceni saccheggiano senza toccare nessuno: ${losses}.`;
-    case 'accordi': return `Si firmano gli accordi: spezie e sete arriveranno nei vostri mercati, e con loro altre vele saracene.`;
+    case 'accordi': return (o.pacts ?? []).some(x => x.kind === 'clausole')
+      ? `Si firmano gli accordi... ma appena l'inchiostro è asciutto il vostro notaio impallidisce: i Saraceni hanno nascosto delle clausole fra le righe in arabo. Per ${PACT_YEARS.clausole} anni il ${pct(CLAUSOLE_QUOTA)} delle vostre rendite andrà ai loro mercanti, oltre alle vele che torneranno più spesso.`
+      : `Si firmano gli accordi: spezie e sete arriveranno nei vostri mercati, e con loro altre vele saracene.`;
+    case 'concedere': return `${n(o.leva ?? LEVA_SOLDATI)} uomini partono con i Franchi verso la guerra contro gli Ungari${o.servi < 0 ? `: ${n(o.servi)} servi strappati ai campi, e il popolo è furioso` : ''}. Fra ${LEVA_ANNI} anni ne tornerà una parte.`;
+    case 'sottomettersi': return `Piegate il capo davanti al grande esercito, ${h}: nessuno muore, ma per ${GIOGO_ANNI} anni metà delle vostre rendite andrà ${aThe(f)}.`;
     default: return losses;
   }
 }
@@ -391,7 +422,8 @@ export function factionOutcomeText(o: EventOutcome, p: Player): ComicText {
   if (o.win === true) return { caption, sound: pick(['EVVIVA!', 'CLANG! ZAC!']), line: pick(['Fuggono!', 'Vittoria!', 'Per il feudo!']) };
   if (o.win === false) return { caption, sound: pick(['CRAC!', 'AHIMÈ!']), line: pick(bySea(f) ? ['Alle navi!', 'Ricco bottino!'] : ['Ricco bottino!', 'A casa, carichi!']) };
   switch (o.option) {
-    case 'tributo': case 'riscatto': case 'corrompere': case 'passaggio':
+    case 'concedere': return { caption, sound: pick(['TUM TUM TUM!', 'TARATATA!']), line: pick(['Per il re dei Franchi!', 'Addio, madre!', 'Contro gli Ungari!']) };
+    case 'tributo': case 'riscatto': case 'corrompere': case 'passaggio': case 'sottomettersi':
       return { caption, sound: pick(['TLIN TLIN!', 'SOB!']), line: pick(['Così va bene...', 'Ci rivedremo!', 'Affare fatto.']) };
     case 'matrimonio': return { caption, sound: 'DIN DON!', line: pick(['Lunga vita agli sposi!', 'Evviva gli sposi!']) };
     case 'vassallo': return { caption, sound: 'TUM!', line: pick(['Lo giuro, mio duca.', 'Fedeltà al duca!']) };
@@ -455,7 +487,16 @@ export function factionSentence(f: EventFact): string | undefined {
   const fac = f.faction ?? factionOfEvent(f.id);
   if (!fac) return undefined;
   const i = INFO[fac];
-  const head = `${i.headline.replace('la vostra', 'la sua')}`;
+  const head = f.leva !== undefined
+    ? `Il re dei Franchi, in guerra con gli Ungari, gli chiese ${n(LEVA_SOLDATI)} soldati.`
+    : f.cigno
+    ? `${cap(i.the)}, minacciati dalla sua ascesa verso il trono, gli mandarono contro un grande esercito.`
+    : `${i.headline.replace('la vostra', 'la sua')}`;
+  if (f.cigno && f.win === false) return `${head} Resistette${f.nemici ? ` contro ${n(f.nemici)} nemici` : ''}, ma fu sconfitto: subì il saccheggio, e per ${GIOGO_ANNI} anni dovette dar loro metà delle sue rendite.`;
+  if (f.option === 'concedere') return `${head} Li diede${f.servi < 0 ? `, arruolando a forza ${n(f.servi)} servi fra le proteste del popolo` : ''}.`;
+  if (f.leva !== undefined && f.win === true) return `${head} Rifiutò, e quando i Franchi vennero a prenderseli li sconfisse${f.nemici ? ` (${n(f.nemici)} nemici)` : ''}: il bottino fu di ${n(f.scudi)} scudi.`;
+  if (f.leva !== undefined && f.win === false) return `${head} Rifiutò, e i Franchi lo sconfissero${f.nemici ? ` (${n(f.nemici)} nemici)` : ''}: subì il saccheggio, e per ${GIOGO_ANNI} anni dovette dar loro metà delle sue rendite.`;
+  if (f.option === 'sottomettersi') return `${head} Non volle rischiare il trono in battaglia e si sottomise: per ${GIOGO_ANNI} anni metà delle sue rendite andò ${aThe(fac)}.`;
   const horde = f.nemici ? ` contro ${n(f.nemici)} nemici` : '';
   if (f.win === true) return `${head} Scese in campo${horde} e li vinse: il bottino fu di ${n(f.scudi)} scudi.`;
   if (f.win === false) return `${head} Accettò la battaglia${horde}, ma fu sconfitto${fac === 'saraceni' ? `: i Saraceni portarono via ${n(f.servi)} servi come schiavi` : ''}.`;
@@ -475,3 +516,28 @@ export function factionSentence(f: EventFact): string | undefined {
 }
 
 export const factionName = (f: FactionId) => INFO[f].name;
+
+/** Cigno nero: titolo, sottotitolo e testi della vignetta del grande esercito (o della leva dei Franchi). */
+export function cignoHead(f: FactionId, leva = false): { name: string; headline: string } {
+  if (leva) return { name: 'La leva dei Franchi', headline: `Il re dei Franchi muove guerra agli Ungari e pretende da voi ${n(LEVA_SOLDATI)} soldati.` };
+  return { name: `Il grande esercito: ${INFO[f].name}`, headline: `${cap(INFO[f].the)} temono la vostra ascesa al trono e vi mandano contro tutte le loro forze.` };
+}
+export function cignoText(f: FactionId, p: Player, leva = false): ComicText {
+  const h = honorific(p), the = INFO[f].the;
+  if (leva) return {
+    caption: pick([
+      `Un conte franco giunge con il sigillo del suo re, ${h}: la guerra contro gli Ungari è alle porte, e il re vuole ${n(LEVA_SOLDATI)} dei vostri uomini. Chi rifiuta, i Franchi lo considerano nemico.`,
+      `I Franchi radunano un esercito contro gli Ungari, ${h}, e vi chiedono ${n(LEVA_SOLDATI)} soldati, subito. O li date, o sarà guerra con loro.`,
+    ]),
+    sound: pick(['TARATATA!', 'TUM! TUM!']),
+    line: pick(['Mille uomini, subito!', 'Il re li vuole ora!', 'O soldati, o guerra!']),
+  };
+  return {
+    caption: pick([
+      `${cap(the)} hanno saputo che siete a un passo dal trono, ${h}, e non lo permetteranno: un esercito come non se n'erano mai visti marcia sul feudo. Resistete, o piegate il capo?`,
+      `La vostra ascesa fa paura, ${h}: ${the} radunano tutte le loro schiere e vengono a fermarvi prima che prendiate la corona.`,
+    ]),
+    sound: pick(['TUM! TUM! TUM!', "ALL'ARMI!"]),
+    line: pick(['Nessuna corona per voi!', 'Piegatevi, o bruciate!', 'Il trono non sarà vostro!']),
+  };
+}

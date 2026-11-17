@@ -1,0 +1,28 @@
+{
+  "_istruzioni": "Effetti sonori del gioco. I file .mp3 stanno in questa cartella (public/suoni). 'volume' da 0 a 1: il volume generale degli effetti; per ogni effetto il file, il suo volume (0..1) e 'durata': i secondi al piu' che suona prima di sfumare (senza 'durata' suona tutto il file). Il giocatore regola poi il volume con il cursore 'Suoni' in fondo alla pagina. Per accorciare un file: node tools/mp3-taglia.mjs taglia <da.mp3> <a.mp3> <secondi> [inizio].",
+  "volume": 0.6,
+  "effetti": {
+    "click": { "file": "click.mp3", "volume": 0.5 },
+    "errore": { "file": "errore.mp3", "volume": 0.5 },
+    "pergamena": { "file": "pergamena.mp3", "volume": 0.45, "durata": 1.6 },
+    "pergamenaChiudi": { "file": "pergamena.mp3", "volume": 0.35, "durata": 0.9 },
+    "mappa": { "file": "pergamena.mp3", "volume": 0.5, "durata": 3.5 },
+    "pagina": { "file": "pagina.mp3", "volume": 0.6 },
+    "fuoco": { "file": "fuoco.mp3", "volume": 0.6, "durata": 4 },
+    "pioggia": { "file": "pioggia.mp3", "volume": 0.5, "durata": 4 },
+    "alluvione": { "file": "alluvione.mp3", "volume": 0.5, "durata": 4 },
+    "mosche": { "file": "mosche.mp3", "volume": 0.5, "durata": 3 },
+    "tosse": { "file": "tosse.mp3", "volume": 0.6 },
+    "mulino": { "file": "mulino.mp3", "volume": 0.5, "durata": 3.5 },
+    "folla": { "file": "folla.mp3", "volume": 0.5, "durata": 4 },
+    "porta": { "file": "porta.mp3", "volume": 0.6 },
+    "colpi": { "file": "colpi.mp3", "volume": 0.6 },
+    "crollo": { "file": "crollo.mp3", "volume": 0.6, "durata": 3 },
+    "corno": { "file": "corno.mp3", "volume": 0.5, "durata": 4 },
+    "cavalli": { "file": "cavalli.mp3", "volume": 0.5, "durata": 4 },
+    "onde": { "file": "onde.mp3", "volume": 0.5, "durata": 4 },
+    "spade": { "file": "spade.mp3", "volume": 0.6, "durata": 3.5 },
+    "metallo": { "file": "metallo.mp3", "volume": 0.5 },
+    "campane": { "file": "campane.mp3", "volume": 0.5, "durata": 5 }
+  }
+}

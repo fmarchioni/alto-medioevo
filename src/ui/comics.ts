@@ -193,6 +193,22 @@ export const COMICS: Record<number, Comic> = {
       <g transform="translate(182 120)"><path d="M-7 0 C-12 0 -12 16 0 16 C12 16 12 0 7 0z" fill="#d6b25a" stroke="#a8801f" class="a-bounce"/></g>
       ${bubble(14, 30, line, 80, 100)}`,
   },
+  // fuga dei mercanti vessati (riforma delle gabelle): bottega sprangata, carro carico verso la porta
+  17: {
+    sound: ['CIGOLIO...', 'ADDIO!'],
+    lines: ['Troppe gabelle!', 'Andiamo altrove!', 'Qui non si campa!'],
+    captions: h => [
+      `I mercanti non reggono più la gabella sul commerzio, ${h}: sprangano le botteghe e caricano i carri.`,
+      `All'alba un convoglio di carri lascia la città, ${h}: i mercanti vessati portano altrove i loro affari.`,
+    ],
+    scene: line => `${sky('#c98a5a', '#f0d2a0', 'sk17')}${ground('#9a7a4a')}
+      <g transform="translate(220 150)"><rect x="0" y="-50" width="70" height="50" fill="#c9b08a" stroke="#5a3d26"/><path d="M-6 -50 L35 -76 L76 -50z" fill="#7a4a2a"/>
+        <rect x="16" y="-34" width="38" height="34" fill="#5a3d26"/><path d="M14 -30 L56 -4 M56 -30 L14 -4" stroke="#3e2617" stroke-width="4"/></g>
+      <g class="a-sneak"><g transform="translate(70 150)"><rect x="-30" y="-30" width="58" height="18" fill="#8a5a32" stroke="#3e2617"/>
+        <path d="M-28 -30 q28 -26 54 0z" fill="#e6d8b4" stroke="#8a7a5a"/><circle cx="-18" cy="-8" r="9" fill="none" stroke="#3e2617" stroke-width="3"/><circle cx="16" cy="-8" r="9" fill="none" stroke="#3e2617" stroke-width="3"/></g>
+        ${[0, 1].map(i => `<g class="a-bob" style="animation-delay:${i * 0.3}s">${person(118 + i * 30, 142, ['#2e5f6b', '#7a3a2a'][i], sack)}</g>`).join('')}</g>
+      ${bubble(100, 30, line, 140, 100)}`,
+  },
   // ciambellano infedele
   8: {
     sound: ['AL LADRO!', 'TLIN TLIN!'],
@@ -359,7 +375,7 @@ export function outcomeText(o: EventOutcome, p: Player): ComicText {
 export function effectBadges(o: EventOutcome): string {
   const b = (v: number, unit: string) =>
     v === 0 ? '' : `<span class="badge ${v > 0 ? 'gain' : 'loss'}">${v > 0 ? '+' : '−'}${n(v)} ${unit}</span>`;
-  const all = b(o.scudi, 'scudi') + b(o.servi, 'servi') + b(o.grano ?? 0, 'grano');
+  const all = b(o.scudi, 'scudi') + b(o.servi, 'servi') + b(o.grano ?? 0, 'grano') + b(o.mercati ?? 0, (o.mercati ?? 0) < -1 ? 'mercati' : 'mercato') + b(o.opifici ?? 0, (o.opifici ?? 0) < -1 ? 'opifici' : 'opificio');
   return `<div class="badges">${all || '<span class="badge">nessun effetto</span>'}</div>`;
 }
 
@@ -378,7 +394,7 @@ export function outcomeArt(o: EventOutcome): string {
   if (won === true) return illustrationUrl('esito-vittoria');
   if (won === false || o.option === 'saccheggio') return illustrationUrl('esito-sconfitta');
   if (o.option === 'mura') return illustrationUrl('esito-mura');
-  if (o.option === 'matrimonio' || o.option === 'vassallo' || o.option === 'protettorato' || o.option === 'accordi') return illustrationUrl('esito-patto');
+  if (o.option === 'matrimonio' || o.option === 'vassallo' || o.option === 'protettorato' || o.option === 'accordi' || o.option === 'concedere') return illustrationUrl('esito-patto');
   return illustrationUrl('esito-riscatto');
 }
 

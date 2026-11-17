@@ -7,6 +7,7 @@ import { FEUDI, titleName, wealthIndex } from '../domain/rank';
 import type { GameState, Player } from '../domain/types';
 import { renderRealmMap } from './map';
 import { isPainted, paintedPortrait, pick } from './speaker';
+import { voltoSignore } from './volti';
 
 export interface PlayerSnapshot {
   scudi: number;
@@ -70,7 +71,8 @@ export function buildInterlude(before: YearSnapshot, state: GameState, mapMarker
   // chi è caduto in guerra (o è stato arrestato) è uscito dalla partita: non compare più, né nell'elenco né sulla carta
   const alive = state.players.map((p, i) => ({ p, i })).filter(x => x.p.caduto === undefined);
   const players = alive.map(({ p, i }): PlayerChronicle => {
-    const b = before.players[i];
+    // un signore entrato durante l'anno (ramo cadetto della Dinastia): nessun confronto con l'inizio dell'anno
+    const b = before.players[i] ?? { scudi: p.scudi, servi: p.servi, grano: p.grano, acri: p.acri, mercato: p.mercato, opificio: p.opificio, palazzo: p.palazzo, title: p.title, ka: wealthIndex(p) };
     const built: string[] = [];
     if (p.acri > b.acri) built.push(`${n(p.acri - b.acri)} acri`);
     if (p.mercato > b.mercato) built.push(`${p.mercato - b.mercato} ${p.mercato - b.mercato === 1 ? 'mercato' : 'mercati'}`);
@@ -84,7 +86,7 @@ export function buildInterlude(before: YearSnapshot, state: GameState, mapMarker
       promotedTo: p.title !== b.title ? titleName(p.title) : null,
     };
   });
-  return { year, nextYear: year + 1, proclamation: proclaim(year, players), players, map: renderRealmMap(alive.map(x => x.p), mapMarkers, alive.map(x => x.i), mapRoutes), closing: false };
+  return { year, nextYear: year + 1, proclamation: proclaim(year, players), players, map: renderRealmMap(alive.map(x => x.p), mapMarkers, alive.map(x => x.i), mapRoutes, alive.map(x => voltoSignore(state, x.i))), closing: false };
 }
 
 function proclaim(year: number, players: PlayerChronicle[]): string {

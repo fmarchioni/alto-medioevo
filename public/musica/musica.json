@@ -1,0 +1,23 @@
+{
+  "_istruzioni": "Musica del gioco. I file .mp3 stanno in questa cartella (public/musica). 'modalita': le tracce di sottofondo di ogni modalita' (base = gioco base, vie-mercanti, spade-castelli), suonate una dopo l'altra e poi da capo. 'momenti': le tracce brevi dei momenti forti. 'volume' da 0 a 1; 'sfumatura': secondi in cui una traccia cala prima di finire; 'silenzio': secondi di pausa prima della traccia seguente; 'durataMomenti': secondi al piu' di una traccia breve (alleluia e sin, dopo la distribuzione del grano, suonano fino in fondo).",
+  "modalita": {
+    "base": ["pax-lombardiae.mp3", "main_game2.mp3"],
+    "vie-mercanti": ["pax-lombardiae.mp3", "main_game2.mp3"],
+    "spade-castelli": ["main_battle_expansion.mp3", "main_battle_expansion2.mp3"]
+  },
+  "momenti": {
+    "requiem": "requiem.mp3",
+    "scongiuro": "scongiuro.mp3",
+    "festa": "festa.mp3",
+    "battaglia": "battaglia.mp3",
+    "sorpresa": "sorpresa.mp3",
+    "gloria": "gloria.mp3",
+    "intrigo": "intrigo.mp3",
+    "alleluia": "alleluia.mp3",
+    "sin": "sin.mp3"
+  },
+  "volume": 0.35,
+  "sfumatura": 6,
+  "silenzio": 3,
+  "durataMomenti": 22
+}

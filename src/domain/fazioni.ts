@@ -10,6 +10,7 @@
  * nuovi attacchi (un tributo li richiama, un protettorato li allontana).
  */
 import { INT } from './economy';
+import { Mulberry32 } from './rng';
 import { MAX_PALAZZO } from './investments';
 import type { Rng } from './rng';
 import type { EventOutcome, Player } from './types';
@@ -45,10 +46,42 @@ export const FACTION_OPTIONS = {
   bizantini: ['rifiutare', 'protettorato', 'corrompere'],
   saraceni: ['difendere', 'riscatto', 'saccheggio', 'accordi'],
 } as const satisfies Record<FactionId, readonly string[]>;
-export type FactionOption = (typeof FACTION_OPTIONS)[FactionId][number];
+/** Cigno nero: davanti al grande esercito si resiste o ci si sottomette. */
+export const CIGNO_OPTIONS = ['resistere', 'sottomettersi'] as const;
+/** La leva dei Franchi (secondo cigno nero, solo con un'espansione di guerra): dare gli uomini o la guerra. */
+export const LEVA_OPTIONS = ['concedere', 'resistere'] as const;
+export type FactionOption = (typeof FACTION_OPTIONS)[FactionId][number] | (typeof CIGNO_OPTIONS)[number] | (typeof LEVA_OPTIONS)[number];
 
 /** Scelte che portano alla battaglia. */
-export const BATTLE_OPTIONS: readonly FactionOption[] = ['combattere', 'affrontare', 'rifiutare', 'difendere'];
+export const BATTLE_OPTIONS: readonly FactionOption[] = ['combattere', 'affrontare', 'rifiutare', 'difendere', 'resistere'];
+
+// ---------------------------------------------------------------- cigno nero
+
+/**
+ * Cigno nero: quando un signore arriva a un passo dal trono (principe), una fazione si sente
+ * minacciata dalla sua ascesa e gli manda contro un grande esercito, una volta sola nella partita.
+ * O si resiste, o per tre anni le si dà metà delle rendite (il giogo). Chi resiste e perde subisce
+ * il saccheggio della fazione e il giogo insieme; chi vince prende un bottino triplo.
+ */
+export const CIGNO_RANK = 5;
+/** probabilità, a ogni anno da principe, che arrivi il grande esercito (finché non è arrivato) */
+export const CIGNO_CHANCE = 0.4;
+/** quante volte un'orda normale dello stesso anno: le espansioni possono alzarlo (Spade e castelli) */
+export const CIGNO_MULT = 1.5;
+export const CIGNO_LOOT = 3;
+/** il giogo: quota delle rendite alla fazione, per tre incassi (l'anno dell'esercito e i due seguenti) */
+export const GIOGO_QUOTA = 0.5;
+export const GIOGO_ANNI = 3;
+/**
+ * La leva dei Franchi: con un'espansione di guerra (ExpansionRules.leva) metà dei cigni neri sono il re
+ * dei Franchi che, in guerra con gli Ungari, pretende LEVA_SOLDATI soldati. Se il fortino non basta si
+ * arruolano a forza i servi, e il popolo va su tutte le furie (umore LEVA_UMORE); se non bastano
+ * nemmeno i servi, è guerra. Dopo LEVA_ANNI anni torna a casa una parte degli uomini.
+ */
+export const LEVA_QUOTA = 0.5;
+export const LEVA_SOLDATI = 1000;
+export const LEVA_UMORE = 10;
+export const LEVA_ANNI = 2;
 
 // ---------------------------------------------------------------- orde e difesa
 
@@ -106,9 +139,11 @@ export type PactKind =
   | 'protettorato' // Bizantini: quasi nessun attacco, commercio più ricco, tributo annuo
   | 'corrotti' // Bizantini: il governatore chiude un occhio
   | 'accordi' // Saraceni: mercati più ricchi, ma più incursioni saracene
+  | 'clausole' // Saraceni: clausole nascoste negli accordi, una parte della rendita ai loro mercanti
   | 'devastati' // Ungari: campi devastati, raccolto ridotto
   | 'parentela' // Dinastia: nozze con una casata della fazione, che non attacca più; le sue rivali vengono più spesso
-  | 'vendetta'; // Dinastia: la fazione si vendica di un ripudio
+  | 'vendetta' // Dinastia: la fazione si vendica di un ripudio
+  | 'giogo'; // cigno nero: metà delle rendite alla fazione, che intanto non attacca
 
 export interface Pact {
   faction: FactionId;
@@ -118,7 +153,7 @@ export interface Pact {
 }
 
 export const PACT_YEARS: Record<PactKind, number> = {
-  respinti: 6, tributari: 5, matrimonio: 8, vassallo: 8, protettorato: 8, corrotti: 4, accordi: 8, devastati: 3, parentela: 999, vendetta: 7,
+  respinti: 6, tributari: 5, matrimonio: 8, vassallo: 8, protettorato: 8, corrotti: 4, accordi: 8, clausole: 8, devastati: 3, parentela: 999, vendetta: 7, giogo: GIOGO_ANNI - 1,
 };
 
 /** Dinastia: le rivali di una fazione imparentata con il signore, che vengono più spesso, e di quanto. */
@@ -130,7 +165,7 @@ export const VENDETTA_SLOTS = 2;
 
 /** Effetto dei patti sul peso della fazione nella scelta di chi attacca. */
 const WEIGHT_MOD: Record<PactKind, number> = {
-  respinti: 0.4, tributari: 1.6, matrimonio: 0, vassallo: 0, protettorato: 0, corrotti: 0.3, accordi: 2, devastati: 1, parentela: 0, vendetta: VENDETTA_PESO,
+  respinti: 0.4, tributari: 1.6, matrimonio: 0, vassallo: 0, protettorato: 0, corrotti: 0.3, accordi: 2, clausole: 1, devastati: 1, parentela: 0, vendetta: VENDETTA_PESO, giogo: 0,
 };
 
 export const BASE_ATTACK_SLOTS = 4;
@@ -147,6 +182,21 @@ export const PROTETTORATO_TRIBUTE = 0.1;
 export const PROTETTORATO_TRADE_BONUS = 0.25;
 /** Accordi saraceni: bonus dei mercati. */
 export const ACCORDI_MARKET_BONUS = 0.3;
+/**
+ * Clausole nascoste: negli accordi saraceni, una volta su CLAUSOLE_CHANCE, i mercanti hanno scritto in
+ * piccolo che una parte della rendita (CLAUSOLE_QUOTA) va a loro finché durano gli accordi. Ci si accorge
+ * solo dopo aver firmato.
+ */
+export const CLAUSOLE_CHANCE = 0.3;
+export const CLAUSOLE_QUOTA = 0.15;
+/**
+ * Le clausole ci sono? Un tiro a parte, fisso per anno, feudo e tesoro: la sequenza RND del gioco non
+ * cambia (le scelte senza battaglia non ne consumano).
+ */
+export function clausoleNascoste(p: Player, q: number): boolean {
+  const seed = (Math.imul(q + 1, 2654435761) ^ Math.imul(p.feudo + 1, 40503) ^ INT(Math.abs(p.scudi))) >>> 0;
+  return new Mulberry32(seed).next() < CLAUSOLE_CHANCE;
+}
 
 export const pactsOf = (p: Player): Pact[] => p.patti ?? [];
 export const hasPact = (p: Player, kind: PactKind, faction?: FactionId) =>
@@ -231,7 +281,7 @@ export interface FactionOutcome extends EventOutcome {
  * Applica la scelta. Le battaglie consumano 2 RND (esito ed entità), le altre
  * scelte nessuno. `chance` è la probabilità di vittoria (da winChance).
  */
-export function resolveFaction(p: Player, f: FactionId, opt: FactionOption, rng: Rng, q: number, chance = 0.5): FactionOutcome {
+export function resolveFaction(p: Player, f: FactionId, opt: FactionOption, rng: Rng, q: number, chance = 0.5, cigno = false): FactionOutcome {
   const out: FactionOutcome = { faction: f, option: opt, scudi: 0, servi: 0 };
   const scudi = (v: number) => { v = INT(v); p.scudi += v; out.scudi += v; };
   const servi = (pct: number) => {
@@ -260,11 +310,13 @@ export function resolveFaction(p: Player, f: FactionId, opt: FactionOption, rng:
     const m = rng.next();
     if (out.win) {
       const loot = { franchi: [400, 1200], ungari: [600, 1500], longobardi: [300, 1000], bizantini: [500, 1200], saraceni: [400, 1200] }[f];
-      scudi(loot[0] + (loot[1] - loot[0]) * m);
+      scudi((loot[0] + (loot[1] - loot[0]) * m) * (cigno ? CIGNO_LOOT : 1));
       servi(0.01 + 0.02 * m);
       pact('respinti');
       return out;
     }
+    // il grande esercito vincitore saccheggia come sempre, e impone anche il giogo
+    if (cigno) pact('giogo');
     if (f === 'franchi') {
       scudi(-share(p.scudi, 0.15, 300));
       servi(0.03 + 0.03 * m);
@@ -334,6 +386,11 @@ export function resolveFaction(p: Player, f: FactionId, opt: FactionOption, rng:
     }
     case 'accordi':
       pact('accordi');
+      // a volte, scritte in piccolo, le clausole: una parte della rendita ai mercanti saraceni
+      if (clausoleNascoste(p, q)) pact('clausole');
+      break;
+    case 'sottomettersi':
+      pact('giogo');
       break;
   }
   return out;

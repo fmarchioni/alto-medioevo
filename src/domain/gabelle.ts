@@ -154,6 +154,27 @@ export const MERCHANT_CHANCE = 0.2;
 
 export const fiduciaOf = (p: Player) => p.fiducia ?? FIDUCIA_START;
 
+/**
+ * La fuga dei mercanti vessati: come la rivolta per il popolo, un imprevisto che compare con la
+ * fiducia sotto "buono", con le stesse caselle (su 32) o lo stesso peso nel mazzo. Chiude un mercato e,
+ * se ce n'è, anche un opificio: gli opifici rendono con la gabella del commerzio ma non sentono la fiducia,
+ * e senza questo rischio converrebbe tassarli al massimo. Tocca solo chi ha mercati o opifici.
+ */
+export const FUGA_EVENT = 17;
+export const fugaSlots = (p: Player) => (p.fiducia === undefined || (p.mercato <= 1 && p.opificio <= 1) ? 0 : RIOT_SLOTS[livelloOf(fiduciaOf(p))]);
+export function applyFuga(p: Player): EventOutcome {
+  const out: EventOutcome = { scudi: 0, servi: 0 };
+  if (p.mercato > 1) {
+    p.mercato -= 1;
+    out.mercati = -1;
+  }
+  if (p.opificio > 1) {
+    p.opificio -= 1;
+    out.opifici = -1;
+  }
+  return out;
+}
+
 /** La fiducia tende a 100 − commerzio, alleggerito dalla tolleranza. */
 export const fiduciaTarget = (commerzio: number, tolleranza = 0) => 100 - commerzio * (1 - tolleranza / 100);
 

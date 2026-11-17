@@ -6,7 +6,7 @@ import type { Game } from '../../domain/turn';
 import type { GameState, Player } from '../../domain/types';
 import { FEUDI, titleName } from '../../domain/rank';
 import {
-  bidOf, fairOpen, quotaValue, FIERA_OGNI, impegniOf, nextFair, OFFERTA_MAX, PAGA_RITARDO, PENALE, PESO_PREZZO, PESO_PRESTIGIO, QUOTE,
+  PROMOTORI, bidOf, fairOpen, quotaValue, FIERA_OGNI, impegniOf, nextFair, OFFERTA_MAX, PAGA_RITARDO, PENALE, PESO_PREZZO, PESO_PRESTIGIO, QUOTE,
   visibleTo, type Contratto, type FieraDispatch, type FieraState,
 } from './fiera';
 import { PIAZZE, travelYears } from './geografia';
@@ -39,7 +39,10 @@ export const contractLine = (k: Contratto) => `${qtyOf(k.good, k.qty)} per ${com
 export function fairDispatchText(d: FieraDispatch, st: GameState): string {
   const P = (i: number) => who(st.players[i]);
   switch (d.k) {
-    case 'fieraAperta': return `È tempo di fiera! I mercanti forestieri hanno portato ${d.n} contratti di vino e manufatti. Pagate la quota d'ingresso e fate le vostre offerte prima della fine dell'anno.`;
+    case 'fieraAperta': {
+      const f = (st.ext as FieraState | undefined)?.fiera;
+      return `È tempo di fiera! I mercanti forestieri hanno portato ${d.n} contratti di vino e manufatti. ${f?.q === d.q ? descrizioneFiera(f) : ''} Dopo Fra signori si va alla fiera: pagate la quota d'ingresso e fate le vostre offerte prima della fine dell'anno.`;
+    }
     case 'fieraVinta': return `Avete vinto il contratto: ${contractLine(d.c)}, a <b>${d.price} scudi l'unità</b>${d.rivali ? ` (battuti ${d.rivali} ${d.rivali === 1 ? 'rivale' : 'rivali'})` : ''}.${d.soci?.length ? ` ${d.soci.map(P).join(' e ')} ha${d.soci.length > 1 ? 'nno' : ''} chiesto lo stesso prezzo con lo stesso prestigio: la commessa è divisa, e questa è la vostra parte.` : ''} Spedite la merce entro la fine del ${yearOf(d.entro)}: incasserete <b>${n(d.price * d.c.qty)} scudi</b> all'arrivo a ${piazzaName(d.c)}.`;
     case 'fieraPersa': return `Il contratto di ${contractLine(d.c)} è andato a ${[d.winner, ...(d.soci ?? [])].map(P).join(' e ')}, che ${d.soci?.length ? 'se lo dividono e hanno' : 'ha'} chiesto ${d.winPrice} scudi l'unità. Voi ne chiedevate ${d.price}.`;
     case 'fieraRifiutata': return `I mercanti hanno trovato troppo cara la vostra offerta per ${contractLine(d.c)}: ${d.price} scudi l'unità, oltre il prezzo base di ${d.c.base}.`;
@@ -79,13 +82,21 @@ export function fairDispatchHead(d: FieraDispatch): { from: string; title: strin
   }
 }
 
+/** Chi ha bandito la fiera, e perché: lascia intuire se chiederanno più vino o più manufatti. */
+export function descrizioneFiera(f: { promotori?: number }, prossima = false): string {
+  const x = f.promotori !== undefined ? PROMOTORI[f.promotori] : null;
+  if (!x) return '';
+  return prossima ? `La prossima l'hanno già bandita ${x.chi}, ${x.perche}.` : `Quest'anno la fiera l'hanno bandita ${x.chi}, ${x.perche}.`;
+}
+
 /** Il pannello della fiera: quota, contratti e offerte, contratti in corso. */
 export function fieraPanel(g: Game, st: FieraState): string {
   const me = g.state.current, p = g.player, q = g.state.q, cant = st.cantine[me];
   const f = fairOpen(st, q);
   let fair: string;
   if (!f) {
-    fair = `<p>La prossima fiera si tiene nel <b>${yearOf(nextFair(q))}</b>. Preparate vino e manufatti: i mercanti forestieri comprano in grande.</p>`;
+    const next = st.fiera && st.fiera.q > q ? descrizioneFiera(st.fiera, true) : '';
+    fair = `<p>La prossima fiera si tiene nel <b>${yearOf(nextFair(q))}</b>. Preparate vino e manufatti: i mercanti forestieri comprano in grande.${next ? ` ${next}` : ''}</p>`;
   } else {
     const tier = f.quote[me] ?? -1;
     const join = QUOTE.map((t, i) => {
@@ -107,7 +118,7 @@ export function fieraPanel(g: Game, st: FieraState): string {
       </tr>`;
     }).join('');
     const hidden = f.contratti.length - vis.length;
-    fair = `<p>Fiera del <b>${yearOf(f.q)}</b>. ${tier < 0 ? "Per vedere i contratti pagate la quota d'ingresso." : `Avete ${QUOTE[tier].name}.`}${hidden && tier >= 0 ? ` Altri ${hidden} contratti, i più ricchi, li vede solo chi investe di più.` : ''}</p>
+    fair = `<p>Fiera del <b>${yearOf(f.q)}</b>. ${descrizioneFiera(f)} ${tier < 0 ? "Per vedere i contratti pagate la quota d'ingresso." : `Avete ${QUOTE[tier].name}.`}${hidden && tier >= 0 ? ` Altri ${hidden} contratti, i più ricchi, li vede solo chi investe di più.` : ''}</p>
       ${join ? `<div class="btns">${join}</div>` : ''}
       ${vis.length ? `<table class="ext-table"><thead><tr><th>Contratto</th><th>Piazza</th><th>Spedire entro</th><th>Prezzo base l'unità</th><th>La vostra offerta</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
       <p class="hint">Le buste si aprono alla fine dell'anno. Conta per il ${Math.round(PESO_PREZZO * 100)}% il prezzo (vince chi chiede meno) e per il ${Math.round(PESO_PRESTIGIO * 100)}% il prestigio mercantile.</p>
@@ -140,7 +151,7 @@ export function shipReminder(g: Game, st: FieraState): { title: string; body: st
   const list = due.map(x => `<br>- ${contractLine(x.c)} (in magazzino: ${n(cant[x.c.good])})`).join('');
   return {
     title: 'Merce da spedire',
-    body: `${who}, non dimenticate di spedire la merce ai mercanti! Quest'anno è l'ultimo utile:${list}<br>Per spedirla aprite Fra signori, poi la Fiera: è fra i contratti in corso.`,
+    body: `${who}, non dimenticate di spedire la merce ai mercanti! Quest'anno è l'ultimo utile:${list}<br>Per spedirla aprite la Fiera: è fra i contratti in corso.`,
   };
 }
 

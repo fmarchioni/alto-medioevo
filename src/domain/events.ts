@@ -6,7 +6,7 @@
 import { INT } from './economy';
 import type { EventOutcome, Options, Player } from './types';
 import type { Rng } from './rng';
-import { applyRiot, RIOT_EVENT } from './gabelle';
+import { applyFuga, applyRiot, FUGA_EVENT, RIOT_EVENT } from './gabelle';
 import { impresaOfSlot, IMPRESE, type ImpresaId } from './imprese';
 
 export type EventEffect =
@@ -14,6 +14,7 @@ export type EventEffect =
   | { kind: 'serviPercent'; percent: number } // stringa terminata da "%"
   | { kind: 'scelta' } // stringa terminata da "?": pugna o riscatto
   | { kind: 'rivolta' } // riforma delle gabelle: solo con l'umore del popolo basso
+  | { kind: 'fuga' } // riforma delle gabelle: solo con la fiducia dei mercanti bassa
   | { kind: 'fazione' } // fazioni storiche: la scelta dipende dalla fazione
   | { kind: 'impresa' } // imprese temerarie: una carta da giocare quando si vuole
   | { kind: 'carta' }; // carta di un'espansione: la mette in mano l'espansione (ExpansionRules.onCard)
@@ -35,6 +36,7 @@ export const EVENTS: RandomEvent[] = [
   { id: 7, title: 'Briganti', description: 'Una banda di briganti assedia il palazzo.', effect: { kind: 'scelta' } },
   { id: 8, title: 'Ciambellano infedele', description: 'Il ciambellano fugge con parte del tesoro.', effect: { kind: 'scudi', amount: -950 } },
   { id: RIOT_EVENT, title: 'Rivolta', description: 'Il popolo, stremato dalle gabelle, assalta i granai.', effect: { kind: 'rivolta' } },
+  { id: FUGA_EVENT, title: 'I mercanti vessati lasciano la città', description: 'Stanchi delle gabelle sul commerzio, i mercanti chiudono bottega e se ne vanno.', effect: { kind: 'fuga' } },
   { id: 10, title: 'Franchi', description: 'Un conte franco reclama la vostra obbedienza.', effect: { kind: 'fazione' } },
   { id: 11, title: 'Ungari', description: 'Cavalieri ungari devastano le campagne.', effect: { kind: 'fazione' } },
   { id: 12, title: 'Longobardi', description: 'Il duca longobardo pretende fedeltà.', effect: { kind: 'fazione' } },
@@ -59,14 +61,15 @@ export const ATTACK_FIRST_SLOT = 21;
 
 /**
  * Riga 780: estrae l'indice 1..eventSlots. Consuma 1 RND. Ritorna l'evento o null (slot vuoto).
- * Con `riotSlots` > 0 le prime caselle vuote (dalla 9) diventano rivolta.
+ * Con `riotSlots` > 0 le prime caselle vuote (dalla 9) diventano rivolta, e le `fugaSlots` seguenti (fino alla 20) fuga dei mercanti.
  * Con `attackSlots` (>= 0: fazioni in gioco) la casella 1 del tributo longobardo
  * e le caselle dalla 21 in poi diventano attacchi delle fazioni.
  * Con `impresa` (il signore può ricevere un'impresa temeraria) le caselle 31 e 32 le portano.
  */
-export function rollEvent(rng: Rng, options: Options, riotSlots = 0, attackSlots = -1, impresa = false): RandomEvent | null {
+export function rollEvent(rng: Rng, options: Options, riotSlots = 0, attackSlots = -1, impresa = false, fugaSlots = 0): RandomEvent | null {
   const kj = INT(rng.next() * options.eventSlots + 1);
   if (kj >= RIOT_EVENT && kj < RIOT_EVENT + riotSlots) return EVENTS.find(e => e.id === RIOT_EVENT)!;
+  if (kj >= RIOT_EVENT + riotSlots && kj < Math.min(ATTACK_FIRST_SLOT, RIOT_EVENT + riotSlots + fugaSlots)) return EVENTS.find(e => e.id === FUGA_EVENT)!;
   if (attackSlots >= 0) {
     if (kj === 1) return attackSlots >= 1 ? ATTACK : null;
     if (kj >= ATTACK_FIRST_SLOT && kj < ATTACK_FIRST_SLOT + attackSlots - 1) return ATTACK;
@@ -75,7 +78,7 @@ export function rollEvent(rng: Rng, options: Options, riotSlots = 0, attackSlots
   if (card) return EVENTS.find(e => e.id === IMPRESE[card].event)!;
   // con i fatti del reame il ciambellano infedele diventa un fatto con una scelta: la sua casella resta vuota
   if (options.fatti && kj === 8) return null;
-  return EVENTS.find(e => e.id === kj && e.effect.kind !== 'rivolta' && e.effect.kind !== 'fazione' && e.effect.kind !== 'impresa' && e.effect.kind !== 'carta') ?? null;
+  return EVENTS.find(e => e.id === kj && e.effect.kind !== 'rivolta' && e.effect.kind !== 'fuga' && e.effect.kind !== 'fazione' && e.effect.kind !== 'impresa' && e.effect.kind !== 'carta') ?? null;
 }
 
 // ---------------------------------------------------------------- mazzo (opzione `mazzo`)
@@ -98,6 +101,8 @@ export interface DrawCtx {
   q: number;
   /** peso della rivolta (le sue caselle nel listato; 0 senza gabelle) */
   riot: number;
+  /** peso della fuga dei mercanti (come la rivolta, secondo la fiducia; assente: 0) */
+  fuga?: number;
   /** peso degli attacchi delle fazioni (-1: fazioni assenti) */
   attack: number;
   /** il signore può ricevere un'impresa temeraria */
@@ -116,7 +121,7 @@ const MILITARI = [1, 4, 7];
 
 /** L'imprevisto ha la pausa di RICORRENZA_ANNI anni? Non i militari, non la rivolta (figlia delle gabelle), non le carte delle espansioni (hanno la loro mano). */
 export const haRicorrenza = (ev: RandomEvent): boolean =>
-  ev !== ATTACK && !MILITARI.includes(ev.id) && ev.effect.kind !== 'fazione' && ev.effect.kind !== 'rivolta' && ev.effect.kind !== 'carta';
+  ev !== ATTACK && !MILITARI.includes(ev.id) && ev.effect.kind !== 'fazione' && ev.effect.kind !== 'rivolta' && ev.effect.kind !== 'fuga' && ev.effect.kind !== 'carta';
 
 export { eventKey, fattoKey, inPausa, segnaRicorrenza } from './ricorrenza';
 
@@ -126,6 +131,7 @@ export function deckFor(ctx: DrawCtx): { ev: RandomEvent; w: number }[] {
     .filter(e => !FUORI_MAZZO.includes(e.id) && (e.id !== CLOACA || ctx.q >= CLOACA_DAL))
     .map(ev => ({ ev, w: 1 }));
   if (ctx.riot > 0) deck.push({ ev: EVENTS.find(e => e.id === RIOT_EVENT)!, w: ctx.riot });
+  if ((ctx.fuga ?? 0) > 0) deck.push({ ev: EVENTS.find(e => e.id === FUGA_EVENT)!, w: ctx.fuga! });
   if (ctx.attack > 0) deck.push({ ev: ATTACK, w: ctx.attack });
   if (ctx.impresa) for (const id of Object.keys(IMPRESE) as ImpresaId[]) deck.push({ ev: EVENTS.find(e => e.id === IMPRESE[id].event)!, w: 1 });
   for (const x of ctx.extra ?? []) if (x.w > 0) deck.push({ ev: EVENTS.find(e => e.id === x.id)!, w: x.w });
@@ -174,6 +180,7 @@ export function applyFixedEvent(p: Player, ev: RandomEvent): EventOutcome {
     return { scudi: 0, servi: -de };
   }
   if (ev.effect.kind === 'rivolta') return applyRiot(p);
+  if (ev.effect.kind === 'fuga') return applyFuga(p);
   throw new Error('evento con scelta: usare resolveChoice');
 }
 
