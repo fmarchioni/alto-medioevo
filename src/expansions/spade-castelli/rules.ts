@@ -62,6 +62,7 @@ import { RISCHIO_BATTAGLIA } from '../../domain/dinastia';
 import { legami, prudente, ripudiabili } from '../../domain/famiglia';
 import { growPerPlayer, type BotCtx, type ExpansionRules } from '../../domain/expansion';
 import { borders } from '../../domain/geography';
+import { haOpera } from '../../domain/ere';
 import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI } from '../../domain/investments';
 import { wealthIndex } from '../../domain/rank';
 import { Mulberry32 } from '../../domain/rng';
@@ -367,7 +368,9 @@ export const awayOf = (st: SpadeState, i: number) =>
 export const catAwayOf = (st: SpadeState, i: number) =>
   (st.marcia ?? []).filter(m => m.owner === i).reduce((a, m) => a + (m.cat ?? 0), 0) + siegesBy(st, i).reduce((a, s) => a + s.cat, 0) + campaignsBy(st, i).reduce((a, c) => a + c.cat, 0);
 /** Anni di viaggio del ritorno da un feudo: 1 se confina, 2 se è lontano. */
-export const travelYears = (g: Game, from: number, to: number) => (neighbors(g, from).includes(to) ? 1 : 2);
+/** Anni di marcia: uno verso un confinante, due altrimenti; le ere: con strade e ponti un anno in meno (mai meno di uno). */
+export const travelYears = (g: Game, from: number, to: number) =>
+  Math.max(1, (neighbors(g, from).includes(to) ? 1 : 2) - (haOpera(g.state.players[from], 'strade') ? 1 : 0));
 
 const note = (g: Game, player: number, kind: string, data: Record<string, number>) => g.note(player, { t: 'ext', kind, data });
 const send = (st: SpadeState, to: number, d: Dispatch) => st.mail.push({ to, d });

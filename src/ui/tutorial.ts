@@ -5,6 +5,8 @@
  */
 import { createPlayer } from '../domain/turn';
 import { MAX_PALAZZO } from '../domain/investments';
+import { CITTA } from '../domain/citta';
+import { OPERE } from '../domain/ere';
 import { PALAZZO_SERVI, THRONE_THRESHOLD } from '../domain/rank';
 import { merchantPortrait } from './art';
 import { bubble, coin, helmet, hood, person, shield } from './comics';
@@ -173,13 +175,27 @@ const PAGES: Page[] = [
     title: 'Costruire e salire di rango',
     text: [
       `Terre, mercati, opifici e piani di palazzo valgono per il rango quanto li pagate: costruire non vi fa perdere terreno. In più, mercati e opifici rendono con la gabella sul commerzio, e ogni piano di palazzo attira da ${PALAZZO_SERVI[0]} a ${PALAZZO_SERVI[1].toLocaleString('it-IT')} servi nel feudo.`,
-      `Superate le soglie di ricchezza e diventerete conte, duca, granduca, principe; i signori di rango inferiore vi pagheranno un tributo. Chi supera ${THRONE_THRESHOLD.toLocaleString('it-IT')} di ricchezza e ha completato il palazzo in tutti i suoi ${MAX_PALAZZO} piani sale al trono; se nello stesso anno ci riescono in più, vince il più ricco.`,
+      `Superate le soglie di ricchezza e diventerete conte, duca, granduca, principe, ma solo se avete costruito l'opera dell'era che quel titolo richiede (ne parla la pagina seguente); i signori di rango inferiore vi pagheranno un tributo, mai più di una piccola parte della loro rendita. Chi supera ${THRONE_THRESHOLD.toLocaleString('it-IT')} di ricchezza, ha completato il palazzo in tutti i suoi ${MAX_PALAZZO} piani e ha costruito tutte e quattro le opere sale al trono; se nello stesso anno ci riescono in più, vince il più ricco.`,
     ],
     quip: 'Un giorno racconterò nelle piazze di Genua del vostro trono. Se mi pagate bene, s\'intende!',
     art: () => {
       const sample = createPlayer({ name: 'esempio', gender: 1 }, 3);
       Object.assign(sample, { scudi: 20000, servi: 2200, grano: 15000, acri: 1200, mercato: 6, opificio: 4, palazzo: 9 });
       return `<div class="mini-art">${realmScene(sample, 'un feudo prospero con palazzo, mercati e mulini')}</div>`;
+    },
+  },
+  {
+    title: 'La città e le ere',
+    text: [
+      `Ogni bottega vuole i suoi lavoranti: ${CITTA.addettiMercato} servi per un mercato, ${CITTA.addettiOpificio} per un opificio. E i campi vogliono braccia: senza abbastanza contadini il raccolto resta in parte nei campi. Si costruisce solo con servi liberi, che non servono né alle botteghe né ai campi; se poi i servi calano, le botteghe senza lavoranti chiudono.`,
+      'La città costa: ogni anno si paga la manutenzione degli edifici, e quando il villaggio diventa borgo e poi città servono guardie, acquedotti e fogne. Più la città è grande, più parte della rendita se ne va nei servizi. Crescere conviene, ma non all\'infinito.',
+      `Il feudo cresce per ere. In ogni era si possono avere solo tanti mercati e opifici; per passare alla seguente servono le botteghe dell'era, e poi si costruisce la sua opera con scudi e grano: ${OPERE.map(o => o.nome.toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' e $1')}. Ogni opera apre botteghe nuove, dà un piccolo vantaggio e sblocca un titolo: senza il mulino non si diventa conti, senza lo scriptorium non si diventa principi.`,
+    ],
+    quip: 'Una città è come una bottega: più è grande, più costa tenerla aperta!',
+    art: () => {
+      const sample = createPlayer({ name: 'esempio', gender: 1 }, 3);
+      Object.assign(sample, { scudi: 40000, servi: 6000, grano: 20000, acri: 1500, mercato: 9, opificio: 7, palazzo: 4 });
+      return `<div class="mini-art">${realmScene(sample, 'una città cresciuta, con mercati, opifici e campi')}</div>`;
     },
   },
   {

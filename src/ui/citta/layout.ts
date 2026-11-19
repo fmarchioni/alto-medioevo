@@ -41,14 +41,19 @@ export interface CityExtra {
   /** soldati del feudo: la caserma, più grande con l'esercito */
   soldati?: number;
   accampamento?: boolean;
+  /** il feudo è assediato: una breccia nella prima cerchia di mura */
+  breccia?: boolean;
   /** Vie dei mercanti */
+  /** anno di fiera: i padiglioni dei mercanti forestieri */
+  fiera?: boolean;
   fondaco?: boolean;
   banco?: boolean;
   vigneti?: number;
   porto?: boolean;
 }
 
-export type CityKind = 'palazzo' | 'casa' | 'mercato' | 'opificio' | 'mulino' | 'granaio' | 'chiesa' | 'fondaco' | 'banco' | 'porto'
+export type CityKind = 'palazzo' | 'casa' | 'mercato' | 'opificio' | 'mulino' | 'granaio' | 'chiesa' | 'fondaco' | 'banco' | 'porto' | 'scriptorium' | 'ponte'
+  | 'cantina' | 'torchio' | 'fiera'
   | 'mura' | 'porta' | 'torre' | 'caserma' | 'assedio' | 'accampamento' | 'covone' | 'vigna' | 'natura';
 
 export interface CityObject {
@@ -95,12 +100,14 @@ const dist = (gx: number, gy: number) => Math.max(Math.abs(gx - C), Math.abs(gy 
 const inMap = (gx: number, gy: number) => gx >= 0 && gy >= 0 && gx < N && gy < N;
 export const isWater = (gx: number) => gx > BANK_X && gx <= BANK_X + RIVER_W;
 export const isRoad = (gx: number, gy: number) => gx < BANK_X && (gx === ROAD_X || gy === ROAD_Y);
+/** la strada continua oltre il fiume (fuori dalla mappa): lì arriva il ponte */
+const farRoad = (gx: number, gy: number) => gy === ROAD_Y && gx > BANK_X + RIVER_W;
 
 /** Terreno di base di una tessera qualsiasi, anche fuori dalla mappa (il mondo continua oltre il bordo). */
 export function baseGround(seed: number, gx: number, gy: number): Ground {
   if (isWater(gx)) return { sprite: 'acqua' };
   if (gx === BANK_X) return { sprite: 'riva-erba', flip: true };
-  if (isRoad(gx, gy)) return { sprite: 'sassoso' };
+  if (isRoad(gx, gy) || farRoad(gx, gy)) return { sprite: 'sassoso' };
   return { sprite: hash(seed, gx, gy) < 0.05 ? 'erba-fiori' : 'erba' };
 }
 
@@ -112,7 +119,9 @@ const TREES = ['quercia-1', 'quercia-2', 'cipresso-1', 'cipresso-2', 'cipresso-3
 
 /** Bosco e sassi fuori dalla mappa: fitto, perché lì non si costruisce. */
 export function wildAt(seed: number, gx: number, gy: number): string | null {
-  if (inMap(gx, gy) || gx >= BANK_X && gx <= BANK_X + RIVER_W || isRoad(gx, gy)) return null;
+  // oltre il fiume la strada continua in una radura: lì arriva il ponte (strade e ponti)
+  if (inMap(gx, gy) || gx >= BANK_X && gx <= BANK_X + RIVER_W || isRoad(gx, gy) || farRoad(gx, gy)) return null;
+  if (gx > BANK_X + RIVER_W && gx <= BANK_X + RIVER_W + 3 && Math.abs(gy - ROAD_Y) <= 1) return null;
   const r = hash(seed, gx, gy, 1);
   if (r < 0.42) return TREES[Math.floor(hash(seed, gx, gy, 2) * 4)]; // querce e cipressi
   if (r < 0.52) return hash(seed, gx, gy, 2) < 0.5 ? 'cespuglio-1' : 'cespuglio-2';
@@ -131,7 +140,13 @@ const FONDACO_LOT: Lot = [6, 16];
 /** caserma (Spade e castelli): lo stesso lotto del fondaco, perché le espansioni non stanno mai insieme */
 const CASERMA_LOT: Lot = FONDACO_LOT;
 const BANCO_LOT: Lot = [8, 18];
+/** la fiera dei mercanti forestieri (Vie dei mercanti, negli anni di fiera), accanto al banco: un lotto di 3×3, i padiglioni sono grandi */
+const FIERA_LOT: Lot = [5, 18];
 const CHURCH_LOT: Lot = [7, 12];
+/** lo scriptorium (quarta opera delle ere), accanto alla chiesa */
+const SCRIPTORIUM_LOT: Lot = [7, 10];
+/** il ponte di strade e ponti: dalla riva (BANK_X) alla riva lontana, sulla strada che attraversa il fiume; si ancora alla testata lontana */
+const BRIDGE_AT: Lot = [BANK_X + RIVER_W + 1, ROAD_Y];
 const MILL_AT: Lot = [BANK_X, 11];
 const PORT_AT: Lot = [BANK_X, ROAD_Y];
 /** torri di guardia appena fuori dalle mura dell'abitato, accanto alle strade (nord, ovest, sud): restano nell'inquadratura */
@@ -164,7 +179,8 @@ function planFor(seed: number): Plan {
   const take = (gx: number, gy: number, n = 1) => {
     for (let x = gx; x < gx + n; x++) for (let y = gy; y < gy + n; y++) taken.add(tileKey(x, y));
   };
-  for (const l of [...MARKET_LOTS, ...WORKSHOP_LOTS, ...BARN_LOTS, FONDACO_LOT, BANCO_LOT, CHURCH_LOT]) take(l[0], l[1], 2);
+  for (const l of [...MARKET_LOTS, ...WORKSHOP_LOTS, ...BARN_LOTS, FONDACO_LOT, BANCO_LOT, CHURCH_LOT, SCRIPTORIUM_LOT]) take(l[0], l[1], 2);
+  take(FIERA_LOT[0], FIERA_LOT[1], 3);
   for (const l of [...WATCH, CATAPULT_AT, CAMP_AT]) take(l[0], l[1]);
 
   // case: nell'abitato, fra le due cerchie, dal centro verso fuori
@@ -253,13 +269,24 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
     const at = plan.houses[i];
     put('casa', `casa-${i}`, HOUSE_SPRITES[Math.floor(hash(seed, at[0], at[1], 7) * HOUSE_SPRITES.length)], at, 1, hash(seed, at[0], at[1], 8) < 0.5);
   }
+  // con le ere le opere si vedono (src/domain/ere.ts): 1 mulino ad acqua, 2 rotazione, 3 strade e ponti, 4 scriptorium
+  const ere = p.era !== undefined, era = p.era ?? 0;
   const chiesa = nCase >= 60 ? 'cattedrale' : nCase >= 6 ? 'chiesa' : '';
   if (chiesa) put('chiesa', 'chiesa', chiesa, CHURCH_LOT, 2);
+  if (ere && era >= 4) put('scriptorium', 'scriptorium', 'scriptorium', SCRIPTORIUM_LOT, 2);
 
-  // mercati, opifici (il primo è il mulino sul fiume), granai
+  // mercati, opifici, granai; il mulino sul fiume è la prima opera (senza le ere: il primo opificio)
   shops(k.mercati, MARKET_LOTS.length).forEach((big, i) => put('mercato', `mercato-${i}`, big ? 'mercato-2' : 'mercato-1', MARKET_LOTS[i], 2));
-  if (k.opifici >= 1) put('mulino', 'mulino', 'mulino', MILL_AT, 1);
-  shops(k.opifici - 1, WORKSHOP_LOTS.length).forEach((big, i) => put('opificio', `opificio-${i}`, big ? 'opificio-2' : 'opificio-1', WORKSHOP_LOTS[i], 2));
+  if (ere ? era >= 1 : k.opifici >= 1) put('mulino', 'mulino', 'mulino', MILL_AT, 1);
+  shops(ere ? k.opifici : k.opifici - 1, WORKSHOP_LOTS.length).forEach((big, i) => put('opificio', `opificio-${i}`, big ? 'opificio-2' : 'opificio-1', WORKSHOP_LOTS[i], 2));
+  // strade e ponti: le strade della mappa lastricate e il ponte sul fiume
+  if (ere && era >= 3) {
+    for (let i = 0; i < N; i++) {
+      if (dist(ROAD_X, i) > 2) ground.set(tileKey(ROAD_X, i), { sprite: 'lastricato' });
+      if (i < BANK_X && dist(i, ROAD_Y) > 2) ground.set(tileKey(i, ROAD_Y), { sprite: 'lastricato' });
+    }
+    put('ponte', 'ponte', 'ponte', BRIDGE_AT, 1);
+  }
   // senza granai da costruire (regole originali) si vedono i magazzini del grano
   const granai = p.granai !== undefined ? k.granai : Math.ceil(k.magazzini / 2);
   const nGranai = granai <= 3 ? granai : granai < 10 ? 3 : BARN_LOTS.length;
@@ -269,6 +296,7 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
   if (x.fondaco) put('fondaco', 'fondaco', 'fondaco', FONDACO_LOT, 2);
   if (x.banco) put('banco', 'banco', 'banco', BANCO_LOT, 2);
   if (x.porto) put('porto', 'porto', 'porto', PORT_AT, 1);
+  if (x.fiera) put('fiera', 'fiera', 'fiera', FIERA_LOT, 3);
 
   // campi: l'aspetto segue la stagione; in carestia una parte resta incolta
   const st = x.stagione ?? 'primavera';
@@ -282,19 +310,32 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
     const mown = st === 'autunno' || (st === 'raccolto' && r >= 0.5);
     const sprite = barren ? 'arato' : mown ? 'arato' : st === 'primavera' ? 'grano-verde' : 'grano-maturo';
     const tiles = ZOLLE.slice(0, Math.min(4, zolle - i * 4));
-    for (const [a, b] of tiles) ground.set(tileKey(fx + a, fy + b), { sprite });
+    // rotazione delle colture (tre campi): in ogni campo intero una zolla a maggese, dove pascolano le pecore, e una a legumi
+    const rot = ere && era >= 2 && !barren && tiles.length === 4 ? Math.floor(hash(seed, fx, fy, 10) * 4) : -1;
+    const zolla = (z: number) => (rot < 0 ? sprite : z === rot ? 'maggese' : z === (rot + 1) % 4 ? 'legumi' : sprite);
+    tiles.forEach(([a, b], z) => ground.set(tileKey(fx + a, fy + b), { sprite: zolla(z) }));
+    if (rot >= 0) {
+      const [a, b] = ZOLLE[rot], r2 = hash(seed, fx, fy, 11);
+      const bestie = i === 0 ? 'pastore' : r2 < 0.45 ? 'pecore' : r2 < 0.7 ? 'pecora' : '';
+      if (bestie) put('natura', `gregge-${i}`, bestie, [fx + a, fy + b], 0, hash(seed, fx, fy, 12) < 0.5);
+    }
     if (!barren && st === 'raccolto' && mown) {
-      if (tiles.length > 2) put('covone', `covone-${i}a`, 'covone', [fx, fy + 1], 0);
-      if (tiles.length > 1) put('covone', `covone-${i}b`, 'covone', [fx + 1, fy], 0);
+      if (tiles.length > 2 && zolla(2) === sprite) put('covone', `covone-${i}a`, 'covone', [fx, fy + 1], 0);
+      if (tiles.length > 1 && zolla(1) === sprite) put('covone', `covone-${i}b`, 'covone', [fx + 1, fy], 0);
     }
   }
   const nVigne = Math.min(x.vigneti ?? 0, MAX_VIGNE, Math.max(0, plan.fields.length - MAX_CAMPI));
+  // vigneti: l'uva matura dall'estate al raccolto; nel primo vigneto la cantina, nel secondo il torchio
+  const uva = st === 'estate' || st === 'raccolto';
   for (let i = 0; i < nVigne; i++) {
     const [fx, fy] = plan.fields[MAX_CAMPI + i];
-    for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
+    ZOLLE.forEach(([a, b], z) => {
       ground.set(tileKey(fx + a, fy + b), { sprite: 'arato' });
-      put('vigna', `vigna-${i}-${a}${b}`, 'cespuglio-2', [fx + a, fy + b], 0);
-    }
+      const at: Lot = [fx + a, fy + b];
+      if (z === 3 && i === 0) put('cantina', 'cantina', 'cantina', at, 1);
+      else if (z === 3 && i === 1) put('torchio', 'torchio', 'torchio', at, 1);
+      else put('vigna', `vigna-${i}-${a}${b}`, uva ? 'vigneto-uva' : 'vigneto', at, 1);
+    });
   }
 
   // Spade e castelli: la prima cerchia chiude tutto l'abitato (case, botteghe, granai), la seconda il palazzo; dalla terza si aggiungono torrioni
@@ -315,8 +356,16 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
   };
   if (mura >= 1) ring(1, RING_2, mura >= 4 ? [5, 0] : mura >= 3 ? [5] : []);
   if (mura >= 2) ring(2, RING_1, mura >= 5 ? [0] : []);
-  for (let i = 0; i < Math.min(WATCH.length, x.torri ?? 0); i++) put('torre', `guardia-${i}`, 'torre-guardia', WATCH[i], 1);
-  if ((x.catapulte ?? 0) > 0) put('assedio', 'catapulte', 'assedio', CATAPULT_AT, 1);
+  // assedio: un tratto della prima cerchia, sul lato davanti a chi guarda, diventa una breccia
+  if (mura >= 1 && x.breccia) {
+    const o = objects.find(o => o.id === `mura-1-${C - 3}-${C + RING_2}`);
+    if (o) o.sprite = 'mura-breccia';
+  }
+  // torri di guardia: tante quanti i livelli, tutte dell'aspetto del livello
+  const torri = Math.max(0, Math.min(3, Math.floor(x.torri ?? 0)));
+  for (let i = 0; i < Math.min(WATCH.length, torri); i++) put('torre', `guardia-${i}`, `torre-guardia-${torri}`, WATCH[i], 1);
+  // catapulte: il mangano; da due in su il trabucco
+  if ((x.catapulte ?? 0) > 0) put('assedio', 'catapulte', (x.catapulte ?? 0) >= 2 ? 'trabucco' : 'mangano', CATAPULT_AT, 1);
   if ((x.soldati ?? 0) > 0 && !x.fondaco) put('caserma', 'caserma', casermaSprite(x.soldati ?? 0), CASERMA_LOT, 2);
   if (x.accampamento) put('accampamento', 'accampamento', 'accampamento', CAMP_AT, 1);
 
@@ -337,7 +386,8 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
 
   let extent = RING_1 + 2, core = RING_1 + 1;
   for (const o of objects) {
-    if (o.kind === 'natura') continue;
+    // il ponte sta oltre il fiume, fuori dalla mappa: non allarga l'inquadratura
+    if (o.kind === 'natura' || o.kind === 'ponte') continue;
     const d = Math.max(dist(o.gx, o.gy), dist(o.gx + Math.max(1, o.size) - 1, o.gy + Math.max(1, o.size) - 1));
     extent = Math.max(extent, d);
     if (o.kind !== 'covone' && o.kind !== 'vigna' && o.kind !== 'accampamento') core = Math.max(core, d);
@@ -352,7 +402,8 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
 export function added(prev: CityModel | null, next: CityModel): CityObject[] {
   if (!prev || prev.seed !== next.seed) return [];
   const old = new Map(prev.objects.map(o => [o.id, o.sprite]));
-  return next.objects.filter(o => o.kind !== 'natura' && old.get(o.id) !== o.sprite);
+  // l'uva che matura non è un vigneto nuovo
+  return next.objects.filter(o => o.kind !== 'natura' && old.get(o.id) !== o.sprite && !(o.kind === 'vigna' && old.has(o.id)));
 }
 
 /** Tessere di campo appena arate (terre comprate): le loro coordinate. */

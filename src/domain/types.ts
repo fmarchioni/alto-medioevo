@@ -88,6 +88,10 @@ export interface Player {
   beni?: number;
   /** mercati e opifici limitati dalle terre: uno ogni 100 acri (solo con `botteghe`, src/domain/investments.ts) */
   botteghe?: true;
+  /** la città: addetti, contadini e spesa annua (solo con `citta`, src/domain/citta.ts) */
+  citta?: true;
+  /** era del signore: quante opere ha costruito, da 0 a 4 (solo con `ere`, src/domain/ere.ts) */
+  era?: number;
   /** granai costruiti (solo con `commercio`) */
   granai?: number;
   /** per i signori del computer: vocazione (dare grano al popolo o commerciarlo) */
@@ -187,6 +191,10 @@ export interface Options {
   ricorrenza?: boolean;
   /** obiettivo Dinastia: la partita finisce nel 962, i signori muoiono e succedono gli eredi, vince la casata con più prestigio (src/domain/dinastia.ts) */
   dinastia?: boolean;
+  /** la città: addetti delle botteghe, contadini per il raccolto, spesa annua secondo l'affollamento (src/domain/citta.ts) */
+  citta?: boolean;
+  /** le ere: tetto di botteghe per era, un'opera per passare alla seguente e salire di rango (src/domain/ere.ts) */
+  ere?: boolean;
 }
 
 /**
@@ -226,6 +234,8 @@ export const GAME_OPTIONS: Options = {
   usuraMinima: true,
   inizioMite: true,
   ricorrenza: true,
+  citta: true,
+  ere: true,
 };
 
 export type Phase =
@@ -338,6 +348,10 @@ export type ChronicleFact =
   /** grano perduto a fine anno: oltre la capienza dei granai e per ratti e muffa */
   | { t: 'granaio'; over: number; rot: number }
   | { t: 'income'; amount: number; tribute: number }
+  /** la città: spesa annua pagata a fine anno (solo con `citta`) */
+  | { t: 'citta'; manutenzione: number; servizi: number }
+  /** le ere: un'opera costruita apre l'era `era` (solo con `ere`) */
+  | { t: 'opera'; era: number }
   /** costruzione; servi: accorsi per un piano di palazzo (opzione `palazzoReale`) */
   | { t: 'build'; kind: 'terre' | 'mercato' | 'opificio' | 'palazzo' | 'granaio'; servi?: number }
   /** impresa temeraria: tentata, scoperta da un complice, o lasciata scadere */

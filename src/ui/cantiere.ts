@@ -8,11 +8,14 @@ import { fiduciaOf, livelloMid, livelloOf, MARKET_MULT, OPIFICIO_MULT, umoreOf, 
 import { ACRI_IN_BLOCCO, ACRI_PER_ACQUISTO, COSTS, canInvest, canInvestTimes, MAX_ACRI, maxBotteghe, MAX_GRANAI, MAX_PALAZZO, type InvestmentKind } from '../domain/investments';
 import { GRANAIO_CAPACITY, granaryCapacity, SETTLER_GRAIN } from '../domain/gabelle';
 import { LISTING_VICTORY, missingFloors, PALAZZO_SERVI, RANK_THRESHOLDS, titleName, victoryRule, wealthIndex, type Victory } from '../domain/rank';
+import { addettiDi, addettiNecessari, CITTA, contadiniNecessari, serviLiberi, spesaCitta } from '../domain/citta';
+import { botteghe, ERE, prossimaOpera, puoCostruireOpera, rangoMassimo, tettoBotteghe } from '../domain/ere';
 import type { Game } from '../domain/turn';
 import type { Player, Scalars } from '../domain/types';
 import { honorific } from './advisor';
 import { foreclosureWarning } from './pignoramenti';
 import { builderPortrait, buildingArt } from './art';
+import { illustrationUrl } from './citta/assets';
 import { pick, speechBox, type Speaker } from './speaker';
 
 export const UGOLINO: Speaker = { name: 'Mastro Ugolino', role: 'capomastro del feudo', portrait: builderPortrait };
@@ -43,7 +46,8 @@ export function nextGoal(p: Player, v: Victory = LISTING_VICTORY): { label: stri
 
 /** Quanti ne possono esistere al massimo (righe 1725-1820). */
 export function capacity(p: Player, k: InvestmentKind): { owned: number; max: number; unit: string } {
-  const cap = maxBotteghe(p);
+  // le ere: anche l'era pone un tetto alle botteghe
+  const cap = Math.min(maxBotteghe(p), tettoBotteghe(p));
   switch (k) {
     case 'terre': return { owned: p.acri, max: MAX_ACRI, unit: 'acri' };
     case 'mercato': return { owned: p.mercato - 1, max: cap, unit: '' };
@@ -80,6 +84,15 @@ export function opificioYield(p: Player, umore = livelloOf(umoreOf(p))): number 
 /** Descrizione dell'effetto di ciascun bene, con i numeri del feudo. */
 /** reale: con il palazzo reale ogni piano attira servi e il palazzo completo serve per il trono. */
 export function effectText(p: Player, k: InvestmentKind, reale = false): string {
+  // la città: ogni bottega vuole i suoi addetti e una manutenzione annua
+  if (p.citta && (k === 'mercato' || k === 'opificio')) {
+    const extra = ` Vuole ${addettiDi(k)} servi liberi che ci lavorino e ${k === 'mercato' ? CITTA.manutenzioneMercato : CITTA.manutenzioneOpificio} scudi l'anno di manutenzione.`;
+    return effectBase(p, k, reale) + extra;
+  }
+  return effectBase(p, k, reale);
+}
+
+function effectBase(p: Player, k: InvestmentKind, reale: boolean): string {
   switch (k) {
     case 'terre':
       return `+25 acri: il raccolto può crescere fino a ${n((p.acri + 25) * 75)} misure. ${p.botteghe ? 'Ogni 100 acri consentono un mercato e un opificio.' : 'Ogni 500 acri in più consentono un mercato e un opificio in più.'}`;
@@ -192,6 +205,49 @@ function bulkLandButton(p: Player): string {
   return `<button data-act="invest" data-kind="terre" data-times="${times}" title="${c.ok ? costo : c.reason}" ${c.ok ? '' : 'disabled'}>Compra ${ACRI_IN_BLOCCO} acri</button>`;
 }
 
+const ERA_NOME = ['prima', 'seconda', 'terza', 'quarta', 'quinta'];
+const RANGO_NOME = ['messere', 'conte', 'duca', 'granduca', 'principe'];
+
+/** Le ere: la ricchezza per il titolo seguente c'è già, ma manca l'opera dell'era. */
+function titoloInAttesa(p: Player, ka: number): string {
+  const o = prossimaOpera(p);
+  if (!o) return '';
+  const r = rangoMassimo(p);
+  if (r >= 5 || ka <= RANK_THRESHOLDS[r - 1]) return '';
+  return `<p class="warn">La ricchezza per diventare <b>${titleName(r + p.gender)}</b> c'è già: manca l'opera dell'era, ${o.nome.toLowerCase()}.</p>`;
+}
+
+/** Le ere: la scheda dell'opera da costruire per passare all'era seguente (solo con `ere`). */
+function operaCard(p: Player): string {
+  if (p.era === undefined) return '';
+  const o = prossimaOpera(p);
+  const era = `Siete nella <b>${ERA_NOME[p.era]} era</b>: al più ${tettoBotteghe(p)} mercati e ${tettoBotteghe(p)} opifici.`;
+  if (!o) {
+    return `<div class="build-card opera"><div class="build-body">
+      <div class="build-head"><span class="build-title">Le opere del feudo</span></div>
+      <p class="build-effect">${era} Tutte le opere sono costruite: il trono è alla vostra portata.</p></div></div>`;
+  }
+  const c = puoCostruireOpera(p);
+  const dopo = ERE.tetto[Math.min(p.era + 1, ERE.tetto.length - 1)];
+  return `<div class="build-card opera">
+      <img class="card-art opera-art" src="${illustrationUrl(`opera-${o.id}`)}" alt="${o.nome}" width="1000" height="667">
+      <div class="build-body">
+        <div class="build-head"><span class="build-title">Opera dell'era: ${o.nome}</span><span class="build-cost">${n(o.scudi)} scudi e ${n(o.grano)} misure di grano</span></div>
+        <div class="build-owned">botteghe: <b>${botteghe(p)}</b> su ${o.requisito} richieste</div>
+        <p class="build-effect">${era} Con quest'opera: ${o.vantaggio}; fino a ${dopo} mercati e ${dopo} opifici; e si può diventare <b>${RANGO_NOME[Math.min(p.era + 1, 4)]}</b>.</p>
+        <button data-act="opera" ${c.ok ? 'class="primary"' : `disabled title="${c.reason}"`}>${c.ok ? 'Costruisci l\'opera' : c.reason}</button>
+      </div>
+    </div>`;
+}
+
+/** La città: dove lavorano i servi e quanto costerà la città a fine anno (solo con `citta`). */
+function cittaLine(p: Player): string {
+  if (!p.citta) return '';
+  const liberi = serviLiberi(p), s = spesaCitta(p);
+  return `<p>Servi: <b>${n(p.servi)}</b> · nelle botteghe <b>${n(addettiNecessari(p))}</b> · per i campi <b>${n(contadiniNecessari(p))}</b> · liberi <b>${n(Math.max(0, liberi))}</b>${liberi < 0 ? ' <span class="warn">(mancano braccia)</span>' : ''}</p>
+    <p>Spese della città a fine anno: circa <b>${n(s.totale)}</b> scudi <small>(manutenzione ${n(s.manutenzione)} + servizi ${n(s.servizi)})</small></p>`;
+}
+
 /** war: dopo il cantiere viene il menu Guerra dell'espansione */
 /** extra: altre carte grandi accanto alle costruzioni (es. "Fra signori", accanto al palazzo) */
 export function renderCantiere(g: Game, ui: CantiereUi, war = false, extra = ''): string {
@@ -221,9 +277,10 @@ export function renderCantiere(g: Game, ui: CantiereUi, war = false, extra = '')
     <div class="goal">
       <div class="goal-label">Ricchezza <b>${n(ka)}</b> · prossimo traguardo: <b>${goal.label}</b> ${ka > goal.target ? '(ricchezza raggiunta)' : `oltre ${n(goal.target)}`}${goal.floors ? `, con il palazzo completo (mancano <b>${goal.floors}</b> ${goal.floors === 1 ? 'piano' : 'piani'})` : ''}</div>
       <div class="goal-bar"><div class="goal-fill" style="width:${pct}%"></div></div>
+      ${titoloInAttesa(p, ka)}
     </div>
-    <div class="build-cards">${cards}${extra}</div>
+    <div class="build-cards">${operaCard(p)}${cards}${extra}</div>
     <p>Tesoro: <b>${n(p.scudi)}</b> scudi · credito degli usurai fino a <b>${n(-p.credito)}</b></p>
-    ${usury}${g.state.options.pignoramenti ? foreclosureWarning(p, sc) : ''}
+    ${cittaLine(p)}${usury}${g.state.options.pignoramenti ? foreclosureWarning(p, sc) : ''}
     <div class="btns"><button data-act="karta">Karta: guarda lo reame</button>${war ? '<button data-act="warMenu" class="primary">Proximus: guerra</button>' : '<button data-act="next" class="primary">Proximus: fine dell\'anno</button>'}</div>`;
 }

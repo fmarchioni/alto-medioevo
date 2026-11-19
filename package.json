@@ -1,7 +1,7 @@
 {
   "name": "alto-medioevo",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:fidelity": "vitest run --config vitest.fidelity.config.ts",
+    "taratura": "vitest run --config vitest.taratura.config.ts",
     "build:single": "node tools/build-single.mjs"
   },
   "devDependencies": {

@@ -1103,6 +1103,150 @@
   "foglio": "prompt18",
   "n": 2
  },
+ "edifici/scriptorium": {
+  "w": 438,
+  "h": 359,
+  "ax": 219,
+  "ay": 359,
+  "foglio": "prompt19",
+  "n": 1
+ },
+ "terreno/maggese": {
+  "w": 438,
+  "h": 262,
+  "ax": 219,
+  "ay": 262,
+  "foglio": "prompt19",
+  "n": 3
+ },
+ "terreno/legumi": {
+  "w": 438,
+  "h": 260,
+  "ax": 219,
+  "ay": 260,
+  "foglio": "prompt19",
+  "n": 4
+ },
+ "natura/pecore": {
+  "w": 107,
+  "h": 110,
+  "ax": 54,
+  "ay": 110,
+  "foglio": "prompt19",
+  "n": 5
+ },
+ "natura/pecora": {
+  "w": 77,
+  "h": 67,
+  "ax": 39,
+  "ay": 67,
+  "foglio": "prompt19",
+  "n": 6
+ },
+ "natura/pastore": {
+  "w": 139,
+  "h": 125,
+  "ax": 70,
+  "ay": 125,
+  "foglio": "prompt19",
+  "n": 7
+ },
+ "edifici/ponte": {
+  "w": 1287,
+  "h": 828,
+  "ax": 644,
+  "ay": 828,
+  "foglio": "prompt20",
+  "n": 2
+ },
+ "difese/torre-guardia-1": {
+  "w": 391,
+  "h": 369,
+  "ax": 196,
+  "ay": 369,
+  "foglio": "prompt21",
+  "n": 1
+ },
+ "difese/torre-guardia-2": {
+  "w": 391,
+  "h": 381,
+  "ax": 196,
+  "ay": 381,
+  "foglio": "prompt21",
+  "n": 2
+ },
+ "difese/torre-guardia-3": {
+  "w": 391,
+  "h": 402,
+  "ax": 196,
+  "ay": 402,
+  "foglio": "prompt21",
+  "n": 3
+ },
+ "difese/mangano": {
+  "w": 392,
+  "h": 266,
+  "ax": 196,
+  "ay": 266,
+  "foglio": "prompt21",
+  "n": 4
+ },
+ "difese/trabucco": {
+  "w": 392,
+  "h": 302,
+  "ax": 196,
+  "ay": 302,
+  "foglio": "prompt21",
+  "n": 5
+ },
+ "difese/mura-breccia": {
+  "w": 393,
+  "h": 304,
+  "ax": 197,
+  "ay": 304,
+  "foglio": "prompt21",
+  "n": 6
+ },
+ "terreno/vigneto": {
+  "w": 485,
+  "h": 322,
+  "ax": 243,
+  "ay": 322,
+  "foglio": "prompt22",
+  "n": 1
+ },
+ "terreno/vigneto-uva": {
+  "w": 485,
+  "h": 322,
+  "ax": 243,
+  "ay": 322,
+  "foglio": "prompt22",
+  "n": 2
+ },
+ "edifici/cantina": {
+  "w": 485,
+  "h": 316,
+  "ax": 243,
+  "ay": 316,
+  "foglio": "prompt22",
+  "n": 3
+ },
+ "edifici/fiera": {
+  "w": 766,
+  "h": 354,
+  "ax": 383,
+  "ay": 354,
+  "foglio": "prompt22",
+  "n": 4
+ },
+ "edifici/torchio": {
+  "w": 365,
+  "h": 309,
+  "ax": 183,
+  "ay": 309,
+  "foglio": "prompt22",
+  "n": 6
+ },
  "ui/cornice": {
   "w": 569,
   "h": 435,

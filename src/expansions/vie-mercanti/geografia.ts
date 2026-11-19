@@ -53,12 +53,13 @@ export const zoneApart = (a: Zona, b: Zona) => Math.abs(ZONE.indexOf(a) - ZONE.i
 /**
  * Anni di viaggio di una carovana: 1 nella stessa zona, 2 in una zona vicina,
  * 3 a due zone, 4 agli estremi del regno; un anno in meno se parte o arriva
- * in un feudo con il porto (mai meno di uno).
+ * in un feudo con il porto (mai meno di uno). Le ere: un anno in meno anche con strade e ponti
+ * (`strade`: chi spedisce o chi riceve li ha costruiti).
  */
-export function travelYears(fromFeudo: number, to: { feudo: number } | { piazza: PiazzaId }): number {
+export function travelYears(fromFeudo: number, to: { feudo: number } | { piazza: PiazzaId }, strade = false): number {
   const dest = 'feudo' in to ? { zona: ZONA_FEUDO[to.feudo], oltre: 0 } : PIAZZE.find(x => x.id === to.piazza)!;
   const port = hasPort(fromFeudo) || ('feudo' in to && hasPort(to.feudo));
-  return Math.max(1, 1 + zoneApart(ZONA_FEUDO[fromFeudo], dest.zona) + dest.oltre - (port ? 1 : 0));
+  return Math.max(1, 1 + zoneApart(ZONA_FEUDO[fromFeudo], dest.zona) + dest.oltre - (port ? 1 : 0) - (strade ? 1 : 0));
 }
 
 /** Descrizione della specialità di un feudo. */

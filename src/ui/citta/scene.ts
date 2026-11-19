@@ -76,15 +76,15 @@ const fazione = (f: FactionId, n = 5): Copione => {
 const EVENTI: Record<number, Copione> = {
   1: { nemici: true, gruppi: [g('longobardo', 4, 'nord', 'soglia-nord')] },
   2: { gruppi: [g('saraceno', 3, 'nord', 'palazzo', 1.8), g('mercante-asino', 1, 'nord', 'palazzo', 1.8, 'arriva', { attesa: 2.5 })], monete: { dove: 'palazzo' } },
-  3: { tinta: 'peste', folla: 0.2, croci: true, gruppi: [g('carro-buoi', 1, 'piazza', 'sud', 0.8, 'va'), g('monaco', 2, 'chiesa', 'sud', 0.8, 'va', { attesa: 2 })] },
-  4: { gruppi: [g('cavaliere', 1, 'nord', 'palazzo', 1.9), g('soldato', 5, 'nord', 'palazzo', 1.9, 'arriva', { attesa: 1 }), g('carro-buoi', 1, 'nord', 'palazzo', 1.9, 'arriva', { attesa: 5 })], monete: { dove: 'palazzo' } },
+  3: { tinta: 'peste', folla: 0.2, croci: true, gruppi: [g('carretto-vuoto', 1, 'piazza', 'sud', 0.8, 'va'), g('monaco', 2, 'chiesa', 'sud', 0.8, 'va', { attesa: 2 })] },
+  4: { gruppi: [g('cavaliere', 1, 'nord', 'palazzo', 1.9), g('soldato', 5, 'nord', 'palazzo', 1.9, 'arriva', { attesa: 1 }), g('carretto', 1, 'nord', 'palazzo', 1.9, 'arriva', { attesa: 5 })], monete: { dove: 'palazzo' } },
   5: { alluvione: true, folla: 0.6 },
   6: { polvere: 'piazza', monete: { dove: 'piazza' }, gruppi: [g('contadino', 3, 'case', 'piazza', 1.6)] },
   7: { nemici: true, gruppi: [g('brigante', 5, 'bosco', 'soglia-nord', 2.3, 'arriva', { torce: true })] },
   8: { tinta: 'notte', folla: 0.3, gruppi: [g('signore', 1, 'palazzo', 'nord', 3.2, 'va', { scia: true, attesa: 1 })] },
   9: { folla: 0.5, gruppi: [g('contadino', 4, 'case', 'granaio', 2.2, 'arriva', { torce: true }), g('contadina', 3, 'case', 'granaio', 2.2, 'arriva', { torce: true, attesa: 1 })], fuochi: [{ dove: 'granaio', n: 3 }] },
   // i mercanti vessati lasciano la città: carri e asini carichi escono dal mercato verso sud
-  17: { folla: 0.2, gruppi: [g('carovana', 1, 'mercato', 'sud', 1.1, 'va'), g('mercante-asino', 2, 'mercato', 'sud', 1.2, 'va', { attesa: 1 }), g('carovana', 1, 'mercato', 'sud', 1.1, 'va', { attesa: 3 })] },
+  17: { folla: 0.2, gruppi: [g('carretto', 1, 'mercato', 'sud', 1.1, 'va'), g('mercante-asino', 2, 'mercato', 'sud', 1.2, 'va', { attesa: 1 }), g('carretto', 1, 'mercato', 'sud', 1.1, 'va', { attesa: 3 })] },
   15: { gruppi: [g('monaco', 3, 'chiesa', 'palazzo', 1.2)] },
   16: { tinta: 'notte', folla: 0.3, gruppi: [g('mercante-asino', 2, 'nord', 'mercato', 1.6)] },
   101: { gruppi: [g('cavaliere-pesante', 1, 'nord', 'soglia-nord', 2), g('soldato', 4, 'nord', 'soglia-nord', 2, 'arriva', { attesa: 1 })] },
@@ -119,6 +119,16 @@ function partenze(st: GameState, i: number): number {
     && (c.partita === st.q ? c.buyer < i : c.partita === st.q - 1 && c.buyer > i)).length;
   const fiera = (s.impegni ?? []).filter(x => x.player === i && x.spedito?.q === st.q).length;
   return fondaco + fiera;
+}
+
+/**
+ * Vie dei mercanti: le carovane tornate quest'anno al signore di turno (la posta dell'anno). Carico: merce comprata che arriva;
+ * scarico: il carretto che ha consegnato e riporta il denaro (fondaco o fiera).
+ */
+function arrivi(st: GameState, i: number): { carichi: number; vuoti: number } {
+  if (st.expansion !== VIE || !st.ext || st.current !== i) return { carichi: 0, vuoti: 0 };
+  const posta = (st.ext as MercantiState).inbox ?? [];
+  return { carichi: posta.filter(d => d.k === 'caravanIn').length, vuoti: posta.filter(d => d.k === 'caravanPaid' || d.k === 'fieraPagata').length };
 }
 
 /** Come è andata con i nemici, per decidere se fuggono, bruciano o incassano. */
@@ -211,7 +221,7 @@ export function sceneOf(st: GameState, i: number, quiet = false): Scena {
         tag = `strascico:${resti.map(x => x.tag).join('+')}`;
       }
       const proprio: Copione =
-        ph.kind === 'rendite' ? { gruppi: [g('carro-buoi', 1, 'campi', 'granaio', 1.1, 'va'), g('contadino', 2, 'campi', 'granaio', 1.1, 'va', { attesa: 2 })] }
+        ph.kind === 'rendite' ? { gruppi: [g('carretto', 1, 'campi', 'granaio', 1.1, 'va'), g('contadino', 2, 'campi', 'granaio', 1.1, 'va', { attesa: 2 })] }
         : ph.kind === 'fine' && ph.winner === i ? { festa: true, gruppi: [g('dama', 1, 'piazza', 'palazzo', 1, 'arriva'), g('signore', 1, 'piazza', 'palazzo', 1, 'arriva', { attesa: 1 })] }
         : {};
       c = { ...c, ...proprio, gruppi: [...(c.gruppi ?? []), ...(proprio.gruppi ?? [])] };
@@ -220,8 +230,15 @@ export function sceneOf(st: GameState, i: number, quiet = false): Scena {
         // Vie dei mercanti: le carovane partite quest'anno escono dal mercato verso sud, in primo piano
         const n = partenze(st, i);
         if (n) {
-          c.gruppi = [...(c.gruppi ?? []), ...Array.from({ length: Math.min(n, 3) }, (_, k) => g('carovana', 1, 'mercato', 'sud', 1.1, 'va', { attesa: k * 2.5 }))];
+          c.gruppi = [...(c.gruppi ?? []), ...Array.from({ length: Math.min(n, 3) }, (_, k) => g('carretto', 1, 'mercato', 'sud', 1.1, 'va', { attesa: k * 2.5 }))];
           tag += `:carovane${n}`;
+        }
+        // e quelle tornate: cariche di merce comprata, o scariche dopo la consegna; entrano da sud fino al mercato
+        const { carichi, vuoti } = arrivi(st, i);
+        const tornano = [...Array<string>(Math.min(carichi, 2)).fill('carretto'), ...Array<string>(Math.min(vuoti, 2)).fill('carretto-vuoto')];
+        if (tornano.length) {
+          c.gruppi = [...(c.gruppi ?? []), ...tornano.map((sp, k) => g(sp, 1, 'sud', 'mercato', 1.1, 'arriva', { attesa: 1.5 + k * 2.5 }))];
+          tag += `:arrivi${carichi}-${vuoti}`;
         }
       }
     }

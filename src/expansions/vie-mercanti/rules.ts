@@ -34,7 +34,7 @@ import type { Game } from '../../domain/turn';
 import type { ActionResult, Player } from '../../domain/types';
 import {
   buyLot as buyLotOf, buyFromPassing, passingLeft, emptyCantina, yearlyOutput, PREZZO_PASSAGGIO, MERCI, maxVigneti, passingPrices, plantVineyard, postLot as postLotOf, produce, sellToPassing, settleCaravans, spoilWine, UNITA, VIGNETO_COST,
-  sellerShare, sellUnsold, withdrawLot as withdrawLotOf, type Merce,
+  sellerShare, sellUnsold, withdrawLot as withdrawLotOf, type Merce, conStrade,
 } from './merci';
 import { bonusOf } from './geografia';
 import { late, type EventoViaggio } from './carovane';
@@ -333,10 +333,10 @@ export function passingBlock(g: Game, i = g.state.current): string | null {
   return null;
 }
 
-/** Compra dai mercanti di passaggio al fondaco (senza la Dinastia): poca merce, subito. */
+/** Compra dai mercanti di passaggio al fondaco: poca merce, subito (con la Dinastia finché non c'è un re). */
 export function buyPassing(g: Game, good: Merce, qty: number): ActionResult & { cost?: number } {
   const block = passingBlock(g);
-  if (block && !g.state.options.dinastia) return { ok: false, reason: block };
+  if (block) return { ok: false, reason: block };
   const r = buyFromPassing(g, ms(g), good, qty);
   if (r.ok) note(g, g.state.current, 'passingBuy', { good: MERCI.indexOf(good), qty, cost: r.cost! });
   return r;
@@ -673,7 +673,7 @@ function botRescue(c: BotCtx): void {
     let need = shortage(g, imp.c.good, imp.entro);
     for (const lot of st.lots.filter(l => l.seller !== me && l.good === imp.c.good && l.price < imp.price).sort((a, b) => a.price - b.price)) {
       if (need <= 0) break;
-      if (g.state.q + travelYears(ps[lot.seller].feudo, { feudo: p.feudo }) > imp.entro) continue;
+      if (g.state.q + travelYears(ps[lot.seller].feudo, { feudo: p.feudo }, conStrade(ps[lot.seller], p)) > imp.entro) continue;
       const qty = Math.min(lot.qty, need, Math.floor(Math.max(0, p.scudi + p.credito / 2) / lot.price));
       const name = ps[lot.seller].name, price = lot.price;
       if (qty > 0 && buyLot(g, lot.id, qty).ok) {

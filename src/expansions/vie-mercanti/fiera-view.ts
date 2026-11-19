@@ -10,7 +10,7 @@ import {
   visibleTo, type Contratto, type FieraDispatch, type FieraState,
 } from './fiera';
 import { PIAZZE, travelYears } from './geografia';
-import { MERCI, UNITA, type Merce } from './merci';
+import { conStrade, MERCI, UNITA, type Merce } from './merci';
 
 const n = (v: number) => Math.floor(v).toLocaleString('it-IT');
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -106,7 +106,7 @@ export function fieraPanel(g: Game, st: FieraState): string {
     }).join('');
     const vis = visibleTo(f, me);
     const rows = vis.map(k => {
-      const mine = bidOf(f, me, k.id), years = travelYears(p.feudo, { piazza: k.piazza });
+      const mine = bidOf(f, me, k.id), years = travelYears(p.feudo, { piazza: k.piazza }, conStrade(p));
       return `<tr${k.speciale ? ' class="speciale"' : ''}>
         <th scope="row" data-label="Contratto">${contractLine(k)}</th>
         <td data-label="Piazza">${piazzaName(k)}<br><small>viaggio ${anni(years)}</small></td>
@@ -129,7 +129,7 @@ export function fieraPanel(g: Game, st: FieraState): string {
     const s = x.spedito;
     if (s) return `<li>${contractLine(x.c)} a ${x.price} scudi: la carovana è partita con ${qtyOf(x.c.good, s.qty)}, arriverà a ${piazzaName(x.c)} nel ${yearOf(s.arrive)}.</li>`;
     const have = cant[x.c.good], max = Math.min(have, x.c.qty);
-    return `<li>${contractLine(x.c)} a ${x.price} scudi l'unità: spedire entro la fine del <b>${yearOf(x.entro)}</b> (viaggio ${anni(travelYears(p.feudo, { piazza: x.c.piazza }))}). In magazzino: ${qtyOf(x.c.good, have)}.
+    return `<li>${contractLine(x.c)} a ${x.price} scudi l'unità: spedire entro la fine del <b>${yearOf(x.entro)}</b> (viaggio ${anni(travelYears(p.feudo, { piazza: x.c.piazza }, conStrade(p)))}). In magazzino: ${qtyOf(x.c.good, have)}.
       <span class="ext-form"><input type="number" name="ship-${x.id}" min="1" max="${x.c.qty}" value="${Math.max(1, max)}" inputmode="numeric" aria-label="quantità da spedire">
       <button data-act="ext" data-op="ship" data-id="${x.id}" ${have ? '' : 'disabled'}>Spedite ora</button></span></li>`;
   }).join('');

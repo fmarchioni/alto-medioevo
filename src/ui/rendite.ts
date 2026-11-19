@@ -10,6 +10,7 @@
 import { type RateKind } from '../domain/economy';
 import { bestRates, currentRates, KINDS, previewRates, RATE_SUM_CAP, yieldPerPoint, type Rates } from '../domain/strategy';
 import { DECIMA, hasEffetto, pilgrimIncome } from '../domain/fatti';
+import { bottegheAttive, spesaCitta } from '../domain/citta';
 import { abitudineOf, fiduciaOf, livelloOf, MAX_RICARICO, sereno, TOLLERANZA_MAX, umoreOf, type Livello } from '../domain/gabelle';
 export { bestRates, currentRates, KINDS, previewRates, RATE_SUM_CAP, yieldPerPoint, type Rates };
 import type { Game } from '../domain/turn';
@@ -222,6 +223,7 @@ export function renderLive(g: Game, r: Rates): string {
       ${pilgrimIncome(p) ? `<tr><td>Offerte dei pellegrini</td><td>+${n(pilgrimIncome(p))}</td></tr>` : ''}
       ${vass}
       <tr><td>Credito presso gli usurai <small>(rendita + vassalli)</small></td><td>${n(pv.conVassalli)}</td></tr>
+      ${cittaRows(p, pv.conVassalli)}
     </table>
     ${moodRows(p)}
     ${spoils > 0 ? `<p class="warn spoil">Confermando ritoccate ${spoils} ${spoils === 1 ? 'gabella' : 'gabelle'}: il grano deperirà ${spoils} ${spoils === 1 ? 'volta' : 'volte'} (ogni volta fra un decimo e metà, in media un quinto). Granaio attuale: ${n(p.grano)}.</p>` : ''}
@@ -229,6 +231,17 @@ export function renderLive(g: Game, r: Rates): string {
       <button data-act="rApply" ${changedKinds(p, r).length ? '' : 'disabled'}>Applica le gabelle</button>
       <button data-act="rCollect" class="primary">${changedKinds(p, r).length ? 'Applica e incassa' : 'Bastante: incassa'} ${n(pv.totale)} scudi</button>
     </div>`;
+}
+
+/** La città: botteghe chiuse per mancanza di addetti e spese di fine anno (solo con `citta`). */
+function cittaRows(p: Player, rendita: number): string {
+  if (!p.citta) return '';
+  const a = bottegheAttive(p), chiusiM = p.mercato - 1 - a.mercati, chiusiO = p.opificio - 1 - a.opifici;
+  const s = spesaCitta(p, rendita);
+  const chiuse = chiusiM + chiusiO > 0
+    ? `<tr class="warn"><td colspan="2">Botteghe chiuse per mancanza di addetti: ${[chiusiM ? `${chiusiM} ${chiusiM === 1 ? 'mercato' : 'mercati'}` : '', chiusiO ? `${chiusiO} ${chiusiO === 1 ? 'opificio' : 'opifici'}` : ''].filter(Boolean).join(' e ')}. Non rendono finché i servi non tornano.</td></tr>`
+    : '';
+  return `${chiuse}<tr><td>Spese della città a fine anno <small>(manutenzione ${n(s.manutenzione)} + servizi ${n(s.servizi)})</small></td><td>−${n(s.totale)}</td></tr>`;
 }
 
 /** Umore del popolo e fiducia dei mercanti: solo il livello di oggi, nessuna previsione. */

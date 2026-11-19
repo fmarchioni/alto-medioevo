@@ -4,6 +4,7 @@ import type { Options, Player, Scalars } from './types';
 import { OPIFICIO_MULT, workFactor } from './gabelle';
 import { COSTS, MAX_PALAZZO } from './investments';
 import { foreclose, type Foreclosure } from './pignoramenti';
+import { ERA_MAX, rangoMassimo, valoreOpere } from './ere';
 
 export const TITLES_M = ['messere', 'conte', 'duca', 'granduca', 'principe'] as const;
 export const TITLES_F = ['madonna', 'contessa', 'duchessa', 'granduchessa', 'principessa'] as const;
@@ -18,6 +19,8 @@ export const FEUDI = ['Taurinum', 'Mediolanum', 'Verona', 'Ravenna', 'Roma', 'Be
 export const RANK_THRESHOLDS = [10000, 50000, 95000, 160000] as const;
 export const VICTORY_THRESHOLD = 367000;
 export const TRIBUTE_PER_RANK = 100;
+/** Con la città: quota della rendita del vassallo che, al più, va a ciascun signore di rango più alto. */
+export const TRIBUTO_QUOTA = 0.1;
 
 /**
  * Trono con il palazzo reale (opzione `palazzoReale`): serve questa ricchezza
@@ -39,7 +42,7 @@ export const victoryRule = (o: Options): Victory => (o.palazzoReale ? { threshol
 /** Piani di palazzo che mancano per poter salire al trono (0 se non servono). */
 export const missingFloors = (p: Player, v: Victory) => (v.palazzo ? Math.max(0, MAX_PALAZZO - p.palazzo) : 0);
 /** Riga 2080, più il palazzo completo se la regola lo chiede. */
-export const reachesThrone = (p: Player, ka: number, v: Victory) => ka > v.threshold && missingFloors(p, v) === 0;
+export const reachesThrone = (p: Player, ka: number, v: Victory) => ka > v.threshold && missingFloors(p, v) === 0 && (p.era === undefined || p.era >= ERA_MAX);
 
 export function titleName(title: number): string {
   return title > 5 ? TITLES_F[title - 6] : TITLES_M[title - 1];
@@ -80,7 +83,7 @@ export function applyUsury(p: Player, usura: number): void {
 
 /** Riga 2000: indice di ricchezza ka. */
 export function wealthIndex(p: Player): number {
-  return (p.mercato - 1) * 2000 + (p.opificio - 1) * 5000 + ((p.acri - 500) / 25) * 500 + p.palazzo * 10000 + p.scudi + (p.prestigio ?? 0) + (p.beni ?? 0) + (p.granai ?? 0) * COSTS.granaio;
+  return (p.mercato - 1) * 2000 + (p.opificio - 1) * 5000 + ((p.acri - 500) / 25) * 500 + p.palazzo * 10000 + p.scudi + (p.prestigio ?? 0) + (p.beni ?? 0) + (p.granai ?? 0) * COSTS.granaio + valoreOpere(p);
 }
 
 /**
@@ -89,7 +92,8 @@ export function wealthIndex(p: Player): number {
  */
 export function updateTitle(p: Player, ka: number): void {
   RANK_THRESHOLDS.forEach((th, i) => {
-    if (ka > th) p.title = i + 1 + p.gender;
+    // le ere: senza l'opera dell'era il rango non sale oltre quello che l'era consente
+    if (ka > th) p.title = Math.min(i + 2, rangoMassimo(p)) - 1 + p.gender;
   });
 }
 
@@ -108,9 +112,12 @@ export function calculateVassalTribute(players: Player[], a: number, esente: (a:
     // Dinastia: fra casate imparentate non si pagano tributi
     const dy = y.caduto === undefined && !esente(a, i) ? pj - rankOf(y) : 0;
     if (dy > 0) {
-      lord.vassalli += TRIBUTE_PER_RANK * dy;
-      y.scudi -= TRIBUTE_PER_RANK * dy;
-      paid.push({ from: i, amount: TRIBUTE_PER_RANK * dy });
+      // la città: un vassallo povero non paga più di una quota della sua rendita a ciascun signore
+      const amount = y.citta ? Math.min(TRIBUTE_PER_RANK * dy, Math.floor(Math.max(0, y.credito - y.vassalli) * TRIBUTO_QUOTA)) : TRIBUTE_PER_RANK * dy;
+      if (amount <= 0) return;
+      lord.vassalli += amount;
+      y.scudi -= amount;
+      paid.push({ from: i, amount });
     }
   });
   return paid;

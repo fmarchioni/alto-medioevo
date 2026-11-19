@@ -214,7 +214,7 @@ export function facing(sprite: string, dx: number, dy: number): { sprite: string
 }
 
 /** Le figure in sella o col carro fanno passi più lunghi, in tessere. */
-const PASSO_LUNGO = new Set([...A_SINISTRA, 'ungaro', 'mercante-asino']);
+export const PASSO_LUNGO = new Set([...A_SINISTRA, 'ungaro', 'mercante-asino', 'carretto', 'carretto-vuoto']);
 /**
  * Il fotogramma della camminata: 0 o 1, alternati secondo la strada fatta (non il tempo), così chi va
  * piano fa passi lenti. `sfasa` distingue gli omini, perché non marcino tutti allo stesso passo.
@@ -286,8 +286,10 @@ export function ambient(m: CityModel, v: Vita): Walker[] {
   const via = route(m, blocked, [ROAD_X, C - D], market ? [market.gx, market.gy] : [C + 2, C + 2]);
   const out2 = via && route(m, blocked, [Math.floor(via[via.length - 1][0]), Math.floor(via[via.length - 1][1])], [ROAD_X, C + D]);
   for (let i = 0; i < nMerc && via && out2; i++) {
-    out.push(makeWalker(`mercante-${i}`, r(i, 12) < 0.6 ? 'mercante-asino' : 'carro-buoi', [...via, ...out2.slice(1)],
-      { mode: 'passa', speed: 1.25, wait: i * 6 + r(i, 13) * 8, pause: [0, 8 + r(i, 14) * 14], side: (r(i, 9) - 0.5) * 0.3 }));
+    const sprite = r(i, 12) < 0.6 ? 'mercante-asino' : 'carretto';
+    // chi va a piedi accanto all'asino non corre: il passo dell'asino carico
+    out.push(makeWalker(`mercante-${i}`, sprite, [...via, ...out2.slice(1)],
+      { mode: 'passa', speed: sprite === 'mercante-asino' ? 0.75 : 1.25, wait: i * 6 + r(i, 13) * 8, pause: [0, 8 + r(i, 14) * 14], side: (r(i, 9) - 0.5) * 0.3 }));
   }
   // soldati di ronda attorno al palazzo e lungo le strade (Spade e castelli)
   const nSold = Math.min(12, Math.ceil(v.soldati / 40));

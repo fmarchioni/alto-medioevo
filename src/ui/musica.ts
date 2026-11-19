@@ -117,9 +117,15 @@ function ferma(a: HTMLAudioElement): void {
   a.pause();
 }
 
+/**
+ * Avvia `a`; `fallito` se il browser rifiuta. Una pause() arrivata prima che il file fosse pronto (AbortError) non è un
+ * rifiuto: la traccia resta nostra e riprenderà. Prima la si perdeva, e il sottofondo taceva per sempre.
+ */
 function avviaAudio(a: HTMLAudioElement, fallito: () => void): void {
   try {
-    void a.play()?.catch(fallito);
+    void a.play()?.catch((e: unknown) => {
+      if ((e as { name?: string } | null)?.name !== 'AbortError') fallito();
+    });
   } catch {
     fallito();
   }
@@ -137,6 +143,10 @@ let finendo = false;
 let pausa: ReturnType<typeof setTimeout> | null = null;
 /** una traccia breve suona da sola: il sottofondo è in pausa, al suo punto */
 let sospesa = false;
+/** il sottofondo è partito almeno una volta (c'è stato il gesto del giocatore) */
+let avviata = false;
+/** la traccia che cala lo fa per il cambio di modalità: dopo attacca la prima della nuova, senza avanzare */
+let perCambio = false;
 const ATTACCO_MS = 1500;
 
 /** il volume del sottofondo: quello di musica.json per quello scelto dal giocatore (cursore "Musica") */
@@ -146,7 +156,8 @@ const livello = () => config.volume * (volumeMusica() / 100);
 function attacca(): void {
   pausa = null;
   // durante una traccia breve il sottofondo tace: la traccia seguente aspetta che finisca
-  if (sospesa) {
+  // (anche quando la traccia breve è partita nel silenzio fra due tracce: prima le suonava sopra)
+  if (sospesa || stacco) {
     pausa = setTimeout(attacca, 1000);
     return;
   }
@@ -156,30 +167,48 @@ function attacca(): void {
   const a = new Audio(CARTELLA + lista[k]);
   a.volume = 0;
   audio = a;
+  avviata = true;
   finendo = false;
-  // poco prima della fine si comincia a calare
+  perCambio = false;
+  // poco prima della fine si comincia a calare; a volume zero si passa alla seguente (senza aspettare 'ended')
   a.addEventListener('timeupdate', () => {
-    if (audio !== a || finendo || !Number.isFinite(a.duration)) return;
+    if (audio !== a || finendo || sospesa || !Number.isFinite(a.duration)) return;
     const resta = a.duration - a.currentTime;
     if (resta <= config.sfumatura) {
       finendo = true;
-      sfuma(a, 0, Math.max(200, resta * 1000));
+      sfuma(a, 0, Math.max(200, resta * 1000), () => audio === a && passa());
     }
   });
   a.addEventListener('ended', () => audio === a && passa());
   avviaAudio(a, () => {
-    // senza un gesto del giocatore il browser rifiuta: si riprova al prossimo clic
+    // senza un gesto del giocatore il browser rifiuta: si riprova al prossimo clic (vedi vigila)
     if (audio === a) audio = null;
   });
   sfuma(a, livello(), ATTACCO_MS);
 }
 
-/** Fine di una traccia: un po' di silenzio, poi la seguente. */
+/** Fine di una traccia (o della sfumatura per il cambio di modalità): un po' di silenzio, poi la seguente. */
 function passa(): void {
   if (audio) ferma(audio);
   audio = null;
-  indice[modo] = (indice[modo] ?? 0) + 1;
+  if (!perCambio) indice[modo] = (indice[modo] ?? 0) + 1;
+  perCambio = false;
+  finendo = false;
   if (pausa) clearTimeout(pausa);
+  pausa = setTimeout(attacca, config.silenzio * 1000);
+}
+
+/**
+ * Salvagente, a ogni ridisegno della schermata: se il sottofondo dovrebbe suonare e invece tace (nessuna traccia, nessuna pausa
+ * fra due tracce, nessuna traccia breve in corso), riparte dopo il solito silenzio. Il ridisegno segue un clic, quindi il browser
+ * lascia suonare.
+ */
+function vigila(): void {
+  if (!avviata || !musicaAccesa() || pausa || sospesa || stacco || typeof Audio === 'undefined') return;
+  if (audio && !audio.paused) return;
+  if (audio) ferma(audio);
+  audio = null;
+  finendo = false;
   pausa = setTimeout(attacca, config.silenzio * 1000);
 }
 
@@ -197,19 +226,19 @@ function suona(): void {
  * un po' di silenzio, e attacca la prima della nuova modalità.
  */
 export function modalitaMusica(m: string): void {
-  if (m === modo) return;
+  if (m === modo) {
+    vigila();
+    return;
+  }
   modo = m;
   indice[m] = 0;
   const a = audio;
-  if (!a || a.paused) return;
+  if (!a || (a.paused && !sospesa)) return;
   finendo = true;
-  sfuma(a, 0, config.sfumatura * 1000, () => {
-    if (audio !== a) return;
-    ferma(a);
-    audio = null;
-    if (pausa) clearTimeout(pausa);
-    pausa = setTimeout(attacca, config.silenzio * 1000);
-  });
+  perCambio = true;
+  // in pausa per una traccia breve: al rientro si passa alla nuova modalità (vedi riprendi)
+  if (a.paused) return;
+  sfuma(a, 0, config.sfumatura * 1000, () => audio === a && passa());
 }
 
 /** Accende o spegne la musica e ricorda la scelta; ritorna il nuovo stato. */
@@ -245,6 +274,11 @@ function riprendi(): void {
   sospesa = false;
   const a = audio;
   if (!a || !musicaAccesa()) return;
+  // fermata mentre calava verso la fine (o verso il cambio di modalità): niente coda muta, si passa alla seguente
+  if (finendo) {
+    passa();
+    return;
+  }
   a.volume = 0;
   avviaAudio(a, () => audio === a && (audio = null));
 }
@@ -302,13 +336,17 @@ export function suonaStacco(tipo: Stacco, key: string): void {
     parti();
     return;
   }
-  sfuma(a, 0, ZITTO_MS, () => {
-    if (stacco === s && audio === a) {
-      a.pause();
+  // un timer a parte, non la fine della sfumatura: se intanto la traccia di sottofondo finisce (e la sua sfumatura si
+  // interrompe) la traccia breve attacca lo stesso
+  sfuma(a, 0, ZITTO_MS);
+  setTimeout(() => {
+    if (stacco !== s) return;
+    if (audio === a && !a.paused) {
+      ferma(a);
       sospesa = true;
     }
     parti();
-  });
+  }, ZITTO_MS + 20);
 }
 
 /** Al primo clic o tasto la musica parte (una volta sola: poi va da sé, traccia dopo traccia). */

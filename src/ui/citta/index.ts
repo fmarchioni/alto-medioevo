@@ -10,12 +10,13 @@
  */
 import { staParlando } from '../speaker';
 import { Assets } from './assets';
+import { ATLANTE_BASE, ATLANTE_COLONNE, ATLANTE_SCALA, ATLANTE_RIGHE, ATLANTI, PASSO_BESTIA, PASSO_PERSONA, passoAtlante, rigaAtlante } from './atlanti';
 import { Effects } from './effects';
 import { TH, toWorld, TW } from './iso';
 import { added, addedFields, BANK_X, C, hash, RIVER_W, type CityModel, type CityObject } from './layout';
 import { drawFrame, drawStatic, frameFor, K, makeLayer, PEOPLE, ZOOM_MAX, type Camera, type Figure, type Placed } from './render';
 import { placeOf, type Scena } from './scene';
-import { advance, ambient, blockedOf, facing, makeWalker, poseOf, route, stepOf, type Walker } from './walkers';
+import { advance, ambient, blockedOf, facing, makeWalker, PASSO_LUNGO, poseOf, route, stepOf, type Walker } from './walkers';
 
 export { cityModel } from './layout';
 export { sceneOf } from './scene';
@@ -38,10 +39,10 @@ export let lastAdded: CityObject[] = [];
 let lastFields: [number, number][] = [];
 
 /** Sprite delle persone: si caricano con gli altri, ma non stanno nella tabella degli edifici. */
-const PEOPLE_BASE = ['contadino', 'contadina', 'mercante-asino', 'carro-buoi', 'carovana', 'soldato', 'cavaliere', 'cavaliere-pesante', 'monaco', 'signore', 'dama', 'banditore',
+const PEOPLE_BASE = ['contadino', 'contadina', 'mercante-asino', 'soldato', 'cavaliere', 'cavaliere-pesante', 'monaco', 'signore', 'dama', 'banditore',
   'ungaro', 'saraceno', 'longobardo', 'bizantino', 'franco', 'brigante', 'contadino-retro', 'contadina-retro', 'banditore-retro', 'saraceno-retro', 'franco-retro', 'mercante-asino-retro', 'soldato-retro', 'monaco-retro', 'signore-retro', 'dama-retro', 'brigante-retro'];
 /** Viste di spalle venute dopo il foglio delle persone: non hanno ancora il secondo passo. */
-const PEOPLE_RETRO = ['carro-buoi-retro', 'cavaliere-retro', 'cavaliere-pesante-retro', 'ungaro-retro'];
+const PEOPLE_RETRO = ['cavaliere-retro', 'cavaliere-pesante-retro', 'ungaro-retro'];
 /** Ogni figura del foglio ha anche il secondo passo della camminata ("-passo"); chi non ce l'ha resta sul primo. */
 const PEOPLE_SPRITES = [...PEOPLE_BASE, ...PEOPLE_RETRO, ...PEOPLE_BASE.map(s => `${s}-passo`)];
 
@@ -179,7 +180,33 @@ function createCity(): City {
 
   // ------------------------------------------------------------ figure del fotogramma
 
+  /** Chi ha l'atlante a 8 direzioni (atlanti.ts): la riga secondo la direzione, la colonna secondo il passo; niente specchio né saltello. */
+  const atlasFigure = (w: Walker, img: HTMLImageElement, scala = 1): Figure | null => {
+    if (w.alpha <= 0.02) return null;
+    const pose = poseOf(w), p = toWorld(pose.gx, pose.gy);
+    // fermo, l'omino guarda dove andava; la prima colonna è il passo a gambe quasi unite
+    const riga = rigaAtlante(pose.dx, pose.dy);
+    const col = w.moving ? passoAtlante(w.pos, PASSO_LUNGO.has(w.sprite) ? PASSO_BESTIA : PASSO_PERSONA, w.cum.length * 0.37 + w.side * 9) : 0;
+    const cw = img.naturalWidth / ATLANTE_COLONNE, ch = img.naturalHeight / ATLANTE_RIGHE;
+    const wd = cw * K * PEOPLE * scala, ht = ch * K * PEOPLE * scala, base = ATLANTE_BASE * K * PEOPLE * scala;
+    const x = p.x - wd / 2, y = p.y - ht + base + 3, alpha = w.alpha;
+    return {
+      x: x - 2, y, w: wd + 4, h: ht + 4, depth: pose.gx + pose.gy,
+      paint(c) {
+        c.globalAlpha = alpha;
+        c.fillStyle = 'rgba(20, 30, 10, .3)';
+        c.beginPath();
+        c.ellipse(p.x, p.y + 2, Math.max(6, wd * 0.3), Math.max(2.5, wd * 0.11), 0, 0, Math.PI * 2);
+        c.fill();
+        c.drawImage(img, col * cw, riga * ch, cw, ch, x, y, wd, ht);
+        c.globalAlpha = 1;
+      },
+    };
+  };
+
   const walkerFigure = (w: Walker, dt: number): Figure | null => {
+    const atlante = ATLANTI[w.sprite] ? assets.get(`atlante:${ATLANTI[w.sprite]}`) : undefined;
+    if (atlante && !w.torch) return atlasFigure(w, atlante, ATLANTE_SCALA[ATLANTI[w.sprite]] ?? 1);
     const pose = poseOf(w), f = facing(w.sprite, pose.dx, pose.dy);
     // camminata: due fotogrammi alternati secondo la strada fatta, con un saltello sul secondo; sfasati fra un omino e l'altro
     const step = w.moving ? stepOf(w.sprite, w.pos, w.cum.length * 0.37 + w.side * 9) : 0;

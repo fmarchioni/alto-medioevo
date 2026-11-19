@@ -4,6 +4,7 @@
  * dell'immagine, quindi bastano larghezza e altezza naturali: il manifest
  * serve solo alla pipeline di ritaglio.
  */
+import { ATLANTI } from './atlanti';
 
 export interface SpriteSpec {
   dir: string;
@@ -30,11 +31,19 @@ export const SPRITES: Record<string, SpriteSpec> = {
   'mercato-1': t('edifici', 0.92), 'mercato-2': t('edifici', 0.95), 'opificio-1': t('edifici', 0.98), 'opificio-2': t('edifici', 0.98),
   mulino: t('edifici', 2), granaio: t('edifici', 0.82), chiesa: t('edifici', 0.98), cattedrale: t('edifici', 1.08), fondaco: t('edifici', 1), banco: t('edifici', 0.85),
   porto: t('edifici', 2), cava: t('edifici', 1),
+  // opere delle ere (foglio prompt19/prompt20): scriptorium 2×2; il ponte è lungo cinque tessere, ancorato alla testata sulla riva lontana
+  scriptorium: t('edifici', 1), ponte: t('edifici', 2.8, [0.944, 0.93]),
+  maggese: t('terreno'), legumi: t('terreno'), pecore: t('natura', 0.78), pecora: t('natura', 0.78),
+  // il pastore è il villico fermo con una pecora (tools/ritaglia-48.mjs): stessa scala degli omini (PEOPLE)
+  pastore: t('natura', 0.68),
   'mura-ne': t('difese', 0.9, [0.52, 0.72]), 'mura-no': t('difese', 0.9, [0.48, 0.72]), 'mura-angolo': t('difese', 1.05), torre: t('difese', 0.9),
-  // torre di guardia (Spade e castelli): la stessa torre, più alta, isolata fuori dalle mura
-  'torre-guardia': t('difese', 1.2, undefined, 'torre'),
-  // la sentinella in cima alla torre di guardia: il soldato degli omini (si disegna a mezzo busto)
-  sentinella: t('persone', undefined, undefined, 'soldato'),
+  // Spade e castelli (foglio prompt21): torri di guardia per livello (legno, pietra, alta col fuoco), mangano e trabucco, breccia nelle mura
+  'torre-guardia-1': t('difese', 1.05), 'torre-guardia-2': t('difese', 1.05), 'torre-guardia-3': t('difese', 1.05),
+  mangano: t('difese', 1.1), trabucco: t('difese', 1.2), 'mura-breccia': t('difese', 1.2, [0.5, 0.76]),
+  // Vie dei mercanti (foglio prompt22): il vigneto è un pezzo con la sua zolla (le viti sporgono sopra il rombo); la fiera è disegnata come un 2×2 senza
+  // la tessera davanti, stesa su un lotto di 3×3: poggia più in alto del fondo del lotto
+  vigneto: t('terreno', 1, undefined, 'vigneto'), 'vigneto-uva': t('terreno', 1, undefined, 'vigneto-uva'),
+  cantina: t('edifici', 1), torchio: t('edifici', 0.95), fiera: t('edifici', 1, [0.5, 0.37]),
   porta: t('difese', 1.45, [0.5, 0.8]),
   // caserma (Spade e castelli): finché non ci sono i disegni (CASERME_DISEGNATE), le tende dell'accampamento
   'caserma-tende': t('difese', 0.8, undefined, 'accampamento'),
@@ -95,6 +104,11 @@ export class Assets {
       img.src = spriteUrl(`${spec.dir}/${spec.file ?? name}`);
     }
     // le persone non cambiano lo strato statico: non serve ridisegnarlo al loro arrivo
+    for (const atlante of new Set(Object.values(ATLANTI))) {
+      const img = new Image();
+      img.onload = () => this.images.set(`atlante:${atlante}`, img);
+      img.src = spriteUrl(`persone48/${atlante}`);
+    }
     for (const name of people) {
       const img = new Image();
       img.onload = () => this.images.set(name, img);

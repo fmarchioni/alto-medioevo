@@ -4,6 +4,7 @@
  * Servono all'avviso d'inizio turno (solo al signore interessato) e alla miniatura del giornale.
  */
 import type { AnnuncioCorona } from '../domain/dinastia';
+import { OPERE } from '../domain/ere';
 import { FEUDI, titleName } from '../domain/rank';
 import type { Game } from '../domain/turn';
 import type { ChronicleFact, Player } from '../domain/types';
@@ -31,6 +32,8 @@ export function titoloScena(before: number, after: number): Scena | null {
 const FAMIGLIA: Partial<Record<Extract<ChronicleFact, { t: 'famiglia' }>['k'], [string, (chi: string) => string]>> = {
   nozze: ['nozze', chi => `Le nozze di ${chi}`],
   nascita: ['nascita', chi => `La nascita di ${chi}`],
+  // consorte o figli: la veglia funebre in famiglia (la morte del signore ha il suo dipinto)
+  lutto: ['morte-famiglia', chi => `La morte di ${chi}`],
   ripudio: ['ripudio', () => 'Il ripudio'],
   ripudiato: ['ripudio', () => 'Il ripudio'],
   reggenza: ['reggenza', () => 'Il consiglio di reggenza'],
@@ -39,6 +42,25 @@ const FAMIGLIA: Partial<Record<Extract<ChronicleFact, { t: 'famiglia' }>['k'], [
   usurpazione: ['faida-fratello', () => 'La notte della successione'],
   esilio: ['traditore', () => 'La congiura sventata'],
 };
+
+/** Il dipinto dell'opera che apre l'era `era` (1 mulino .. 4 scriptorium). */
+export function operaScena(era: number): Scena | null {
+  const o = OPERE[era - 1];
+  return o ? { art: `opera-${o.id}`, caption: o.nome } : null;
+}
+
+const ERA_NOMI = ['prima', 'seconda', 'terza', 'quarta', 'quinta'];
+
+/** Avviso quando il signore compie l'opera dell'era: il dipinto, il vantaggio, l'era nuova. */
+export function operaNotice(p: Player): Notice | null {
+  const s = p.era ? operaScena(p.era) : null;
+  if (!s) return null;
+  const o = OPERE[p.era! - 1];
+  const fine = p.era! >= OPERE.length
+    ? 'Tutte le opere del feudo sono compiute: ora il trono d\'Italia è alla vostra portata.'
+    : `Si apre la <b>${ERA_NOMI[p.era!]} era</b> del feudo: si possono costruire più mercati e opifici, e salire di rango.`;
+  return { title: s.caption, body: scenaFigure(s, `L'opera è compiuta: <b>${o.nome.toLowerCase()}</b>. D'ora in poi ${o.vantaggio}. ${fine}`), html: true, musica: 'gloria' };
+}
 
 /** Dipinto della faida: il fratello o la sorella che osserva la scena della morte. */
 export const faidaArt = (g: number) => (g === 6 ? 'faida-sorella' : 'faida-fratello');
@@ -110,7 +132,7 @@ export function famigliaNotice(p: Player, facts: FattoFamiglia[]): Notice | null
     frasi.push(`${lutti.length ? 'Ma il Signore dà e il Signore toglie: ' : ''}${f.gender === 1 ? 'è nato vostro figlio' : 'è nata vostra figlia'} <b>${esc(f.chi)}</b>, e il feudo festeggia il nuovo membro della casata.`);
   }
   const s: Scena = lutti.length
-    ? { art: 'morte-signore', caption: lutti.length === 1 && lutti[0].k === 'lutto' ? `La morte di ${lutti[0].chi}` : 'Lutto a corte' }
+    ? { art: 'morte-famiglia', caption: lutti.length === 1 && lutti[0].k === 'lutto' ? `La morte di ${lutti[0].chi}` : 'Lutto a corte' }
     : { art: 'nascita', caption: nascite.length === 1 && nascite[0].k === 'nascita' ? `La nascita di ${nascite[0].chi}` : 'Nascite a corte' };
   return { title: lutti.length ? 'Lutto a corte' : s.caption, body: scenaFigure(s, frasi.join(' ')), html: true, musica: lutti.length ? 'requiem' : 'festa' };
 }

@@ -4,6 +4,8 @@
  * confrontare una partita con l'originale in VICE usando C64Rnd.
  */
 import { buyGrain, collectRendite, computeRendite, feedServants, INT, type RateKind, sellGrain, setRate, spoilGrain, startOfTurn, USURA_MIN } from './economy';
+import { fattoreRaccolto, spesaCitta } from './citta';
+import { costruisciOpera } from './ere';
 import { annataOf, initAnnate, setAnnata } from './annate';
 import { granaryCapacity, SETTLER_MEDIA_PRICE, settlersFor, storeGrain } from './gabelle';
 import {
@@ -80,6 +82,8 @@ export function newLord(options: Options, np: NewPlayer, feudo: number): Player 
   if (options.fatti) p = { ...p, effetti: [] };
   if (options.commercio) p = { ...p, granai: 0 };
   if (options.botteghe) p = { ...p, botteghe: true };
+  if (options.citta) p = { ...p, citta: true };
+  if (options.ere) p = { ...p, era: 0 };
   if (np.bot) p = { ...p, strategia: np.strategia ?? (feudo % 2 ? 'mercante' : 'macina') };
   return p;
 }
@@ -200,6 +204,8 @@ export class Game {
     if (st.options.annate) st.annate ??= initAnnate(st);
     const annata = st.annate ? annataOf(st.annate, st.current, st.q) : undefined;
     startOfTurn(this.player, st.scalars, this.rng, annata);
+    // la città: senza abbastanza contadini il raccolto resta in parte nei campi (il prezzo non cambia)
+    if (this.player.citta) st.scalars.raccolto = INT(st.scalars.raccolto * fattoreRaccolto(this.player));
     // la guerra rincara il denaro, la pace lo fa scendere: l'usura del raccolto più quella dell'espansione, mai sotto il minimo
     const base = st.scalars.usura, extra = this.rules?.usuryExtra?.(this) ?? 0;
     const usura = Math.max(st.options.usuraMinima ? USURA_MIN : 0, base + extra);
@@ -567,6 +573,8 @@ export class Game {
     p.grano += e.grano;
     p.acri += e.acri + (t?.acri ?? 0);
     p.servi += e.servi + (t?.servi ?? 0);
+    // le ere: il sapere della casata (mulini, rotazione, strade, notai) passa anche al ramo cadetto
+    if (p.era !== undefined) p.era = st.players[i].era ?? 0;
     if (t) {
       p.mercato += t.mercati;
       p.opificio += t.opifici;
@@ -1187,6 +1195,17 @@ export class Game {
     return servi ? { ok: true, servi } : { ok: true };
   }
 
+  /** Le ere: costruisce l'opera dell'era e apre la seguente (nei dispendimenti). */
+  buildOpera(): ActionResult {
+    this.expect('investimenti');
+    const r = costruisciOpera(this.player);
+    if (!r.ok) return r;
+    this.log(`costruisce l'opera: ${r.opera.nome}`);
+    this.record({ t: 'opera', era: this.player.era! });
+    this.enterInvestments();
+    return { ok: true };
+  }
+
   /** Opzione 5 "karta": rivede il reame e torna agli investimenti. */
   viewRealm(): void {
     this.expect('investimenti');
@@ -1204,7 +1223,15 @@ export class Game {
       if (lost.over + lost.rot > 0) this.record({ t: 'granaio', ...lost });
     }
     this.rules?.beforeYearEnd?.(this);
-    const kin = st.dinastia?.persone ? (a: number, b: number) => parenti(st.dinastia!, a, b) : undefined;
+    // la città: manutenzione e servizi, prima degli usurai (se mancano gli scudi si va in debito)
+    if (p.citta) {
+      const spesa = spesaCitta(p);
+      if (spesa.totale > 0) {
+        p.scudi -= spesa.totale;
+        this.record({ t: 'citta', manutenzione: spesa.manutenzione, servizi: spesa.servizi });
+      }
+    }
+    const kin =st.dinastia?.persone ? (a: number, b: number) => parenti(st.dinastia!, a, b) : undefined;
     const end = endOfPlayerYear(st.players, st.current, st.scalars, this.rules?.usuryScale?.(this) ?? 1, !!st.options.pignoramenti, victoryRule(st.options), kin);
     // Dinastia: il trono non chiude la partita; chi ne ha le condizioni, a trono vacante, è candidato all'elezione di fine anno
     const din = st.dinastia;

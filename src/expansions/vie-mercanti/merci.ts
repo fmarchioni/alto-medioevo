@@ -8,9 +8,9 @@
  *   artigiani sono contenti. I manufatti non si guastano.
  * - Mercanti di passaggio: ogni anno comprano qualunque quantità, pagando
  *   subito ma poco (il prezzo cambia di anno in anno).
- * - Al fondaco (senza la Dinastia) ci sono sempre anche i mercanti di passaggio che
- *   vendono: poca merce, al più FORESTIERI_MAX unità l'anno per merce, un poco più cara
- *   di quanto si spunta al fondaco; si paga e si riceve subito.
+ * - Al fondaco ci sono sempre anche i mercanti di passaggio che vendono: poca merce,
+ *   al più FORESTIERI_MAX unità l'anno per merce, un poco più cara di quanto si spunta
+ *   al fondaco; si paga e si riceve subito. Con la Dinastia solo finché non c'è un re.
  * - Fondaco: ogni signore mette in vendita vino o manufatti al prezzo che
  *   vuole. Chi compra paga subito; la merce parte con una carovana e il
  *   venditore incassa solo quando la carovana arriva. La merce che nessun
@@ -25,6 +25,10 @@ import type { Game } from '../../domain/turn';
 import type { ActionResult, Player } from '../../domain/types';
 import { rollJourney, type EventoViaggio } from './carovane';
 import { bonusOf, travelYears } from './geografia';
+import { haOpera } from '../../domain/ere';
+
+/** Le ere: una carovana viaggia più veloce se chi spedisce o chi riceve ha costruito strade e ponti. */
+export const conStrade = (...ps: Player[]) => ps.some(p => haOpera(p, 'strade'));
 
 export type Merce = 'vino' | 'manufatti';
 export const MERCI: Merce[] = ['vino', 'manufatti'];
@@ -58,6 +62,11 @@ export interface Cantina {
 export const FORESTIERI_MAX = 50;
 export const FORESTIERI_MIN = 20;
 export const FORESTIERI_RICARICO = 3;
+/**
+ * Con la Dinastia i mercanti di passaggio vendono finché non c'è un re d'Italia: dalla prima incoronazione
+ * (reDal resta anche col trono vacante) il regno ha le sue vie, e la merce si trova al fondaco o fra parenti.
+ */
+export const passaggioFinito = (g: Game) => g.state.dinastia?.reDal !== undefined;
 
 /** Merce al fondaco; q: anno in cui è stata portata (assente nei salvataggi vecchi). */
 export interface Lot { id: number; seller: number; good: Merce; qty: number; price: number; q?: number }
@@ -118,9 +127,9 @@ export function passingOffer(q: number): Record<Merce, { qty: number; price: num
   return { vino: one('vino'), manufatti: one('manufatti') };
 }
 
-/** Quanta merce i mercanti di passaggio vendono ancora quest'anno al signore i (0: niente, o con la Dinastia). */
+/** Quanta merce i mercanti di passaggio vendono ancora quest'anno al signore i (0: niente, o c'è già stato un re). */
 export function passingLeft(g: Game, st: MerciState, i: number, good: Merce): number {
-  if (g.state.options.dinastia) return 0;
+  if (passaggioFinito(g)) return 0;
   const a = st.acquisti?.[i], q = g.state.q;
   return Math.max(0, passingOffer(q)[good].qty - (a?.q === q ? a[good] : 0));
 }
@@ -129,7 +138,7 @@ export function passingLeft(g: Game, st: MerciState, i: number, good: Merce): nu
 export function buyFromPassing(g: Game, st: MerciState, good: Merce, qty: number): ActionResult & { cost?: number } {
   const no = fondacoOpen(g);
   if (no) return no;
-  if (g.state.options.dinastia) return { ok: false, reason: 'con la Dinastia i mercanti di passaggio non vendono' };
+  if (passaggioFinito(g)) return { ok: false, reason: "c'è un re d'Italia: i mercanti di passaggio non vendono più" };
   const me = g.state.current, p = g.player, q = g.state.q, left = passingLeft(g, st, me, good);
   if (!isCount(qty)) return { ok: false, reason: 'quantità non valida' };
   if (qty > left) return { ok: false, reason: left ? `quest'anno ne hanno ancora ${left}` : `quest'anno non hanno più ${UNITA[good][1]}` };
@@ -281,7 +290,7 @@ export function buyLot(g: Game, st: MerciState, lotId: number, qty: number, rnd:
   lot.qty -= qty;
   if (lot.qty === 0) st.lots = st.lots.filter(l => l !== lot);
   const ps = g.state.players;
-  const previsti = travelYears(ps[lot.seller].feudo, { feudo: p.feudo });
+  const previsti = travelYears(ps[lot.seller].feudo, { feudo: p.feudo }, conStrade(ps[lot.seller], p));
   const v = rollJourney(rnd, previsti, qty);
   const caravan: Carovana = {
     id: st.nextId++, seller: lot.seller, buyer: me, good: lot.good, qty, paid: cost, partita: g.state.q,

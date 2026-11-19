@@ -8,6 +8,8 @@ import { PRICE_BAND } from './annate';
 import { MARKET_MULT } from './gabelle';
 import { tradeFactors } from './fazioni';
 import { fattiIncomeFactor, fattiMacinaFactor } from './fatti';
+import { bottegheAttive } from './citta';
+import { fattoreMacinaOpere } from './ere';
 
 /** INT() del BASIC: arrotonda verso -infinito anche per i negativi. */
 export const INT = Math.floor;
@@ -106,6 +108,12 @@ export function computeRendite(p: Player, sc: Scalars): RenditePreview {
   if (l1 < 0) l1 = 0;
   let l2 = INT(((p.baseOpifici * p.rateCommerzio) / 500) * tf.opifici);
   if (l2 < 0) l2 = 0;
+  // la città: le botteghe senza addetti sono chiuse e non rendono
+  if (p.citta) {
+    const a = bottegheAttive(p);
+    if (p.mercato > 1) l1 = INT((l1 * a.mercati) / (p.mercato - 1));
+    if (p.opificio > 1) l2 = INT((l2 * a.opifici) / (p.opificio - 1));
+  }
   let c = p.rateBevere + p.rateMacina + p.rateCommerzio;
   c = 180 - c < 0 ? 180 / c : 1;
   const ac = INT((p.servi * p.rateBevere) / 100 / 5);
@@ -114,7 +122,9 @@ export function computeRendite(p: Player, sc: Scalars): RenditePreview {
   if (p.servi > 0) sc.macina = INT((sc.s * 2 * p.rateMacina) / p.servi);
   if (p.servi === 0) sc.macina = 0;
   // fatti del reame: mulino guasto, ciambellano abile, sdegno del re
-  const pa = p.effetti ? INT(sc.macina * fattiMacinaFactor(p)) : sc.macina;
+  let pa = p.effetti ? INT(sc.macina * fattiMacinaFactor(p)) : sc.macina;
+  // le ere: il mulino ad acqua fa rendere di più la macina
+  if (p.era) pa = INT(pa * fattoreMacinaOpere(p));
   const l = p.effetti ? INT((ac + da + pa) * c * fattiIncomeFactor(p)) : INT((ac + da + pa) * c);
   p.credito = l + p.vassalli;
   return { mercati: l1, opifici: l2, bevere: ac, macina: pa, commerzio: da, correttivo: c, totale: l, conVassalli: p.credito };

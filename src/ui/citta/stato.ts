@@ -27,12 +27,14 @@ export function cityExtra(st: GameState, i: number, stagione?: Stagione): CityEx
     x.catapulte = s.catapulte?.[i] ?? 0;
     x.soldati = s.soldati?.[i] ?? 0;
     x.accampamento = (s.campagne ?? []).some(c => c.owner === i) || (s.assedi ?? []).some(a => a.owner === i || a.target === i);
+    x.breccia = (s.assedi ?? []).some(a => a.target === i);
   }
   if (st.expansion === VIE && st.ext) {
     const s = st.ext as MercantiState;
     x.fondaco = true;
     x.banco = true;
     x.vigneti = s.cantine?.[i]?.vigneti ?? 0;
+    x.fiera = s.fiera?.q === st.q;
     x.porto = SUL_MARE.has(FEUDI[st.players[i]?.feudo] ?? '');
   }
   return x;

@@ -11,8 +11,11 @@ import { groundAt, hash, wildAt, type CityModel, type CityObject } from './layou
 export const WORLD = { x0: -1150, y0: -300, w: 2300, h: 1400 };
 /** Risoluzione dello strato statico rispetto alla scala di gioco. */
 export const SS = 1.25;
-/** Scala degli omini rispetto a quella naturale degli sprite. */
-export const PEOPLE = 0.9;
+/**
+ * Scala degli omini rispetto a quella naturale degli sprite: un omino è alto circa 27 px, tre quarti di una casa piccola (35–40 px
+ * sopra la sua zolla). Con 0,9 era alto come la casa intera (2026-11-19).
+ */
+export const PEOPLE = 0.68;
 /** Scala naturale degli sprite: una tessera disegnata è larga circa 220 px. */
 export const K = TW / 220;
 const BG = '#4d6427';
@@ -47,22 +50,6 @@ function drawImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: numb
 
 /** Ritaglio dell'immagine di partenza, in pixel: x, y, larghezza, altezza. */
 type Crop = [number, number, number, number];
-
-/**
- * Sentinella sulla torre di guardia: il soldato a mezzo busto, che spunta dai merli.
- * Le misure sono frazioni dell'immagine della torre (centro della piattaforma, linea dei merli davanti)
- * e del soldato (fin dove si vede, altezza di un uomo rispetto alla torre).
- */
-const SENTINELLA = { cx: 0.5, merli: 0.17, busto: 0.42, uomo: 0.5 };
-
-function sentinella(a: Assets, tower: Placed): Placed | null {
-  const img = a.get('sentinella');
-  if (!img) return null;
-  const crop: Crop = [0, 0, img.naturalWidth, Math.round(img.naturalHeight * SENTINELLA.busto)];
-  const k = (tower.h * SENTINELLA.uomo) / img.naturalHeight;
-  const w = crop[2] * k, h = crop[3] * k;
-  return { img, x: tower.x + tower.w * SENTINELLA.cx - w / 2, y: tower.y + tower.h * SENTINELLA.merli - h, w, h, depth: tower.depth + 0.01, crop };
-}
 
 function drawTile(ctx: CanvasRenderingContext2D, m: CityModel, a: Assets, gx: number, gy: number): void {
   const g = groundAt(m, gx, gy), { x, y } = toWorld(gx, gy);
@@ -166,11 +153,6 @@ export function drawStatic(layer: HTMLCanvasElement, m: CityModel, a: Assets): P
     if (!p) continue;
     drawPlaced(ctx, p, true);
     placed.push(p);
-    const s = o.sprite === 'torre-guardia' ? sentinella(a, p) : null;
-    if (s) {
-      drawPlaced(ctx, s, false);
-      placed.push(s);
-    }
   }
   return placed;
 }

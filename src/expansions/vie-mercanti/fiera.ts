@@ -28,7 +28,7 @@ import type { Game } from '../../domain/turn';
 import type { ActionResult } from '../../domain/types';
 import { late, rollJourney, type EventoViaggio } from './carovane';
 import { PIAZZE, travelYears, type PiazzaId } from './geografia';
-import { MERCI, type Merce, type MerciState } from './merci';
+import { conStrade, MERCI, type Merce, type MerciState } from './merci';
 
 /** La prima fiera e ogni quanti anni si tiene. */
 export const FIERA_DAL = 2;
@@ -404,7 +404,7 @@ export function ship(c: FairCtx, id: number, qty: number, auto = false): ActionR
   cant[imp.c.good] -= qty;
   // spedito tutto da sé: niente più divisione con il parente
   delete imp.divisibile;
-  const previsti = travelYears(g.player.feudo, { piazza: imp.c.piazza });
+  const previsti = travelYears(g.player.feudo, { piazza: imp.c.piazza }, conStrade(g.player));
   const v = rollJourney(rnd, previsti, qty);
   const watered = imp.c.good === 'vino' && (st.annacqua?.[me] ?? -1) >= g.state.q;
   imp.spedito = { q: g.state.q, qty, arrive: g.state.q + v.anni, previsti, perse: v.perse, ...(v.evento ? { evento: v.evento } : {}), ...(watered ? { annacquato: true } : {}) };

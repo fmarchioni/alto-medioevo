@@ -1,5 +1,7 @@
 /** Investimenti ("dispendimenti"): righe 1700-1840. */
 import type { ActionResult, Player } from './types';
+import { addettiDi, serviLiberi } from './citta';
+import { tettoBotteghe } from './ere';
 
 export type InvestmentKind = 'terre' | 'mercato' | 'opificio' | 'palazzo' | 'granaio';
 
@@ -62,9 +64,13 @@ export function canInvest(p: Player, kind: InvestmentKind): ActionResult {
       break;
     case 'mercato':
       if (p.botteghe ? roomFor(p, kind) <= 0 : p.mercato === 20 + inBonus) return { ok: false, reason: 'servono più terre per altri mercati' };
+      if (p.mercato - 1 >= tettoBotteghe(p)) return { ok: false, reason: `in quest'era al più ${tettoBotteghe(p)} mercati: serve l'opera dell'era seguente` };
+      if (p.citta && serviLiberi(p) < addettiDi(kind)) return { ok: false, reason: `servono ${addettiDi(kind)} servi liberi per un mercato` };
       break;
     case 'opificio':
       if (p.botteghe ? roomFor(p, kind) <= 0 : p.opificio === 20 + inBonus) return { ok: false, reason: 'servono più terre per altri opifici' };
+      if (p.opificio - 1 >= tettoBotteghe(p)) return { ok: false, reason: `in quest'era al più ${tettoBotteghe(p)} opifici: serve l'opera dell'era seguente` };
+      if (p.citta && serviLiberi(p) < addettiDi(kind)) return { ok: false, reason: `servono ${addettiDi(kind)} servi liberi per un opificio` };
       break;
     case 'palazzo':
       if (p.palazzo === MAX_PALAZZO) return { ok: false, reason: 'palazzo completo' };

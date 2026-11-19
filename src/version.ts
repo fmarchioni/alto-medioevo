@@ -4,9 +4,9 @@
  * si sale di z per una piccola aggiunta, di y (z a 0) per una modifica
  * corposa, e si aggiorna la data.
  */
-export const VERSION = '1.5.1';
+export const VERSION = '1.6.0';
 /** data del commit (AAAA-MM-GG) */
-export const VERSION_DATE = '2026-11-17';
+export const VERSION_DATE = '2026-11-19';
 
 /** "3 novembre 2026" */
 export const versionDateText = () => {

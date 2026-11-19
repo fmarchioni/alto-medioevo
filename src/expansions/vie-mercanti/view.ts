@@ -3,6 +3,7 @@
  * magazzino, fondaco, vigne, fiera e banco dei prestiti. Solo presentazione: le
  * regole sono in rules.ts, merci.ts, fiera.ts e geografia.ts.
  */
+import { bottegheBar } from '../../ui/botteghe-bar';
 import { FEUDI } from '../../domain/rank';
 import type { Game } from '../../domain/turn';
 import type { ActionResult, GameState, Player } from '../../domain/types';
@@ -17,7 +18,7 @@ import {
   banquet, bid, divisibili, divisioniA, splitAnswer, splitOffer, buyLot, cantinaOf, feast, fulfilRequest, joinFair, playBankrupt, playConsole, playSmuggle, playWater, prestigeOf, shipContract, buyPassing, passingBlock, LOAN_MAX_RATE, LOAN_MAX_YEARS, LOAN_MIN, loanDue, MERCANTI_FALLIMENTO, merchantsTake, ms, plant, postLoan, postLot, sellPassing, takeLoan, withdrawLoan, withdrawLot, type Dispatch, type MercantiState,
 } from './rules';
 import {
-  ACRI_GRANO_MIN, caravansFrom, caravansTo, FORESTIERI_MAX, FORESTIERI_MIN, passingLeft, passingOffer, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, passingTakes, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
+  ACRI_GRANO_MIN, caravansFrom, caravansTo, conStrade, FORESTIERI_MAX, FORESTIERI_MIN, passaggioFinito, passingLeft, passingOffer, LOT_MAX_PRICE, MANUFATTI_PER_OPIFICIO, maxVigneti, MERCI, passingPrices, passingTakes, UNITA, VIGNETO_ACRI, VIGNETO_COST, VINO_GUASTO, VINO_PER_VIGNETO, type Merce,
 } from './merci';
 import { specialitaText, SPECIALITA, travelYears, ZONA_FEUDO, ZONA_NOME } from './geografia';
 import { VIAGGIO, type EventoViaggio } from './carovane';
@@ -254,7 +255,7 @@ function fondaco(g: Game, st: MercantiState): string {
   const others = st.lots.filter(l => l.seller !== me).sort((a, b) => a.good.localeCompare(b.good) || a.price - b.price);
   const rows = others.map(l => {
     const max = Math.min(l.qty, Math.max(0, Math.floor((p.scudi + p.credito) / l.price)));
-    const years = travelYears(ps[l.seller].feudo, { feudo: p.feudo });
+    const years = travelYears(ps[l.seller].feudo, { feudo: p.feudo }, conStrade(ps[l.seller], p));
     return `<tr>
       <th scope="row" data-label="Banco">${who(ps[l.seller])}</th>
       <td data-label="Merce">${qtyOf(l.good, l.qty)}</td>
@@ -280,9 +281,9 @@ function fondaco(g: Game, st: MercantiState): string {
     ...caravansTo(st, me).map(k => `<li>In arrivo da ${who(ps[k.seller])}: ${qtyOf(k.good, k.qty)}, nell'anno ${yearOf(k.arrive)}.</li>`),
     ...caravansFrom(st, me).map(k => `<li>In viaggio verso ${who(ps[k.buyer])}: ${qtyOf(k.good, k.qty)}; incasserete ${n(k.paid)} scudi nell'anno ${yearOf(k.arrive)}.</li>`),
   ].join('');
-  const offer = passingOffer(g.state.q);
+  const offer = passingOffer(g.state.q), dinastia = !!g.state.options.dinastia;
   const blocked = passingBlock(g);
-  const passing = g.state.options.dinastia ? '' : blocked ? `<h3>Mercanti di passaggio</h3><p class="hint">Non vendono a voi: ${blocked}.</p>` : `<h3>Mercanti di passaggio</h3>
+  const passing = passaggioFinito(g) ? '' : blocked ? `<h3>Mercanti di passaggio</h3><p class="hint">Non vendono a voi: ${blocked}.</p>` : `<h3>Mercanti di passaggio</h3>
     <table class="ext-table"><thead><tr><th>Merce</th><th>Ne vendono ancora</th><th>Prezzo</th><th>Comprare</th></tr></thead><tbody>${MERCI.map(good => {
       const left = passingLeft(g, st, me, good), price = offer[good].price;
       const max = Math.min(left, Math.max(0, Math.floor((p.scudi + p.credito) / price)));
@@ -294,7 +295,7 @@ function fondaco(g: Game, st: MercantiState): string {
           <button data-act="ext" data-op="buyPassing" data-good="${good}" ${max === 0 ? 'disabled' : ''}>Compra</button></td>
       </tr>`;
     }).join('')}</tbody></table>
-    <p class="hint">Ogni anno passano dal fondaco mercanti con un poco di vino e di manufatti (da ${FORESTIERI_MIN} a ${FORESTIERI_MAX} unità per merce): costano qualche scudo più di un banco del fondaco, ma si pagano e si ricevono subito, senza carovana. Non vendono a chi tratta con i mercanti forestieri: a chi è entrato alla fiera dell'anno, o ha contratti della fiera da spedire.</p>`;
+    <p class="hint">Ogni anno passano dal fondaco mercanti con un poco di vino e di manufatti (da ${FORESTIERI_MIN} a ${FORESTIERI_MAX} unità per merce): costano qualche scudo più di un banco del fondaco, ma si pagano e si ricevono subito, senza carovana.${dinastia ? " Quando l'Italia avrà un re non passeranno più." : ''} Non vendono a chi tratta con i mercanti forestieri: a chi è entrato alla fiera dell'anno, o ha contratti della fiera da spedire.</p>`;
   return `${passing}<h3>Merci in vendita</h3>${table}${going ? `<h3>Carovane in viaggio</h3><ul class="ext-ledger">${going}</ul>` : ''}
     <h3>Il vostro banco</h3>${mine}
     <p class="hint">Chi compra paga subito; la merce viaggia con una carovana e il venditore incassa al suo arrivo. Il viaggio dura un anno nella stessa zona, due in una zona vicina, tre a due zone di distanza e quattro fra il Nord e le Isole; un anno in meno da o per un porto. Il vostro feudo è nella zona ${ZONA_NOME[ZONA_FEUDO[p.feudo]]}. Gli altri signori hanno la precedenza; la merce che nessuno compra, al vostro prossimo turno, la prendono i mercanti di passaggio e la pagano subito, se non chiedete più di quanto pagano loro quest'anno (${prices.vino} scudi la botte di vino, ${prices.manufatti} il pezzo di manufatti). Altrimenti torna in magazzino.</p>
@@ -413,6 +414,8 @@ export const view: ExpansionView = {
     return [
       { ico: barrel, value: n(c.vino), label: `vino (${c.vigneti} ${c.vigneti === 1 ? 'vigneto' : 'vigneti'})` },
       { ico: crate, value: n(c.manufatti), label: 'manufatti' },
+      // mercati e opifici qui, fra le merci e il prestigio (la barra base non li ripete)
+      ...bottegheBar(g.player),
       { ico: seal, value: n(prestigeOf(g)), label: 'prestigio mercantile' },
     ];
   },

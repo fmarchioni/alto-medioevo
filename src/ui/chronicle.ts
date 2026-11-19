@@ -15,7 +15,8 @@ import { seizedSentence } from './pignoramenti';
 import { sensaleSentence } from './sensale';
 import { eventArt, fattoArt, illustrationUrl, miniatureUrl } from './citta/assets';
 import { MINIATURE } from './miniature-elenco';
-import { scenaDellAnno, titoloScena } from './investiture';
+import { operaScena, scenaDellAnno, titoloScena } from './investiture';
+import { OPERE } from '../domain/ere';
 import { dinastiaSentences } from './dinastia';
 import { attacco, chiuse, luoghi, type Tono } from './cronista';
 import type { FattoOutcome } from '../domain/fatti';
@@ -225,6 +226,12 @@ function cronaca(pys: PlayerYear[], players: Player[], view: ExpansionView | nul
       add(2, h.title, impresaSentence(f.id, f.esito, f.amount), f.esito === 'riuscita' ? 'fortuna' : f.esito === 'arresto' ? 'rovina' : f.esito === 'scaduta' ? 'mistero' : 'sciagura', { art: h.art, titolo: l => `${h.title} a ${l}` });
     }
     for (const f of py.of('bancarotta')) add(2, `La rovina di ${feudo}`, `Chiuse l'anno con ${n(-f.scudi)} scudi di debiti: gli usurai lo fecero arrestare, e uscì dalla storia del regno.`, 'rovina');
+
+    // le opere delle ere
+    for (const f of py.of('opera')) {
+      const sc = operaScena(f.era), o = OPERE[f.era - 1];
+      if (sc && o) add(2, sc.caption, `Compì l'opera: ${o.nome.toLowerCase()}. Ora ${o.vantaggio}.`, 'fortuna', { art: sc.art, titolo: l => `${sc.caption} a ${l}` });
+    }
 
     // 3) il rango
     if (end && end.titleAfter !== end.titleBefore) {

@@ -49,10 +49,11 @@ import { aggiornaVolumeMusica, cambiaMusica, lasciaStacco, modalitaMusica, music
 import { effettoDi } from './effetti';
 import { impostaVolumeMusica, impostaVolumeSuoni, preparaSuoni, suonaEffetto, volumeMusica, volumeSuoni } from './suoni';
 import { staccoDi } from './stacchi';
-import { coronaNotice, famigliaNotice, scenaFigure, titoloNotice } from './investiture';
+import { coronaNotice, famigliaNotice, operaNotice, scenaFigure, titoloNotice } from './investiture';
 import { comicText, effectBadges, fitComic, outcomeText, renderEventComic, renderOutcomeComic, type ComicText } from './comics';
 import { changedKinds, currentRates, KINDS, presets, previewRates, renderRendite, spoilsFor, treasurerGreeting, treasurerReaction, updateLive, type RenditeUi } from './rendite';
 import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderSignoriBuildCard, renderTrade, type TradeUi } from './trade';
+import { bottegheBar } from './botteghe-bar';
 
 /** Pagina "Fra signori": le carte dell'espansione per gli affari con gli altri signori. */
 /** Dinastia: dopo le gabelle, nei dispendimenti, la scheda che apre il menu della casata (albero, nozze, ripudio). */
@@ -811,6 +812,15 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         }
         return render();
       }
+      case 'opera': {
+        const r = g!.buildOpera();
+        const h = g!.player.gender === 1 ? 'Messere' : 'Madonna';
+        ui.cantiere.advisor = r.ok ? `L'opera è compiuta, ${h}: si apre un'era nuova per il feudo.` : `Non si può, ${h}: ${r.reason}.`;
+        ui.message = '';
+        // il dipinto dell'opera compiuta
+        if (r.ok) ui.notice = operaNotice(g!.player);
+        return render();
+      }
       case 'deedClose': {
         ui.deed = null;
         root.querySelector('.deed')?.remove();
@@ -1025,7 +1035,9 @@ function resourceBar(g: Game, exp: Expansion | null): string {
   const item = (ico: string, label: string, value: string, cls = '') =>
     `<div class="rb-item ${cls}" title="${label || value}">${ico}<span class="rb-val">${value}</span>${label ? `<span class="rb-lab">${label}</span>` : ''}</div>`;
   // l'espansione aggiunge una seconda riga (Spade e Castelli: soldati, torri, catapulte)
-  const extra = exp?.view.resourceBar?.(g) ?? [];
+  const espansione = exp?.view.resourceBar?.(g) ?? [];
+  // mercati e opifici in tutte le modalità: in testa alla seconda riga, se l'espansione non li mette già al suo posto
+  const extra = espansione.some(x => 'botteghe' in x) ? espansione : [...bottegheBar(p), ...espansione];
   return `<div class="resource-bar">
     ${item(icons.grano, 'grano', fmt(p.grano), p.grano < sc.domanda ? 'low' : '')}
     ${item(icons.scudi, 'scudi', fmt(p.scudi), p.scudi < 0 ? 'low' : '')}

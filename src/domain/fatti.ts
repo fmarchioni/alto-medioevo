@@ -133,7 +133,9 @@ export function pickFatto(st: GameState, f: FattiState, who: number): FattoId | 
   const leader = ps.reduce((a, _, i) => (wealthIndex(ps[i]) > wealthIndex(ps[a]) ? i : a), 0);
   // con il mazzo degli imprevisti il ciambellano resta solo fra gli imprevisti: niente doppione fra i fatti
   const pausa = (id: FattoId) => !!st.options.ricorrenza && inPausa(ps[who], fattoKey(id), st.q);
-  const w = FATTI.map((id): number => (pausa(id) || (id === 'ciambellano' && st.options.mazzo) ? 0 : id === 'decima' && ps.length > 1 && who === leader ? 3 : 1));
+  // il re d'Italia (Dinastia) non riceve la visita del re: il re è lui
+  const escluso = (id: FattoId) => (id === 'ciambellano' && !!st.options.mazzo) || (id === 'visitaRe' && st.dinastia?.re === who);
+  const w = FATTI.map((id): number => (pausa(id) || escluso(id) ? 0 :id === 'decima' && ps.length > 1 && who === leader ? 3 : 1));
   const total = w.reduce((a, b) => a + b, 0);
   let x = r.next() * total;
   f.rng = r.getState()[0];

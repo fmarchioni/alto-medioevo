@@ -11,6 +11,8 @@
  *   investimenti che rendono, pugna che in media conviene)
  */
 import { SELL_DEBT_LIMIT, trustFactor, type RateKind } from './economy';
+import { crescitaConviene, spesaCitta } from './citta';
+import { botteghe, prossimaOpera, puoCostruireOpera } from './ere';
 import { fiduciaOf, livelloMid, livelloOf, MARKET_MULT, OPIFICIO_MULT, workFactor } from './gabelle';
 import { granaryCapacity, MACINA_MOOD_WEIGHT, RIOT_MOOD, SETTLER_MEDIA_PRICE, umoreOf } from './gabelle';
 import { BATTLE_OPTIONS, CITY_WEIGHTS, FACTIONS, LEVA_SOLDATI, marriageCost, type FactionId, type FactionOption } from './fazioni';
@@ -160,6 +162,15 @@ function trade(c: Ctx, level: BotLevel): void {
   }
   // svista: conta male i sacchi e il popolo resta a stomaco vuoto
   if (c.svista === 'fame') feed = Math.min(feed, sc.domanda * between(rnd, 0.7, 0.9));
+  // le ere: con le botteghe pronte per l'opera si mette da parte il grano che chiede (comprandolo, se serve)
+  const opera = prossimaOpera(p);
+  if (opera && level !== 'facile' && botteghe(p) >= opera.requisito) {
+    const manca = opera.grano - (p.grano - feed);
+    if (manca > 0) buy(manca);
+    feed = Math.max(Math.min(feed, sc.domanda), Math.min(feed, p.grano - opera.grano));
+  }
+  // la città: oltre una certa densità un servo in più costa più di quanto rende; il facile non se ne accorge
+  if (p.citta && level !== 'facile' && !crescitaConviene(p, p.credito - p.vassalli)) feed = Math.min(feed, sc.domanda);
   feed = Math.max(0, Math.min(p.grano, Math.round(feed)));
   g.rules?.botBeforeFeed?.(ext, feed);
   feed = Math.min(feed, p.grano);
@@ -459,8 +470,9 @@ function invest(c: Ctx, level: BotLevel): void {
   nozze(c, level);
   const prestito = botPrestiti(g, level);
   if (prestito) log.push(prestito);
-  // Dinastia: gli scudi avuti in prestito dalla casata si tengono da parte per renderli
-  const owed = debitoCasata(g.state, g.state.current);
+  // Dinastia: gli scudi avuti in prestito dalla casata si tengono da parte per renderli;
+  // la città: e quelli della spesa di fine anno
+  const owed = debitoCasata(g.state, g.state.current) + (p.citta ? spesaCitta(p).totale : 0);
   const built: Record<InvestmentKind, number> = { terre: 0, mercato: 0, opificio: 0, palazzo: 0, granaio: 0 };
   const buy = (k: InvestmentKind) => {
     if (!g.invest(k).ok) return false;
@@ -469,6 +481,11 @@ function invest(c: Ctx, level: BotLevel): void {
   };
   const kinds: InvestmentKind[] = ['terre', 'mercato', 'opificio', 'palazzo'];
   const reale = !!g.state.options.palazzoReale;
+  // le ere: l'opera dell'era apre botteghe nuove e il rango; la si costruisce appena si può (il facile a caso)
+  const opera = prossimaOpera(p);
+  if (opera && puoCostruireOpera(p).ok && p.scudi - opera.scudi >= owed + 500 && (level !== 'facile' || rnd() < 0.5) && g.buildOpera().ok) {
+    log.push(`costruisce l'opera dell'era: ${opera.nome}`);
+  }
   // il mercante vuole granai capaci di un raccolto abbondante intero
   if (level !== 'facile' && p.strategia === 'mercante' && p.granai !== undefined) {
     while (granaryCapacity(p) < p.acri * 75 && canInvest(p, 'granaio').ok && p.scudi - COSTS.granaio >= 1000 && buy('granaio'));
