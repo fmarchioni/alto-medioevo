@@ -47,6 +47,17 @@ const sheaf = (x: number, y: number) =>
   `<g transform="translate(${x} ${y})"><path d="M0 0 l-6 -26 M0 0 l0 -28 M0 0 l6 -26 M0 0 l-3 -27 M0 0 l3 -27" stroke="#c9a032" stroke-width="2"/>
    <path d="M-7 -12 h14" stroke="#8a6b3e" stroke-width="3"/><path d="M-8 -28 q8 -8 16 0" fill="#e0b94a"/></g>`;
 
+/** Le due vocazioni: la bilancia del mercante e la spada del guerriero, ciascuna sotto il suo stendardo. */
+function vocazioniArt(): string {
+  const banner = (x: number, fill: string, inner: string) => `<g transform="translate(${x} 18)">
+    <path d="M0 0 v128" stroke="#5a3e26" stroke-width="4"/><path d="M2 6 h86 v86 l-43 22 l-43 -22 z" fill="${fill}" stroke="#3e2617" stroke-width="2"/>${inner}</g>`;
+  const scales = `<path d="M45 30 v50 M25 40 h40" stroke="#f3e6c4" stroke-width="3"/><path d="M25 40 l-10 22 h20 z M65 40 l-10 22 h20 z" fill="#d6b25a" stroke="#f3e6c4" stroke-width="1.5"/><path d="M33 82 h24" stroke="#f3e6c4" stroke-width="4"/>`;
+  const sword = `<path d="M45 24 v56" stroke="#e8e8e8" stroke-width="5"/><path d="M45 24 l-3 6 h6 z" fill="#e8e8e8"/><path d="M33 78 h24" stroke="#d6b25a" stroke-width="5"/><path d="M45 80 v12" stroke="#6b4a2c" stroke-width="5"/><circle cx="45" cy="95" r="4" fill="#d6b25a"/>`;
+  return frame(`<rect width="320" height="170" fill="#efe1bc"/><path d="M0 150 Q80 138 160 148 T320 146 V170 H0z" fill="#8aa05c"/>
+    ${banner(40, '#2f5d8a', scales)}${banner(190, '#a82c22', sword)}
+    <text x="85" y="164" text-anchor="middle" font-size="11" fill="#3e2617">mercante</text><text x="235" y="164" text-anchor="middle" font-size="11" fill="#3e2617">guerriero</text>`, 'gli stendardi del mercante e del guerriero');
+}
+
 /** Ruota dell'anno: le sei fasi del turno, come una ruota della fortuna. */
 function wheelOfYear(): string {
   const phases = ['Delibera', 'Imprevisto', 'Rendite', 'Dispendimenti', 'Lo reame', 'Fine anno'];
@@ -207,6 +218,16 @@ const PAGES: Page[] = [
     ],
     quip: 'Un mercante pensa al prossimo raccolto; un casato pensa ai nipoti dei nipoti.',
     art: familyTree,
+  },
+  {
+    title: 'Mercanti e guerrieri',
+    text: [
+      'In Dinastia si gioca sempre con Le vie dei mercanti e Spade e Castelli insieme, e ogni casata ha la sua vocazione: la scegliete nella tabella dei signori. Chi la lascia al feudo diventa mercante se la sua città è sul mare, guerriero altrimenti; i rami cadetti seguono la casa madre.',
+      'Tutti piantano vigne, fanno lavorare gli opifici, vendono ai mercanti di passaggio e al fondaco, alzano mura e torri. Il mercante va in più alla fiera dei forestieri e tenta le imprese mercantili; i suoi soldati sono una milizia, che difende la città dagli assalti, dalle orde e dai briganti ma non la lascia mai: niente marce, assedi né catapulte.',
+      'Il guerriero arruola un esercito vero, muove guerra, assedia e saccheggia, e gioca le carte di guerra; commercia in piccolo, ma la fiera non fa per lui. Il mercante si arricchisce di più, il guerriero può prendersi quello che il mercante ha accumulato: mura e milizia sono la sua assicurazione.',
+    ],
+    quip: 'Io vendo il vino anche a chi porta la spada: purché paghi prima di sguainarla!',
+    art: vocazioniArt,
   },
   {
     title: 'L\'anno in sei tempi',

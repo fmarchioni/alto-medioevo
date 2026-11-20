@@ -63,6 +63,7 @@ import { legami, prudente, ripudiabili } from '../../domain/famiglia';
 import { growPerPlayer, type BotCtx, type ExpansionRules } from '../../domain/expansion';
 import { borders } from '../../domain/geography';
 import { haOpera } from '../../domain/ere';
+import { vietato } from '../../domain/vocazioni';
 import { ACRI_PER_ACQUISTO, COSTS, MAX_ACRI } from '../../domain/investments';
 import { wealthIndex } from '../../domain/rank';
 import { Mulberry32 } from '../../domain/rng';
@@ -531,6 +532,9 @@ export function disband(g: Game, n: number): ActionResult {
 export function buildCatapults(g: Game, n: number): ActionResult {
   const no = phaseIs(g, 'investimenti');
   if (no) return no;
+  // Dinastia a vocazioni: il mercante non costruisce macchine da assedio
+  const voc = vietato(g.player, 'catapulte');
+  if (voc) return { ok: false, reason: voc };
   const st = ss(g), me = g.state.current, p = g.player;
   if (!isCount(n)) return { ok: false, reason: 'numero non valido' };
   const have = catapultsOf(st, me) + catAwayOf(st, me);
@@ -696,6 +700,9 @@ const falls = (g: Game, target: number, wins: number) => wins >= siegeNeed(g, ta
 export function declareWar(g: Game, target: number, sent: number, goal: WarGoal, cat = 0, merc = 0): ActionResult & { campaign?: Campaign; joined?: boolean } {
   const no = phaseIs(g, 'investimenti');
   if (no) return no;
+  // Dinastia a vocazioni: la milizia del mercante non lascia il feudo
+  const voc = vietato(g.player, 'marcia');
+  if (voc) return { ok: false, reason: voc };
   const st = ss(g), me = g.state.current, p = g.player;
   if (st.lastWar[me] === g.state.q) return { ok: false, reason: 'si muove guerra una sola volta l\'anno' };
   if (target === me || !g.state.players[target] || !alive(g, target)) return { ok: false, reason: 'scegliete il feudo di un altro signore' };

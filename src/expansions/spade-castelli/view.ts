@@ -4,6 +4,7 @@
  * in rules.ts.
  */
 import { FEUDI, wealthIndex } from '../../domain/rank';
+import { vietato } from '../../domain/vocazioni';
 import type { Game } from '../../domain/turn';
 import type { ActionResult, GameState, Player } from '../../domain/types';
 import { helmet, person, shield, spear } from '../../ui/comics';
@@ -364,16 +365,18 @@ function eserPanel(g: Game, st: SpadeState): string {
   const me = g.state.current, p = g.player, s = st.soldati[me], away = awayOf(st, me), max = maxArmy(p, s + away);
   const cat = catapultsOf(st, me), catAway = catAwayOf(st, me), catRoom = CATAPULT_MAX - cat - catAway;
   const looms = warLooms(g, me), vol = volunteersOf(g, me), room = recruitRoom(g, me);
+  // Dinastia a vocazioni: i soldati del mercante sono una milizia, che non marcia e non costruisce catapulte
+  const milizia = !!vietato(p, 'marcia'), senzaCatapulte = !!vietato(p, 'catapulte');
   // proposta: quanti se ne possono arruolare davvero, anche con le armi da pagare (tesoro più credito)
   const canArm = Math.max(0, Math.min(room, Math.floor((p.scudi + p.credito) / RECRUIT_COST)));
   const marching = (st.marcia ?? []).filter(m => m.owner === me).map(m => `<li>${n(m.n)} soldati${m.cat ? ` e ${plural(m.cat, 'catapulta', 'catapulte')}` : ''} di ritorno dal feudo di ${who(g.state.players[m.from])}: a casa all'inizio del ${900 + m.back}.</li>`).join('');
   const going = campaignsBy(st, me).map(c => `<li>${n(c.n)} soldati${c.cat ? ` e ${plural(c.cat, 'catapulta', 'catapulte')}` : ''} marciano contro ${who(g.state.players[c.target])}: battaglia alla fine del ${900 + c.arrive}.</li>`).join('');
   const sieging = siegesBy(st, me).map(x => `<li>${n(x.n)} soldati${x.cat ? ` e ${plural(x.cat, 'catapulta', 'catapulte')}` : ''} assediano ${who(g.state.players[x.target])}.</li>`).join('');
-  return `<div class="ext-stat"><b>${n(s)}</b> soldati nel fortino${away ? `, <b>${n(away)}</b> lontani` : ''}; al massimo ${n(max)} in tutto (un ${Math.round(ARMY_MAX_SHARE * 100) === 25 ? 'quarto' : `${Math.round(ARMY_MAX_SHARE * 100)}%`} della popolazione)</div>
+  return `${milizia ? `<p class="hint">Siete un signore mercante: i vostri soldati sono la <b>milizia cittadina</b>. Difendono il feudo dagli assalti, dalle orde e dai briganti, ma non lo lasciano mai: niente marce, assedi né saccheggi.</p>` : ''}<div class="ext-stat"><b>${n(s)}</b> soldati nel fortino${away ? `, <b>${n(away)}</b> lontani` : ''}; al massimo ${n(max)} in tutto (un ${Math.round(ARMY_MAX_SHARE * 100) === 25 ? 'quarto' : `${Math.round(ARMY_MAX_SHARE * 100)}%`} della popolazione)</div>
     <ul class="ext-ledger">${going}${marching}${sieging}
       ${looms ? `<li class="warn"><b>Corre voce di guerra</b>: pochi servi vogliono imbracciare le armi, e chi si arruola ora è una leva inesperta che quest'anno in battaglia vale metà di un soldato.</li>` : ''}
       <li>Quest'anno si fanno avanti <b>${n(vol)}</b> volontari${room < vol ? `; se ne possono arruolare ancora <b>${n(room)}</b>` : ''}. In pace un servo su dieci accetta le armi; con la guerra in vista uno su venticinque, e la metà se il popolo è scontento.</li>
-      <li>Solo i soldati nel fortino difendono il feudo e si possono congedare: chi marcia, assedia o torna resta soldato (e vuole il soldo) fino al ritorno.</li>
+      ${milizia ? '' : '<li>Solo i soldati nel fortino difendono il feudo e si possono congedare: chi marcia, assedia o torna resta soldato (e vuole il soldo) fino al ritorno.</li>'}
       <li>In difesa combattono anche i servi: ogni ${Math.round(1 / MILITIA)} servi valgono un soldato (oggi ${n(Math.floor(Math.max(0, p.servi) * MILITIA))}).</li>
       <li>Ogni soldato è un servo tolto al lavoro: rende meno gabelle e mercati.</li>
       <li>Armi: ${RECRUIT_COST} scudi a soldato; soldo: ${SOLDO} scudo a soldato a fine anno, anche a chi è lontano${s + away ? ` (quest'anno ${n((s + away) * SOLDO)})` : ''}.</li>
@@ -383,7 +386,7 @@ function eserPanel(g: Game, st: SpadeState): string {
       <button data-act="ext" data-op="recruit" ${room <= 0 ? 'disabled' : ''}>Arruola</button>
       <label>Congedare <input type="number" name="disband-n" min="1" max="${s}" value="${s}" inputmode="numeric"></label>
       <button data-act="ext" data-op="disband" ${s === 0 ? 'disabled' : ''}>Congeda</button>
-    </div>
+    </div>${senzaCatapulte ? '' : `
     <h3>Catapulte</h3>
     <div class="ext-stat"><b>${n(cat)}</b> catapulte nel fortino${catAway ? `, <b>${n(catAway)}</b> lontane` : ''}</div>
     <ul class="ext-ledger">
@@ -395,7 +398,7 @@ function eserPanel(g: Game, st: SpadeState): string {
     <div class="ext-form with-art">${catapultArt}
       <label>Costruire <input type="number" name="catapult-n" min="1" max="${Math.max(0, catRoom)}" value="${Math.max(0, Math.min(CATAPULTS_PER_RING, catRoom))}" inputmode="numeric"></label>
       <button data-act="ext" data-op="catapults" ${catRoom <= 0 ? 'disabled' : ''}>Costruisci (${n(CATAPULT_COST)} scudi l'una)</button>
-    </div>`;
+    </div>`}`;
 }
 
 function guerraPanel(g: Game, st: SpadeState): string {
@@ -755,7 +758,8 @@ export const view: ExpansionView = {
     const panel = PANELS[ui.panel ?? ''];
     if (!panel) return '';
     const back = g.state.phase.kind === 'investimenti' ? 'Torna alla guerra' : 'Torna alla delibera';
-    return `<h2>${panel.title}</h2>${speechBox(ARDENGO, ui.say)}<div class="ext-panel">${panel.render(g, ss(g))}</div>
+    const title = ui.panel === 'esercito' && vietato(g.player, 'marcia') ? 'La milizia' : panel.title;
+    return `<h2>${title}</h2>${speechBox(ARDENGO, ui.say)}<div class="ext-panel">${panel.render(g, ss(g))}</div>
       <div class="btns"><button data-act="extClose" class="primary">${back}</button></div>`;
   },
 

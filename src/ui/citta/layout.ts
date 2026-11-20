@@ -139,6 +139,11 @@ const BARN_LOTS: Lot[] = [[16, 16], [18, 16], [16, 18], [18, 18]];
 const FONDACO_LOT: Lot = [6, 16];
 /** caserma (Spade e castelli): lo stesso lotto del fondaco, perché le espansioni non stanno mai insieme */
 const CASERMA_LOT: Lot = FONDACO_LOT;
+/**
+ * Dinastia a vocazioni: il fondaco e la caserma ci sono tutti e due. La caserma va allora a nord del palazzo, al posto delle
+ * case di quel lotto (che non è riservato nella pianta, così le città delle altre partite non cambiano).
+ */
+const CASERMA_CON_FONDACO: Lot = [10, 8];
 const BANCO_LOT: Lot = [8, 18];
 /** la fiera dei mercanti forestieri (Vie dei mercanti, negli anni di fiera), accanto al banco: un lotto di 3×3, i padiglioni sono grandi */
 const FIERA_LOT: Lot = [5, 18];
@@ -263,10 +268,11 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
   for (let gx = C - 2; gx <= C + 2; gx++) for (let gy = C - 2; gy <= C + 2; gy++) ground.set(tileKey(gx, gy), { sprite: 'lastricato' });
   put('palazzo', 'palazzo', palaceSprite(k.piani), [C - 1, C - 1], 3);
 
-  // case
-  const nCase = Math.min(housesShown(k.case), plan.houses.length);
-  for (let i = 0; i < nCase; i++) {
-    const at = plan.houses[i];
+  // case (con le vocazioni, non nel lotto della caserma)
+  const caserma: Lot | null = (x.soldati ?? 0) > 0 ? (x.fondaco ? CASERMA_CON_FONDACO : CASERMA_LOT) : null;
+  const libere = plan.houses.map((at, i) => ({ at, i })).filter(({ at }) => !(x.fondaco && caserma && at[0] >= caserma[0] && at[0] < caserma[0] + 2 && at[1] >= caserma[1] && at[1] < caserma[1] + 2));
+  const nCase = Math.min(housesShown(k.case), libere.length);
+  for (const { at, i } of libere.slice(0, nCase)) {
     put('casa', `casa-${i}`, HOUSE_SPRITES[Math.floor(hash(seed, at[0], at[1], 7) * HOUSE_SPRITES.length)], at, 1, hash(seed, at[0], at[1], 8) < 0.5);
   }
   // con le ere le opere si vedono (src/domain/ere.ts): 1 mulino ad acqua, 2 rotazione, 3 strade e ponti, 4 scriptorium
@@ -366,7 +372,7 @@ export function cityModel(p: Player, x: CityExtra = {}): CityModel {
   for (let i = 0; i < Math.min(WATCH.length, torri); i++) put('torre', `guardia-${i}`, `torre-guardia-${torri}`, WATCH[i], 1);
   // catapulte: il mangano; da due in su il trabucco
   if ((x.catapulte ?? 0) > 0) put('assedio', 'catapulte', (x.catapulte ?? 0) >= 2 ? 'trabucco' : 'mangano', CATAPULT_AT, 1);
-  if ((x.soldati ?? 0) > 0 && !x.fondaco) put('caserma', 'caserma', casermaSprite(x.soldati ?? 0), CASERMA_LOT, 2);
+  if (caserma) put('caserma', 'caserma', casermaSprite(x.soldati ?? 0), caserma, 2);
   if (x.accampamento) put('accampamento', 'accampamento', 'accampamento', CAMP_AT, 1);
 
   // verde: solo dove nulla è stato costruito o coltivato

@@ -43,6 +43,8 @@ export interface NewPlayer {
   bot?: BotLevel;
   /** vocazione del signore del computer (assente: a sorte) */
   strategia?: Strategia;
+  /** Dinastia a vocazioni: mercante o guerriero (assente: secondo il feudo, vedi vocazioneDelFeudo) */
+  vocazione?: import('./vocazioni').Vocazione;
 }
 
 
@@ -56,6 +58,7 @@ export function createPlayer(np: NewPlayer, feudo: number): Player {
     feudo,
     gender: np.gender,
     ...(np.bot ? { bot: np.bot } : {}),
+    ...(np.vocazione ? { vocazione: np.vocazione } : {}),
     title: np.gender,
     scudi: 1000,
     servi: 1000,

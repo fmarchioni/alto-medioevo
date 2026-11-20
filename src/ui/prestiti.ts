@@ -10,6 +10,7 @@ import {
 import { FEUDI } from '../domain/rank';
 import type { Game } from '../domain/turn';
 import type { GameState } from '../domain/types';
+import { SPADE_ID, usaEspansione } from '../domain/vocazioni';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const house = (st: GameState, j: number) => `${esc(st.players[j].name)} da ${FEUDI[st.players[j].feudo]}`;
@@ -17,7 +18,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const anno = (q: number) => 900 + q;
 /** Rompere il vincolo: che cosa vuol dire, per chi resta offeso. */
-const offesa = (st: GameState) => (st.expansion === 'spade-castelli' ? ', e per lui vale come un assalto subito' : '');
+const offesa = (st: GameState) => (usaEspansione(st, SPADE_ID) ? ', e per lui vale come un assalto subito' : '');
 
 /** Che cosa è l'altra casata per la casata i: la madre o un ramo. */
 function legame(g: Game, i: number, j: number): string {

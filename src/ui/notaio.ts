@@ -16,6 +16,13 @@ import { honorific } from './advisor';
 import { INFO } from './fazioni';
 import type { Notice } from './notice';
 import { speechBox, type Speaker } from './speaker';
+import { SPADE_ID, usaEspansione, VOCAZIONI_ID, type Vocazione } from '../domain/vocazioni';
+
+/** La vocazione della casata, nel primo avviso del notaio (Dinastia a vocazioni). */
+const VOCAZIONE_TESTO: Record<Vocazione, string> = {
+  mercante: 'La vostra è una casata di <b>mercanti</b>. Andrete alla fiera dei forestieri e potrete tentare le imprese mercantili. I vostri soldati sono una milizia: difende la città dagli assalti, dalle orde e dai briganti, ma non la lascia mai, e non costruisce catapulte. Mura e milizia sono la vostra assicurazione contro i guerrieri del regno.',
+  guerriero: 'La vostra è una casata di <b>guerrieri</b>. Potrete arruolare un esercito, muovere guerra, assediare e saccheggiare, e giocare le carte di guerra. Commercerete in piccolo, con i mercanti di passaggio e al fondaco, ma la fiera dei forestieri è dei mercanti.',
+};
 
 const notaryPortrait = `
 <svg viewBox="0 0 120 140" class="portrait" role="img" aria-label="Ser Gualtiero, il notaio di corte">
@@ -51,7 +58,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 const fmt = (v: number) => Math.round(v).toLocaleString('it-IT');
 
 function testo(a: Avviso, g: Game): { title: string; text: string[] } {
-  const h = honorific(g.player), spade = g.state.expansion === 'spade-castelli';
+  const h = honorific(g.player), spade = usaEspansione(g.state, SPADE_ID);
   switch (a) {
     case 'inizio':
       return {
@@ -60,6 +67,7 @@ function testo(a: Avviso, g: Game): { title: string; text: string[] } {
           `${h}, sono Ser Gualtiero, notaio della vostra casata. Vi parlerò quando una delle leggi del regno comincerà a toccarvi, e una volta sola per ciascuna.`,
           `Questa volta il trono non chiude la partita: si gioca fino al ${ANNO_FINE}, quando Ottone di Sassonia sarà incoronato imperatore. Voi invecchierete e morirete, e regneranno i vostri eredi.`,
           `Vincerà la casata più illustre: contano i titoli di ogni generazione (da ${PRESTIGIO_RANGO[1]} per un conte a ${PRESTIGIO_RANGO[4]} per un principe), ${PRESTIGIO_RE} per ogni corona d'Italia, i matrimoni illustri e la ricchezza dell'ultimo signore. Le nozze e i figli li trovate nel pulsante della casata, a sinistra.`,
+          ...(g.state.expansion === VOCAZIONI_ID ? [VOCAZIONE_TESTO[g.player.vocazione ?? 'guerriero']] : []),
         ],
       };
     case 'successione':

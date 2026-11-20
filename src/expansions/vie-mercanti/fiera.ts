@@ -26,6 +26,7 @@ import { INT } from '../../domain/economy';
 import { Mulberry32 } from '../../domain/rng';
 import type { Game } from '../../domain/turn';
 import type { ActionResult } from '../../domain/types';
+import { vietato } from '../../domain/vocazioni';
 import { late, rollJourney, type EventoViaggio } from './carovane';
 import { PIAZZE, travelYears, type PiazzaId } from './geografia';
 import { conStrade, MERCI, type Merce, type MerciState } from './merci';
@@ -259,7 +260,7 @@ const fairPhase = (g: Game): ActionResult | null => {
 /** Entra alla fiera con la quota `tier` (o sale a una quota più alta pagando la differenza). */
 export function joinFair(c: FairCtx, tier: number): ActionResult & { fee?: number } {
   const { g, st } = c, me = g.state.current, p = g.player;
-  const no = fairPhase(g);
+  const no = vietato(p, 'fiera') ? { ok: false as const, reason: vietato(p, 'fiera')! } : fairPhase(g);
   if (no) return no;
   const f = fairOpen(st, g.state.q);
   if (!f) return { ok: false, reason: `la prossima fiera si tiene nel ${900 + nextFair(g.state.q)}` };
@@ -278,7 +279,7 @@ export function joinFair(c: FairCtx, tier: number): ActionResult & { fee?: numbe
 /** Offre (o cambia l'offerta) per un contratto; prezzo 0 ritira l'offerta. */
 export function placeBid(c: FairCtx, contract: number, price: number): ActionResult {
   const { g, st } = c, me = g.state.current;
-  const no = fairPhase(g);
+  const no = vietato(g.player, 'fiera') ? { ok: false as const, reason: vietato(g.player, 'fiera')! } : fairPhase(g);
   if (no) return no;
   const f = fairOpen(st, g.state.q);
   if (!f) return { ok: false, reason: 'non è anno di fiera' };

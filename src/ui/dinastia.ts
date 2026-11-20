@@ -33,6 +33,7 @@ export function renderObiettivi(selected: Obiettivo): string {
         <li>Nascono figli finché il signore è sposato. Eredita il primogenito; gli altri figli rimasti in casa prendono parte del tesoro, del grano e delle terre. La città, le botteghe e i debiti restano all'erede. Più la casata è ricca rispetto alle altre, più i fratelli pretendono. Un erede bambino regna sotto reggenza.</li>
         <li>I figli si sposano con le altre casate (niente tributi fra parenti, appoggio all'elezione, niente guerra fra loro), con Franchi, Longobardi e Bizantini (la fazione non vi attacca più, ma le sue rivali sì) o con la nobiltà del luogo. Il ripudio scioglie le nozze, ma dà all'offeso un casus belli.</li>
         <li>La corona d'Italia non si eredita. Chi raggiunge le condizioni del trono (ricchezza e palazzo completo) non vince: si candida, e con il trono vacante tutti i signori votano, ciascuno con il peso del suo rango. Alla morte del re si vota di nuovo. Ogni corona vale prestigio.</li>
+        <li>Si gioca con Le vie dei mercanti e Spade e Castelli insieme: ogni casata è di mercanti o di guerrieri, e la vocazione decide se andare alla fiera o muovere guerra.</li>
         <li>Vince la casata con più prestigio: i titoli di ogni generazione, le corone, i matrimoni illustri e la ricchezza dell'ultimo signore.</li>
       </ul>`
     : '<p class="hint">Vince chi sale per primo al trono, come nel gioco originale.</p>';

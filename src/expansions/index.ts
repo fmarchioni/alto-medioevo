@@ -1,6 +1,7 @@
 /**
  * Registro delle espansioni: raccoglie da solo ogni src/expansions/<nome>/index.ts.
- * Per aggiungerne una basta creare la cartella; per toglierla, eliminarla.
+ * Per aggiungerne una basta creare la cartella; per toglierla, eliminarla. Quelle con `nascosta` (la Dinastia a
+ * vocazioni, src/expansions/vocazioni/) non sono fra le tessere della schermata iniziale.
  */
 import type { Expansion } from './types';
 

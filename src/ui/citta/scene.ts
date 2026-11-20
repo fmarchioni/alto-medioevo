@@ -12,6 +12,7 @@ import { ID as SPADE, type SpadeState } from '../../expansions/spade-castelli/ru
 import { ID as VIE, type MercantiState } from '../../expansions/vie-mercanti/rules';
 import { BANK_X, C, RING_1, ROAD_X, ROAD_Y, type CityModel } from './layout';
 import { edgeOf, tilesOf, type Mode, type Pt, type Vita } from './walkers';
+import { subExt } from '../../domain/vocazioni';
 
 /** Luoghi della città a cui un copione può riferirsi; `placeOf` li traduce in tessere sulla pianta del momento. */
 export type Luogo = 'nord' | 'ovest' | 'sud' | 'riva' | 'bosco' | 'palazzo' | 'piazza' | 'soglia-nord' | 'soglia-ovest' | 'soglia-sud' | 'soglia-est'
@@ -113,8 +114,8 @@ const FATTI: Record<string, Copione> = {
  * del venditore (l'anno scorso, da chi gioca dopo di lui) parte all'inizio del suo turno seguente.
  */
 function partenze(st: GameState, i: number): number {
-  if (st.expansion !== VIE || !st.ext) return 0;
-  const s = st.ext as MercantiState;
+  const s = subExt<MercantiState>(st, VIE);
+  if (!s) return 0;
   const fondaco = (s.carovane ?? []).filter(c => c.seller === i && c.partita !== undefined
     && (c.partita === st.q ? c.buyer < i : c.partita === st.q - 1 && c.buyer > i)).length;
   const fiera = (s.impegni ?? []).filter(x => x.player === i && x.spedito?.q === st.q).length;
@@ -126,8 +127,9 @@ function partenze(st: GameState, i: number): number {
  * scarico: il carretto che ha consegnato e riporta il denaro (fondaco o fiera).
  */
 function arrivi(st: GameState, i: number): { carichi: number; vuoti: number } {
-  if (st.expansion !== VIE || !st.ext || st.current !== i) return { carichi: 0, vuoti: 0 };
-  const posta = (st.ext as MercantiState).inbox ?? [];
+  const s = subExt<MercantiState>(st, VIE);
+  if (!s || st.current !== i) return { carichi: 0, vuoti: 0 };
+  const posta = s.inbox ?? [];
   return { carichi: posta.filter(d => d.k === 'caravanIn').length, vuoti: posta.filter(d => d.k === 'caravanPaid' || d.k === 'fieraPagata').length };
 }
 
@@ -189,7 +191,7 @@ const somma = (a: Copione, b: Copione): Copione => ({
  */
 export function sceneOf(st: GameState, i: number, quiet = false): Scena {
   const p = st.players[i], ph = st.phase;
-  const soldati = st.expansion === SPADE && st.ext ? (st.ext as SpadeState).soldati?.[i] ?? 0 : 0;
+  const soldati = subExt<SpadeState>(st, SPADE)?.soldati?.[i] ?? 0;
   const vita: Vita = { servi: p?.servi ?? 0, mercati: (p?.mercato ?? 1) - 1, soldati, piani: p?.palazzo ?? 0, folla: 1, mercato: false };
   if (strascichiQ !== st.q) {
     strascichiQ = st.q;

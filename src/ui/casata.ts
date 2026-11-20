@@ -17,6 +17,7 @@ import type { Game } from '../domain/turn';
 import { INFO } from './fazioni';
 import { prestitiSection } from './prestiti';
 import { voltoPersona, voltoSrc } from './volti';
+import { SPADE_ID, usaEspansione } from '../domain/vocazioni';
 
 export interface CasataUi {
   /** chiave del turno: il pannello si chiude al turno seguente */
@@ -46,7 +47,7 @@ const doteText = (v: number) => (v > 0 ? `ricevete ${fmt(v)} scudi di dote` : v 
 
 function effetto(g: Game, con: Sposo): string {
   if (con.k === 'locale') return 'nessun legame';
-  if (con.k === 'casata') return `le casate diventano parenti: niente tributi fra voi e appoggio all'elezione del re${g.state.expansion === 'spade-castelli' ? ', ma niente guerra fra voi' : ''}`;
+  if (con.k === 'casata') return `le casate diventano parenti: niente tributi fra voi e appoggio all'elezione del re${usaEspansione(g.state, SPADE_ID) ? ', ma niente guerra fra voi' : ''}`;
   const rivali = (RIVALI[con.f] ?? []).map(r => INFO[r].the);
   return `${INFO[con.f].the} non vi attaccheranno più${rivali.length ? `, ma ${rivali.join(' e ')} verranno più spesso` : ''}`;
 }
@@ -78,7 +79,7 @@ function ripudioConfirm(g: Game, m: Matrimonio): string {
   const x = [m.a, m.con.k === 'casata' ? m.con.id : -1].filter(id => id >= 0).map(id => personaOf(d, id)).find(p => p.casa === me)!;
   const offeso = m.con.k === 'casata' ? house(g, [personaOf(d, m.a), personaOf(d, m.con.id)].find(p => p.casa !== me)!.casa) : null;
   const consequence = offeso
-    ? `${offeso} avrà un casus belli contro di voi per ${CASUS_ANNI} anni: non vi voterà, non vorrà nozze con voi${g.state.expansion === 'spade-castelli' ? ' e cercherà vendetta in guerra' : ''}.`
+    ? `${offeso} avrà un casus belli contro di voi per ${CASUS_ANNI} anni: non vi voterà, non vorrà nozze con voi${usaEspansione(g.state, SPADE_ID) ? ' e cercherà vendetta in guerra' : ''}.`
     : m.con.k === 'fazione' ? `${INFO[m.con.f].the} si vendicheranno: per ${CASUS_ANNI - 1} anni attaccheranno molto più spesso.` : '';
   return `<div class="ripudio-box"><p><b>Ripudiare ${esc(nomeConsorte(d, m, x.id))}?</b> La dote di ${fmt(m.dote)} scudi torna a chi l'ha pagata, la casata perde ${PRESTIGIO_RIPUDIO} di prestigio. ${consequence}</p>
     <div class="btns"><button data-act="din" data-op="ripudioNo">Annulla</button><button data-act="din" data-op="ripudioSi" data-m="${m.id}" class="primary">Confermo il ripudio</button></div></div>`;
@@ -241,7 +242,7 @@ export function nozzeDecision(g: Game): { title: string; body: string; options: 
   const dote = suo.gender === 6 ? -doteCasata(g.state, g.state.current) : doteCasata(g.state, x.da);
   return {
     title: 'Proposta di nozze',
-    body: `${house(g, x.da)} chiede le nozze fra ${esc(mio.nome)} (${etaP(mio, q)} anni) e il vostro ${suo.gender === 1 ? 'figlio' : 'figlia'} ${esc(suo.nome)} (${etaP(suo, q)} anni). Le casate diventerebbero parenti: niente tributi fra voi, appoggio all'elezione del re${g.state.expansion === 'spade-castelli' ? ', niente guerra fra voi' : ''}. ${doteText(dote)}.`,
+    body: `${house(g, x.da)} chiede le nozze fra ${esc(mio.nome)} (${etaP(mio, q)} anni) e il vostro ${suo.gender === 1 ? 'figlio' : 'figlia'} ${esc(suo.nome)} (${etaP(suo, q)} anni). Le casate diventerebbero parenti: niente tributi fra voi, appoggio all'elezione del re${usaEspansione(g.state, SPADE_ID) ? ', niente guerra fra voi' : ''}. ${doteText(dote)}.`,
     options: [
       { label: 'Rifiutate', op: 'nozzeNo', target: x.id, act: 'din' },
       { label: 'Acconsentite', op: 'nozzeSi', target: x.id, primary: true, act: 'din' },

@@ -118,6 +118,8 @@ export interface ExpansionView {
 export interface Expansion {
   /** ordine delle tessere all'avvio */
   order: number;
+  /** non è fra le tessere della schermata iniziale: la Dinastia a vocazioni la usa da sola */
+  nascosta?: boolean;
   rules: ExpansionRules;
   view: ExpansionView;
 }

@@ -18,6 +18,7 @@ import { GAME_OPTIONS, type BotLevel, type ChronicleFact, type Gender, type Play
 import { playBotTurn } from '../domain/bots';
 import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
+import { VOCAZIONI_ID, type Vocazione } from '../domain/vocazioni';
 import { dinastiaAside, renderDinastiaEnd, renderObiettivi, renderSuccessione, type Obiettivo } from './dinastia';
 import { nozzeDecision, renderCasata, type CasataUi } from './casata';
 import { esitoRichiestaText, prestitoDecision } from './prestiti';
@@ -77,7 +78,7 @@ interface UiState {
   slot: string | null;
   rngKind: RngKind;
   message: string;
-  setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; expansion: string | null; obiettivo: Obiettivo };
+  setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; vocazioni: (Vocazione | '')[]; expansion: string | null; obiettivo: Obiettivo };
   /** pannelli dell'espansione nella Delibera */
   ext: ExtUi;
   /** Dinastia: pannello della casata */
@@ -194,7 +195,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
   preparaSuoni();
   const startRng: RngKind = opts.rngKind ?? 'mulberry';
   const ui: UiState = {
-    game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], expansion: null, obiettivo: 'regno' },
+    game: null, slot: null, rngKind: startRng, message: '', setup: { count: 1, sorte: 'normale', rngKind: startRng, names: [], genders: [], kinds: [], levels: [], vocazioni: [], expansion: null, obiettivo: 'regno' },
     ext: { key: '', panel: null, say: '' },
     casata: { key: '', open: false },
     trade: { key: '', mode: 'menu', advisor: '', qty: 0 },
@@ -342,7 +343,9 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     lastScreen = screen;
     root.innerHTML = c64ify(page + deed + overlay + modal);
     // il sottofondo della modalità della partita (gioco base o espansione)
-    modalitaMusica(g?.state.expansion ?? 'base');
+    // Dinastia a vocazioni: le tracce della vocazione del (primo) signore umano, mercante o guerriero
+    const umano = g?.state.players.find(p => !p.bot) ?? g?.state.players[0];
+    modalitaMusica(g?.state.expansion === VOCAZIONI_ID ? (umano?.vocazione === 'guerriero' ? 'spade-castelli' : 'vie-mercanti') : g?.state.expansion ?? 'base');
     // la traccia breve del momento (un imprevisto, un lutto, la corona...) sopra la musica di base
     if (g && (onTurn || g.state.phase.kind === 'fine') && !ui.tutorial && !ui.interlude && ui.chronicleYear === null) {
       const s = staccoDi(g, ui.notice?.musica ?? (g.state.phase.kind === 'investimenti' && ui.cantiere.opera ? 'gloria' : null), ui.ext.seen ? null : exp?.view.musicaDispacci?.(g) ?? null);
@@ -424,12 +427,13 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
    * Si ridisegna solo quando cambia il numero di signori.
    */
   const rememberSetup = (t: HTMLInputElement) => {
-    const m = /^(name|gender|kind|level)(\d+)$/.exec(t.name ?? '');
+    const m = /^(name|gender|kind|level|voc)(\d+)$/.exec(t.name ?? '');
     if (!m) return;
     const i = Number(m[2]);
     if (m[1] === 'name') ui.setup.names[i] = t.value;
     if (m[1] === 'gender' && (t.type !== 'radio' || t.checked)) ui.setup.genders[i] = Number(t.value) as Gender;
     if (m[1] === 'level') ui.setup.levels[i] = t.value as BotLevel;
+    if (m[1] === 'voc') ui.setup.vocazioni[i] = t.value as Vocazione | '';
     if (m[1] === 'kind') {
       ui.setup.kinds[i] = t.value as PlayerKind;
       // si abilita il livello senza ridisegnare (vedi sopra)
@@ -547,10 +551,13 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
           const level = (root.querySelector<HTMLSelectElement>(`[name="level${i}"]`)?.value ?? ui.setup.levels[i] ?? 'medio') as BotLevel;
           const typed = root.querySelector<HTMLInputElement>(`[name="name${i}"]`)?.value.trim() || ui.setup.names[i]?.trim();
           const name = typed || (kind === 'computer' ? BOT_NAMES[gender][i] : `Signore ${i + 1}`);
-          players.push(kind === 'computer' ? { name, gender, bot: level } : { name, gender });
+          // Dinastia a vocazioni: mercante o guerriero (vuoto: secondo il feudo)
+          const voc = ui.setup.obiettivo === 'dinastia' ? ((root.querySelector<HTMLSelectElement>(`[name="voc${i}"]`)?.value ?? ui.setup.vocazioni[i] ?? '') as Vocazione | '') : '';
+          players.push({ ...(kind === 'computer' ? { name, gender, bot: level } : { name, gender }), ...(voc ? { vocazione: voc } : {}) });
         }
         ui.rngKind = ui.setup.rngKind;
-        const exp = findExpansion(ui.setup.expansion);
+        // la Dinastia si gioca sempre con le vocazioni (le due espansioni insieme); il Regno con l'espansione scelta
+        const exp = findExpansion(ui.setup.obiettivo === 'dinastia' ? VOCAZIONI_ID : ui.setup.expansion);
         const rules = GAME_OPTIONS;
         const chosen = opts.fatti === false ? rules : { ...rules, fatti: ui.setup.sorte };
         ui.game = Game.create(players, makeRng(ui.rngKind), ui.setup.obiettivo === 'dinastia' ? { ...chosen, dinastia: true } : chosen, exp?.rules ?? null);
@@ -925,19 +932,21 @@ function renderSaves(saves: SaveSlot[]): string {
 }
 
 function renderSetup(ui: UiState): string {
+  const dinastia = ui.setup.obiettivo === 'dinastia';
   const opt = (v: string, label: string, cur: string) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`;
   const rows = Array.from({ length: ui.setup.count }, (_, i) => {
-    const kind = ui.setup.kinds[i] ?? 'umano', level = ui.setup.levels[i] ?? 'medio', gender = ui.setup.genders[i] ?? 1;
+    const kind = ui.setup.kinds[i] ?? 'umano', level = ui.setup.levels[i] ?? 'medio', gender = ui.setup.genders[i] ?? 1, voc = ui.setup.vocazioni[i] ?? '';
     const placeholder = kind === 'computer' ? BOT_NAMES[gender][i] : `Signore ${i + 1}`;
     return `<tr>
       <th scope="row" data-label="Feudo">a sorte</th>
       <td data-label="Nome"><input name="name${i}" maxlength="12" autocomplete="off" placeholder="${placeholder}" value="${esc(ui.setup.names[i] ?? '')}" aria-label="nome del signore ${i + 1}"></td>
       <td data-label="Genere"><select name="gender${i}" aria-label="genere">${opt('1', 'cavaliere', String(gender))}${opt('6', 'madonna', String(gender))}</select></td>
       <td data-label="Giocatore"><select name="kind${i}" aria-label="giocatore">${opt('umano', 'umano', kind)}${opt('computer', 'computer', kind)}</select></td>
-      <td data-label="Livello"><select name="level${i}" aria-label="livello del computer" ${kind === 'computer' ? '' : 'disabled'}>${opt('facile', 'facile', level)}${opt('medio', 'medio', level)}${opt('difficile', 'difficile', level)}</select></td>
+      <td data-label="Livello"><select name="level${i}" aria-label="livello del computer" ${kind === 'computer' ? '' : 'disabled'}>${opt('facile', 'facile', level)}${opt('medio', 'medio', level)}${opt('difficile', 'difficile', level)}</select></td>${dinastia ? `
+      <td data-label="Vocazione"><select name="voc${i}" aria-label="vocazione">${opt('', 'secondo il feudo', voc)}${opt('mercante', 'mercante', voc)}${opt('guerriero', 'guerriero', voc)}</select></td>` : ''}
     </tr>`;
   }).join('');
-  const table = `<table class="lords-table"><thead><tr><th>Feudo</th><th>Nome</th><th>Genere</th><th>Giocatore</th><th>Livello</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const table = `<table class="lords-table"><thead><tr><th>Feudo</th><th>Nome</th><th>Genere</th><th>Giocatore</th><th>Livello</th>${dinastia ? '<th>Vocazione</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>`;
   return `
   <section class="card castle setup-card">${battlements}
     <h1>Alto Medioevo</h1>
@@ -952,8 +961,8 @@ function renderSetup(ui: UiState): string {
         <option value="molto" ${ui.setup.sorte === 'molto' ? 'selected' : ''}>molto (un fatto ogni due anni)</option>
       </select></label>
       ${table}
-      ${renderExpansions(ui.setup.expansion)}
       ${renderObiettivi(ui.setup.obiettivo)}
+      ${dinastia ? renderVocazioniSetup() : renderExpansions(ui.setup.expansion)}
       <button data-act="start" class="primary">Inizia</button>
     </form>
   </section>`;
@@ -997,6 +1006,14 @@ const baseMiniature = `<svg viewBox="0 0 160 110" class="exp-mini" role="img" ar
 /** Copertine della scelta iniziale: miniature duecentesche (public/sprites/miniature). */
 const COPERTINE: Record<string, string> = { '': 'copertina-base', 'spade-castelli': 'copertina-spade', 'vie-mercanti': 'copertina-vie' };
 
+/** Dinastia: niente scelta dell'espansione, si gioca con tutte e due; ogni signore sceglie la sua vocazione nella tabella. */
+function renderVocazioniSetup(): string {
+  const voc = findExpansion(VOCAZIONI_ID);
+  return `<fieldset class="expansions"><legend>Vocazioni</legend>
+    <p class="hint">In Dinastia si gioca sempre con <b>Le vie dei mercanti</b> e <b>Spade e Castelli</b> insieme: ogni casata sceglie nella tabella se essere di mercanti o di guerrieri.</p>
+    ${voc ? `<ul class="exp-rules">${voc.view.summary.map(r => `<li>${r}</li>`).join('')}</ul>` : ''}</fieldset>`;
+}
+
 /** Tessere delle espansioni trovate: se ne sceglie una sola, o il gioco base. */
 function renderExpansions(selected: string | null): string {
   const tile = (id: string, mini: string, title: string, motto: string) =>
@@ -1009,7 +1026,7 @@ function renderExpansions(selected: string | null): string {
   return `<fieldset class="expansions"><legend>Espansioni</legend>
     <div class="exp-tiles">
       ${tile('', baseMiniature, 'Gioco base', 'Il feudo, il grano e la scalata al trono.')}
-      ${EXPANSIONS.map(e => tile(e.rules.id, e.view.miniature, e.view.title, e.view.motto)).join('')}
+      ${EXPANSIONS.filter(e => !e.nascosta).map(e => tile(e.rules.id, e.view.miniature, e.view.title, e.view.motto)).join('')}
     </div>${rules}</fieldset>`;
 }
 

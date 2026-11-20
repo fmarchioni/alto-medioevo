@@ -92,6 +92,8 @@ export interface Player {
   citta?: true;
   /** era del signore: quante opere ha costruito, da 0 a 4 (solo con `ere`, src/domain/ere.ts) */
   era?: number;
+  /** vocazione del signore: mercante o guerriero (solo nella Dinastia a vocazioni, src/domain/vocazioni.ts) */
+  vocazione?: import('./vocazioni').Vocazione;
   /** granai costruiti (solo con `commercio`) */
   granai?: number;
   /** per i signori del computer: vocazione (dare grano al popolo o commerciarlo) */
