@@ -9,6 +9,7 @@ import { FEUDI, titleName } from '../domain/rank';
 import type { Game } from '../domain/turn';
 import type { ChronicleFact, Player } from '../domain/types';
 import { illustrationUrl } from './citta/assets';
+import { illustrated } from './comics';
 import type { Notice } from './notice';
 
 /** Grado del titolo: 1 messere/madonna ... 5 principe/principessa (i titoli femminili partono da 6). */
@@ -51,15 +52,19 @@ export function operaScena(era: number): Scena | null {
 
 const ERA_NOMI = ['prima', 'seconda', 'terza', 'quarta', 'quinta'];
 
-/** Avviso quando il signore compie l'opera dell'era: il dipinto, il vantaggio, l'era nuova. */
-export function operaNotice(p: Player): Notice | null {
-  const s = p.era ? operaScena(p.era) : null;
+/**
+ * La vignetta dell'opera appena compiuta che apre l'era `era`, come quelle degli imprevisti:
+ * il dipinto e, in alto, la didascalia con il vantaggio e l'era nuova. Null se l'era non ha un'opera.
+ */
+export function operaComic(era: number): string | null {
+  const s = operaScena(era);
   if (!s) return null;
-  const o = OPERE[p.era! - 1];
-  const fine = p.era! >= OPERE.length
+  const o = OPERE[era - 1];
+  const fine = era >= OPERE.length
     ? 'Tutte le opere del feudo sono compiute: ora il trono d\'Italia è alla vostra portata.'
-    : `Si apre la <b>${ERA_NOMI[p.era!]} era</b> del feudo: si possono costruire più mercati e opifici, e salire di rango.`;
-  return { title: s.caption, body: scenaFigure(s, `L'opera è compiuta: <b>${o.nome.toLowerCase()}</b>. D'ora in poi ${o.vantaggio}. ${fine}`), html: true, musica: 'gloria' };
+    : `Si apre la <b>${ERA_NOMI[era]} era</b> del feudo: si possono costruire più mercati e opifici, e salire di rango.`;
+  const caption = `L'opera è compiuta: <b>${o.nome.toLowerCase()}</b>. D'ora in poi ${o.vantaggio}. ${fine}`;
+  return illustrated(illustrationUrl(s.art), { caption, sound: 'EVVIVA!', line: '' }, s.caption);
 }
 
 /** Dipinto della faida: il fratello o la sorella che osserva la scena della morte. */

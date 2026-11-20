@@ -49,7 +49,7 @@ import { aggiornaVolumeMusica, cambiaMusica, lasciaStacco, modalitaMusica, music
 import { effettoDi } from './effetti';
 import { impostaVolumeMusica, impostaVolumeSuoni, preparaSuoni, suonaEffetto, volumeMusica, volumeSuoni } from './suoni';
 import { staccoDi } from './stacchi';
-import { coronaNotice, famigliaNotice, operaNotice, scenaFigure, titoloNotice } from './investiture';
+import { coronaNotice, famigliaNotice, operaComic, scenaFigure, titoloNotice } from './investiture';
 import { comicText, effectBadges, fitComic, outcomeText, renderEventComic, renderOutcomeComic, type ComicText } from './comics';
 import { changedKinds, currentRates, KINDS, presets, previewRates, renderRendite, spoilsFor, treasurerGreeting, treasurerReaction, updateLive, type RenditeUi } from './rendite';
 import { maxQty, preview, renderExtCards, renderFeedingOutcome, renderSignoriBuildCard, renderTrade, type TradeUi } from './trade';
@@ -345,7 +345,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     modalitaMusica(g?.state.expansion ?? 'base');
     // la traccia breve del momento (un imprevisto, un lutto, la corona...) sopra la musica di base
     if (g && (onTurn || g.state.phase.kind === 'fine') && !ui.tutorial && !ui.interlude && ui.chronicleYear === null) {
-      const s = staccoDi(g, ui.notice?.musica ?? null, ui.ext.seen ? null : exp?.view.musicaDispacci?.(g) ?? null);
+      const s = staccoDi(g, ui.notice?.musica ?? (g.state.phase.kind === 'investimenti' && ui.cantiere.opera ? 'gloria' : null), ui.ext.seen ? null : exp?.view.musicaDispacci?.(g) ?? null);
       if (s) suonaStacco(s.tipo, s.key);
       else lasciaStacco();
     } else if (!ui.tutorial && ui.chronicleYear === null) lasciaStacco();
@@ -817,10 +817,13 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
         const h = g!.player.gender === 1 ? 'Messere' : 'Madonna';
         ui.cantiere.advisor = r.ok ? `L'opera è compiuta, ${h}: si apre un'era nuova per il feudo.` : `Non si può, ${h}: ${r.reason}.`;
         ui.message = '';
-        // il dipinto dell'opera compiuta
-        if (r.ok) ui.notice = operaNotice(g!.player);
+        // la vignetta dell'opera compiuta, come un imprevisto, finché non si prosegue
+        if (r.ok) ui.cantiere.opera = g!.player.era;
         return render();
       }
+      case 'operaChiudi':
+        ui.cantiere.opera = undefined;
+        return render();
       case 'deedClose': {
         ui.deed = null;
         root.querySelector('.deed')?.remove();
@@ -1194,7 +1197,9 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
     {
       const cards = exp ? exp.view.cards(g) : [];
       const war = cards.filter(c => c.menu === 'guerra'), signori = cards.filter(c => c.menu === 'signori'), rest = cards.filter(c => !c.menu);
-      if (exp && ext.panel) body = exp.view.panel(g, ext);
+      const opera = cantiere.opera ? operaComic(cantiere.opera) : null;
+      if (opera) body = inComic(opera, '', '<button data-act="operaChiudi" class="primary">Prosegui</button>');
+      else if (exp && ext.panel) body = exp.view.panel(g, ext);
       else if (ext.signori === 'investimenti' && signori.length) body = signoriPage(signori, 'Torna ai dispendimenti');
       else if (ext.menu === 'guerra' && war.length) {
         body = `<h2>Guerra</h2>${exp?.view.alert?.(g, 'guerra') ?? ''}${renderExtCards(war, '')}
@@ -1215,7 +1220,7 @@ function renderGame(g: Game, message: string, trade: TradeUi, rendite: RenditeUi
   if (moderna) return renderModerna(g, exp, tools, body, message, end, over, others,
     // le schermate larghe (rendite, imprevisti, pannelli con tabelle) si aprono come finestre sopra la città; le altre stanno nella colonna
     casataOpen || ph.kind === 'rendite' || ph.kind === 'evento' || ph.kind === 'fatto' || ph.kind === 'impresa' || ph.kind === 'successione'
-      || (!!exp && !!ext.panel) || (ph.kind === 'investimenti' && ext.signori === 'investimenti'),
+      || (!!exp && !!ext.panel) || (ph.kind === 'investimenti' && (ext.signori === 'investimenti' || !!cantiere.opera)),
     casataOpen);
   return `
   <header class="top"><span class="year">A.D. ${g.year}</span><span class="who">${fullName(p)}</span>

@@ -22,6 +22,8 @@ export const UGOLINO: Speaker = { name: 'Mastro Ugolino', role: 'capomastro del 
 export interface CantiereUi {
   key: string;
   advisor: string;
+  /** l'era aperta dall'opera appena compiuta: se c'è, il cantiere mostra la sua vignetta finché non si prosegue */
+  opera?: number;
 }
 
 const n = (v: number) => Math.floor(v).toLocaleString('it-IT');
