@@ -208,3 +208,36 @@ export const merchantPortrait = `
   <path d="M55 86 q5 4 10 0" stroke="#a04a3a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
   <path d="M56 90 l4 8 l4 -8z" fill="#4a3424"/>
 </svg>`;
+
+/** Icone delle opere delle ere (stesso stile di buildingArt), per id dell'opera. */
+export const operaArt: Record<'mulino' | 'rotazione' | 'strade' | 'scriptorium', string> = {
+  mulino: `<svg viewBox="0 0 64 48" class="card-art" aria-hidden="true">
+    <rect x="8" y="12" width="20" height="32" fill="#b8a888" stroke="#6b5a47"/><path d="M8 20 h20 M8 28 h20 M8 36 h20 M16 12 v8 M22 20 v8 M14 28 v8 M20 36 v8" stroke="#8a7a5e"/>
+    <path d="M5 12 L18 0 L31 12z" fill="#8b2a1e"/><rect x="14" y="34" width="8" height="10" fill="#4a3424"/><rect x="16" y="17" width="4" height="5" fill="#4a3424"/>
+    <g transform="translate(42 30)"><g class="wheel"><circle r="12" fill="none" stroke="#6b4a2c" stroke-width="3"/><circle r="3" fill="#6b4a2c"/>
+      <path d="M0 -12 v24 M-12 0 h24 M-8.5 -8.5 l17 17 M-8.5 8.5 l17 -17" stroke="#6b4a2c" stroke-width="2"/></g></g>
+    <path d="M28 42 q8 -3 16 0 t20 0 v6 h-36z" fill="#4f7fa8"/><path d="M34 45 q4 -2 8 0 M50 45 q4 -2 8 0" stroke="#a9c8e0" fill="none"/>
+    <path d="M0 47 q1 -9 5 -9 q4 0 5 9z" fill="#efe2c0" stroke="#8a7a5e"/><path d="M3 39 l2 -2 l2 2" stroke="#8a7a5e" fill="none"/>
+</svg>`,
+  rotazione: `<svg viewBox="0 0 64 48" class="card-art" aria-hidden="true">
+    <path d="M0 26 L64 22 V30 L0 34z" fill="#d6b25a"/><path d="M0 34 L64 30 V38 L0 42z" fill="#7aa35a"/><path d="M0 42 L64 38 V48 H0z" fill="#8a6b3e"/>
+    <path d="M6 30 l3 -5 M16 29 l3 -5 M26 29 l3 -5 M36 28 l3 -5 M46 27 l3 -5 M56 26 l3 -5" stroke="#a8844f" stroke-width="1.5"/>
+    ${[8, 20, 32, 44, 56].map(x => `<circle cx="${x}" cy="${37 - x / 16}" r="2" fill="#5b7a3e"/>`).join('')}
+    <path d="M4 46 l12 -2 M22 46 l12 -2 M40 46 l12 -2" stroke="#6b4a2c" stroke-width="1.5"/>
+    <path d="M22 16 a10 8 0 1 1 20 0" fill="none" stroke="#8b2a1e" stroke-width="2.5"/><path d="M42 16 l-4 -1 3 5 3 -5z" fill="#8b2a1e" stroke="#8b2a1e"/></svg>`,
+  strade: `<svg viewBox="0 0 64 48" class="card-art" aria-hidden="true">
+    <path d="M0 24 Q20 16 40 21 T64 18 V48 H0z" fill="#7aa35a"/><path d="M28 6 L34 6 L42 26 L22 26z" fill="#c9a86a"/><path d="M31 8 v4 M31 15 v4 M31 22 v3" stroke="#e8d8b0" stroke-width="1.5"/>
+    <path d="M0 38 Q32 33 64 38 V48 H0z" fill="#4f7fa8"/><path d="M6 44 q4 -2 8 0 M50 44 q4 -2 8 0" stroke="#a9c8e0" fill="none"/>
+    <path d="M4 26 H60 V42 H48 A16 10 0 0 0 16 42 H4z" fill="#b8a888" stroke="#6b5a47"/>
+    <path d="M4 32 h10 M50 32 h10 M8 26 v6 M56 26 v6 M10 32 v10 M54 32 v10" stroke="#8a7a5e"/><path d="M4 26 H60" stroke="#6b5a47" stroke-width="2.5"/>
+    <path d="M16 42 A16 10 0 0 1 48 42" fill="none" stroke="#6b5a47" stroke-width="2"/>
+    <rect x="52" y="10" width="6" height="14" rx="3" fill="#d9c49a" stroke="#6b5a47"/><path d="M53.5 15 h3 M53.5 18 h3" stroke="#6b5a47"/>
+</svg>`,
+  scriptorium: `<svg viewBox="0 0 64 48" class="card-art" aria-hidden="true">
+    <path d="M22 46 l6 -16 h8 l6 16" fill="none" stroke="#6b4a2c" stroke-width="3"/>
+    <path d="M8 30 L32 22 L56 30 L32 36z" fill="#8b2a1e" stroke="#5a3d26"/>
+    <path d="M12 27 Q22 20 32 24 Q42 20 52 27 L32 32z" fill="#f0e2bc" stroke="#6b5a47"/><path d="M32 24 V32" stroke="#6b5a47"/>
+    <path d="M17 26 l11 -2.5 M18 28 l10 -2 M36 23.5 l11 2.5 M36 26 l10 2" stroke="#8a7a5e"/><rect x="37" y="22" width="4" height="4" fill="#8b2a1e" opacity=".8"/>
+    <path d="M44 4 Q56 6 50 22 L48 22 Q50 10 44 4z" fill="#f4ecd8" stroke="#8a7a5e"/><path d="M49 22 l-1 4" stroke="#3e2617" stroke-width="1.5"/>
+    <rect x="6" y="14" width="6" height="12" fill="#efe2c0" stroke="#8a7a5e"/><path d="M9 14 q-3 -5 0 -9 q3 4 0 9z" fill="#e3bb4f"/><path d="M9 13 q-1 -2 0 -4" stroke="#c94a2e"/></svg>`,
+};

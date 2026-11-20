@@ -14,8 +14,7 @@ import type { Game } from '../domain/turn';
 import type { Player, Scalars } from '../domain/types';
 import { honorific } from './advisor';
 import { foreclosureWarning } from './pignoramenti';
-import { builderPortrait, buildingArt } from './art';
-import { illustrationUrl } from './citta/assets';
+import { builderPortrait, buildingArt, operaArt } from './art';
 import { pick, speechBox, type Speaker } from './speaker';
 
 export const UGOLINO: Speaker = { name: 'Mastro Ugolino', role: 'capomastro del feudo', portrait: builderPortrait };
@@ -230,7 +229,7 @@ function operaCard(p: Player): string {
   const c = puoCostruireOpera(p);
   const dopo = ERE.tetto[Math.min(p.era + 1, ERE.tetto.length - 1)];
   return `<div class="build-card opera">
-      <img class="card-art opera-art" src="${illustrationUrl(`opera-${o.id}`)}" alt="${o.nome}" width="1000" height="667">
+      ${operaArt[o.id]}
       <div class="build-body">
         <div class="build-head"><span class="build-title">Opera dell'era: ${o.nome}</span><span class="build-cost">${n(o.scudi)} scudi e ${n(o.grano)} misure di grano</span></div>
         <div class="build-owned">botteghe: <b>${botteghe(p)}</b> su ${o.requisito} richieste</div>
