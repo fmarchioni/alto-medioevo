@@ -489,7 +489,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     const other = root.querySelector<HTMLInputElement>(`[name="${t.name === 'qty' ? 'qty-range' : 'qty'}"]`);
     if (other) other.value = String(v);
     const pv = root.querySelector('#trade-preview');
-    if (pv) pv.innerHTML = c64ify(preview(mode, v, g.player, g.state.scalars));
+    if (pv) pv.innerHTML = c64ify(preview(mode, v, g.player, g.state.scalars, !!g.state.options.crescitaCerta));
   });
 
   /** Scudi che un pulsante sta per spendere (0: non è un acquisto). */

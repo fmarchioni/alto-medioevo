@@ -2,7 +2,7 @@
  * Fase "Delibera": il consigliere propone e il signore decide.
  * Solo presentazione: le regole restano in src/domain/economy.ts.
  */
-import { INT, SELL_DEBT_LIMIT } from '../domain/economy';
+import { CRESCITA_CERTA, INT, NATI_MAX, SELL_DEBT_LIMIT } from '../domain/economy';
 import { FAMINE_MAX_DEATHS, HABIT_GAIN, HABIT_KEEP, HABIT_MAX, SETTLER_MEDIA_PRICE, settlersFor } from '../domain/gabelle';
 import { maxBuyable } from '../domain/strategy';
 import type { Game } from '../domain/turn';
@@ -63,7 +63,8 @@ export function suggestions(mode: TradeMode, p: Player, sc: Scalars): Suggestion
 }
 
 /** Anteprima delle conseguenze, aggiornata mentre si sposta il cursore. */
-export function preview(mode: TradeMode, qty: number, p: Player, sc: Scalars): string {
+/** certa: opzione `crescitaCerta` (i nati vanno da CRESCITA_CERTA del massimo al massimo). */
+export function preview(mode: TradeMode, qty: number, p: Player, sc: Scalars, certa = false): string {
   if (mode === 'buy') {
     const cost = (qty * sc.prezzo) / 1000;
     // breve: il pulsante Compra deve vedersi senza scorrere (lo sfrido si calcola distribuendo la sola domanda)
@@ -76,16 +77,17 @@ export function preview(mode: TradeMode, qty: number, p: Player, sc: Scalars): s
     // commercio del grano: in carestia le scorte vendute attirano coloni
     const media = sc.annata === 'media' && (sc.prezzoBase ?? sc.prezzo) >= SETTLER_MEDIA_PRICE;
     const stock = sc.scorta === undefined ? 0 : Math.min(qty, sc.scorta);
-    const coloni = sc.annata === 'carestia' || media ? settlersFor(p, media ? Math.floor(stock / 2) : stock, sc.coloni ?? 0) : 0;
+    const coloni = sc.annata === 'carestia' || media ? settlersFor(p, media ? Math.floor(stock / 2) : stock, sc.coloni ?? 0, certa) : 0;
     const settlers = coloni ? ` · arriveranno <b>${n(coloni)}</b> famiglie dai feudi affamati` : '';
     return `Ricavo <b>${n(gain)}</b> scudi · tesoro <b>${n(p.scudi + gain)}</b> · granaio <b>${n(left)}</b>${settlers}${warn}`;
   }
   // feed: f = INT(RND * servi/90*29*(qty-domanda)/10000), riga 670
   let x = ((p.servi / 90) * 29 * (qty - sc.domanda)) / 10000;
+  if (certa && x > 0) x *= NATI_MAX;
   if (p.abitudine !== undefined) x = Math.max(x, -p.servi * FAMINE_MAX_DEATHS);
   let effect: string;
   if (qty === sc.domanda) effect = 'il popolo resterà com\'è';
-  else if (x > 0) effect = `nasceranno fino a <b>${n(x)}</b> servi`;
+  else if (x > 0) effect = certa ? `nasceranno da <b>${n(x * CRESCITA_CERTA)}</b> a <b>${n(x)}</b> servi` : `nasceranno fino a <b>${n(x)}</b> servi`;
   else effect = `<span class="warn">potrebbero morire fino a <b>${n(-Math.floor(x))}</b> servi</span>`;
   const habit = p.abitudine !== undefined && qty > sc.domanda && p.servi > 0
     ? ` · <span class="warn">l'anno prossimo il popolo chiederà circa <b>${n(INT(Math.min(HABIT_MAX, p.abitudine * HABIT_KEEP + ((qty - sc.domanda) / p.servi) * HABIT_GAIN) * p.servi))}</b> misure in più</span>`
@@ -166,7 +168,7 @@ export function renderTrade(g: Game, t: TradeUi, extras?: TradeExtras): string {
         <input type="number" name="qty" min="0" max="${max}" step="1" value="${qty}" inputmode="numeric" aria-label="quantità esatta">
       </div>
       <div class="chips chips-row">${suggestions(mode, p, sc).map(s => `<button class="chip" data-act="chip" data-qty="${s.qty}" title="${s.title}">${s.label}<small>${n(s.qty)}</small></button>`).join('')}</div>
-      <p class="preview" id="trade-preview">${preview(mode, qty, p, sc)}</p>
+      <p class="preview" id="trade-preview">${preview(mode, qty, p, sc, !!g.state.options.crescitaCerta)}</p>
       ${ruleNote(mode) ? `<p class="hint">${ruleNote(mode)}</p>` : ''}${extras?.hint(mode) ? `<p class="hint ext-hint">${extras.hint(mode)}</p>` : ''}
       <div class="btns">
         <button data-act="tradeBack" class="ghost">Torna indietro</button>

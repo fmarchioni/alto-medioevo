@@ -7,6 +7,7 @@
 import type { Game } from './turn';
 import type { InvestmentKind } from './investments';
 import type { BeniCasata } from './prestiti';
+import type { VoceMigrazione } from './migrazioni';
 import type { ActionResult, BotLevel, EventOutcome, GameState } from './types';
 
 /** Contesto delle decisioni di un signore del computer. */
@@ -47,6 +48,8 @@ export interface ExpansionRules {
   onIncome?(g: Game, amount: number): void;
   /** fine anno del signore di turno, prima di interessi, titoli e tributi */
   beforeYearEnd?(g: Game): void;
+  /** saldo dei cittadini (opzione `migrazioni`): le voci dell'espansione per il signore di turno */
+  migrazione?(g: Game): VoceMigrazione[];
   /** cigno nero: quante orde normali vale il grande esercito (assente: CIGNO_MULT, fazioni.ts) */
   cignoNero?: number;
   /**

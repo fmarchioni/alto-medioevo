@@ -289,6 +289,10 @@ function quotidiano(py: PlayerYear, players: Player[], view: ExpansionView | nul
   for (const f of py.of('granaio')) {
     if (f.over > 0) put(3, `I suoi granai non bastarono a tanto grano: ${n(f.over)} misure marcirono all'aperto${f.rot > 0 ? `, e altre ${n(f.rot)} se le presero ratti e muffa` : ''}.`);
   }
+  for (const f of py.of('migrazioni')) {
+    const perche = f.voci.length ? ` (${f.voci.join(', ')})` : '';
+    put(0.9, f.saldo > 0 ? `A fine anno vennero a stabilirsi in città ${n(f.saldo)} nuovi servi${perche}.` : `A fine anno ${n(-f.saldo)} servi lasciarono la città${perche}.`);
+  }
   for (const f of py.of('spoil')) put(3, `Con il tesoro in debito i granai restarono senza riparo, e marcirono ${n(f.qty)} misure di grano.`);
 
   // rendite

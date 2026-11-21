@@ -31,6 +31,13 @@ export const DEBITO_ARRESTO = 20000;
 export const THRONE_THRESHOLD = 500000;
 /** Servi che accorrono nel feudo per ogni piano di palazzo (opzione `palazzoReale`): minimo e massimo. */
 export const PALAZZO_SERVI = [100, 1000] as const;
+/** Minimo dei servi per piano: con la crescita certa (opzione `crescitaCerta`) l'80% del massimo. */
+export const palazzoServiMin = (certa: boolean) => (certa ? Math.floor(PALAZZO_SERVI[1] * 0.8) : PALAZZO_SERVI[0]);
+/** Servi attirati da un piano di palazzo, dato un numero a sorte `r` in [0, 1). */
+export const palazzoServi = (r: number, certa: boolean) => {
+  const min = palazzoServiMin(certa);
+  return min + Math.floor(r * (PALAZZO_SERVI[1] - min + 1));
+};
 
 /** Condizione di vittoria della partita: soglia di ricchezza ed eventuale palazzo completo. */
 export interface Victory {

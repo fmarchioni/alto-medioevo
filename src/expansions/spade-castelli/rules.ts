@@ -39,14 +39,16 @@
  *   carta ciascuno confina con i due più vicini) un anno di viaggio, da uno
  *   lontano due. Intanto non difendono e non si congedano; al ritorno la
  *   malattia ne porta via fino al 5% per anno.
- * - Mura: fino a 5 cerchie, 2500 scudi ciascuna. Rafforzano molto la difesa
+ * - Mura: fino a 5 cerchie, 2500 scudi ciascuna. Una cerchia si costruisce in un
+ *   anno: è pronta alla chiusura dell'anno, dopo le battaglie. Rafforzano molto la difesa
  *   in guerra e un poco contro le orde, e riducono le perdite di pugna e
  *   riscatto contro Longobardi e briganti. Non contano per il rango.
  * - Torri di guardia: fino a 3 livelli. Avvistano gli eserciti nemici in
  *   marcia verso il feudo (non quanti sono): con una torre l'avviso arriva
- *   solo al momento della guerra, con due già nei dispendimenti, con tre
- *   all'inizio dell'anno, prima di spendere per il grano. Non contano per il
- *   rango.
+ *   solo al momento della guerra, e solo per l'assalto di quell'anno; con due
+ *   già nei dispendimenti, con tre all'inizio dell'anno, prima di spendere per
+ *   il grano (dal secondo livello si vedono anche gli eserciti che arriveranno
+ *   l'anno dopo, dai feudi lontani). Non contano per il rango.
  * - Spia: i soldati degli altri signori sono segreti. Una spia costa 250
  *   scudi, se ne tiene una sola e per due anni rivela gli eserciti di tutti.
  *   Senza spia si vedono solo le mura e la milizia dei servi.
@@ -85,6 +87,8 @@ export const TORRE_COST = [600, 900, 1200] as const;
 export const TORRI_MAX = TORRE_COST.length;
 /** Dove arriva l'avviso delle torri: livello minimo per vederlo in ciascun momento dell'anno. */
 export const TORRE_ALERT: Record<'delibera' | 'dispendimenti' | 'guerra', number> = { delibera: 3, dispendimenti: 2, guerra: 1 };
+/** Livello delle torri che vede anche gli eserciti che arriveranno negli anni seguenti (sotto: solo l'assalto di quest'anno). */
+export const TORRE_LONTANO = 2;
 /** armi per ogni soldato arruolato */
 export const RECRUIT_COST = 2;
 /** soldo annuo per soldato, pagato a fine anno */
@@ -299,6 +303,8 @@ export interface SpadeState {
   campagne?: Campaign[];
   /** livello delle torri di guardia di ciascun signore (assente nei salvataggi vecchi) */
   torri?: number[];
+  /** cerchie di mura in costruzione: pronte alla chiusura dell'anno, dopo le battaglie (assente nei salvataggi vecchi) */
+  muraNuove?: number[];
   /** arruolati nell'anno q da ciascun signore: tutti (n) e quelli con la guerra in vista (leve) */
   leve?: ({ q: number; n: number; leve: number } | null)[];
   /** signore sul cui feudo stanno i briganti (null: nei boschi) */
@@ -351,6 +357,16 @@ export const siegesOn = (st: SpadeState, i: number) => (st.assedi ?? []).filter(
 export const campaignsBy = (st: SpadeState, i: number) => (st.campagne ?? []).filter(c => c.owner === i);
 /** Eserciti in marcia verso il feudo del signore `i` (segreti: li vedranno le torri di guardia). */
 export const campaignsOn = (st: SpadeState, i: number) => (st.campagne ?? []).filter(c => c.target === i);
+/** Cerchie di mura del signore `i` in costruzione quest'anno (pronte alla chiusura dell'anno). */
+export const muraNuoveOf = (st: SpadeState, i: number) => st.muraNuove?.[i] ?? 0;
+/** Cerchie di mura del signore `i`, contando quelle in costruzione (per il tetto e per chi decide di costruirne). */
+export const muraTotaliOf = (st: SpadeState, i: number) => st.mura[i] + muraNuoveOf(st, i);
+/** Chiusura dell'anno, dopo le battaglie: le cerchie in costruzione sono pronte. */
+export function completaMura(st: SpadeState): void {
+  if (!st.muraNuove) return;
+  st.muraNuove.forEach((k, i) => { st.mura[i] = Math.min(MURA_MAX, st.mura[i] + k); });
+  st.muraNuove = st.muraNuove.map(() => 0);
+}
 /** Livello delle torri di guardia del signore `i`. */
 export const torriOf = (st: SpadeState, i: number) => st.torri?.[i] ?? 0;
 /**
@@ -360,7 +376,10 @@ export const torriOf = (st: SpadeState, i: number) => st.torri?.[i] ?? 0;
 export const incomingOf = (g: Game, i: number) => campaignsOn(ss(g), i).filter(c => c.q < g.state.q);
 /** Avvistamenti visibili in un momento dell'anno, secondo il livello delle torri. */
 export function towerAlerts(g: Game, i: number, where: keyof typeof TORRE_ALERT): Campaign[] {
-  return torriOf(ss(g), i) >= TORRE_ALERT[where] ? incomingOf(g, i) : [];
+  const lv = torriOf(ss(g), i);
+  if (lv < TORRE_ALERT[where]) return [];
+  // la torre più bassa vede solo chi è già sotto i monti: l'assalto di quest'anno
+  return lv >= TORRE_LONTANO ? incomingOf(g, i) : incomingOf(g, i).filter(c => c.arrive <= g.state.q);
 }
 /** Soldati del signore `i` fuori dal fortino: verso il nemico, all'assedio o di ritorno. */
 export const awayOf = (st: SpadeState, i: number) =>
@@ -409,8 +428,11 @@ export function defenseOf(p: Player, soldati: number, mura: number, cat = 0): nu
   return (soldati + INT(Math.max(0, p.servi) * MILITIA) + WALL_MEN * m) * (1 + WALL_BONUS * m);
 }
 
-/** La guerra è in vista: un esercito nemico marcia verso il feudo (in piazza se ne parla, torri o no) o lo assedia. */
-export const warLooms = (g: Game, i: number) => incomingOf(g, i).length > 0 || siegesOn(ss(g), i).length > 0;
+/**
+ * La guerra è in vista: un esercito nemico arriverà sotto le mura alla fine di quest'anno (in piazza se ne parla,
+ * torri o no) o assedia il feudo. Chi arriverà l'anno dopo da un feudo lontano lo vedono solo le torri alte.
+ */
+export const warLooms = (g: Game, i: number) => incomingOf(g, i).some(c => c.arrive <= g.state.q) || siegesOn(ss(g), i).length > 0;
 
 /** Usura di guerra: rincaro per il feudo minacciato o assediato e per chi ha l'esercito in campo; sconto in pace. */
 export const USURA_MINACCIA = 10;
@@ -550,11 +572,12 @@ export function buildWall(g: Game): ActionResult {
   const no = phaseIs(g, 'investimenti');
   if (no) return no;
   const st = ss(g), me = g.state.current, p = g.player;
-  if (st.mura[me] >= MURA_MAX) return { ok: false, reason: `le mura hanno già ${MURA_MAX} cerchie` };
+  if (muraTotaliOf(st, me) >= MURA_MAX) return { ok: false, reason: muraNuoveOf(st, me) ? `con quelle in costruzione le mura avranno già ${MURA_MAX} cerchie` : `le mura hanno già ${MURA_MAX} cerchie` };
   if (!canSpend(p, MURA_COST)) return { ok: false, reason: 'tesoro e credito insufficienti' };
   p.scudi -= MURA_COST;
-  st.mura[me] += 1;
-  note(g, me, 'wall', { level: st.mura[me] });
+  // la cerchia si costruisce nell'anno: difende dalla chiusura dell'anno, dopo le battaglie
+  (st.muraNuove ??= g.state.players.map(() => 0))[me] += 1;
+  note(g, me, 'wall', { level: muraTotaliOf(st, me) });
   return { ok: true };
 }
 
@@ -765,6 +788,25 @@ function openBattle(g: Game, c: Campaign): void {
  * raggiungono gli assedi, poi gli assedi tornano all'assalto, infine gli
  * eserciti arrivati danno battaglia, nell'ordine in cui sono partiti.
  */
+/** Anni di pace che attirano gente in città (saldo dei cittadini): il primo dà un punto, il secondo due. */
+export const ANNI_PACE = [5, 10] as const;
+
+/**
+ * Saldo dei cittadini (peso 2): un assalto subito alla chiusura dell'anno passato fa partire gente
+ * (−2 se il feudo è caduto o saccheggiato, −1 se l'ha respinto); senza assalti da ANNI_PACE anni ne arriva.
+ */
+export function vocePace(st: SpadeState, me: number, q: number): { voce: string; punti: number; peso: number } {
+  const subiti = st.wars.filter(w => w.defender === me);
+  const ora = subiti.filter(w => w.q === q - 1);
+  if (ora.length) return ora.some(w => w.win) ? { voce: 'assalto perduto', punti: -2, peso: 2 } : { voce: 'assalto respinto', punti: -1, peso: 2 };
+  // anni senza assalti: dall'ultimo subito, o dall'inizio della partita
+  const ultimo = subiti.reduce((a, w) => Math.max(a, w.q), -1);
+  const pace = q - 1 - ultimo;
+  if (pace >= ANNI_PACE[1]) return { voce: `${ANNI_PACE[1]} anni di pace`, punti: 2, peso: 2 };
+  if (pace >= ANNI_PACE[0]) return { voce: `${ANNI_PACE[0]} anni di pace`, punti: 1, peso: 2 };
+  return { voce: 'pace', punti: 0, peso: 2 };
+}
+
 export function resolveBattles(g: Game): void {
   const st = ss(g), q = g.state.q;
   const arrived = (st.campagne ?? []).filter(c => c.arrive <= q);
@@ -1079,7 +1121,8 @@ function botTreaty(c: BotCtx): void {
   const { g, level, log } = c;
   if (level === 'facile') return;
   const st = ss(g), me = g.state.current, p = g.player;
-  for (const foe of [...new Set(incomingOf(g, me).map(k => k.owner))]) {
+  // solo gli eserciti che le sue torri hanno avvistato (entro la fine del turno), come per un giocatore
+  for (const foe of [...new Set(towerAlerts(g, me, 'guerra').map(k => k.owner))]) {
     if (treatyBlock(g, foe) || feud(g, me, foe).conto > 0) continue;
     // l'esercito in marcia è segreto: si stima come per le difese, dai soldati noti e da quelli lontani
     const force = guessSoldiers(g, me, foe) + awayOf(st, foe) * 0.5;
@@ -1298,11 +1341,13 @@ function botDefend(c: BotCtx): void {
   const defense = defenseOf(p, st.soldati[me], st.mura[me]);
   // con il tesoro pieno ci si fortifica comunque: il difficile fino a quattro cerchie, il medio tre, il facile una
   const rich = p.scudi - MURA_COST >= reserve + RICH_WALLS;
-  const wantWalls =
-    level === 'difficile' ? defense < threat * (hit ? 1.3 : 0.9) || (rich && st.mura[me] < 4)
-    : level === 'medio' ? (hit > 0 && st.mura[me] < 3) || (defense < threat * 0.6 && st.mura[me] < 2) || (rich && st.mura[me] < 3)
-    : (hit > 0 ? rnd() < 0.4 : rnd() < 0.05) || (rich && st.mura[me] < 1);
-  if (wantWalls && st.mura[me] < MURA_MAX && p.scudi - MURA_COST >= reserve && buildWall(g).ok) log.push(`innalza la ${st.mura[me]}ª cerchia di mura`);
+  // le cerchie in costruzione contano: saranno pronte a fine anno
+  const muri = muraTotaliOf(st, me);
+  const wantWalls = muraNuoveOf(st, me) === 0 && (
+    level === 'difficile' ? defense < threat * (hit ? 1.3 : 0.9) || (rich && muri < 4)
+    : level === 'medio' ? (hit > 0 && muri < 3) || (defense < threat * 0.6 && muri < 2) || (rich && muri < 3)
+    : (hit > 0 ? rnd() < 0.4 : rnd() < 0.05) || (rich && muri < 1));
+  if (wantWalls && muri < MURA_MAX && p.scudi - MURA_COST >= reserve && buildWall(g).ok) log.push(`innalza la ${muraTotaliOf(st, me)}ª cerchia di mura`);
   // torri di guardia: il medio ne tiene una, il difficile due, quando il tesoro lo consente
   const wantTowers = level === 'difficile' ? 2 : level === 'medio' ? 1 : rnd() < 0.05 ? 1 : 0;
   const lv = torriOf(st, me);
@@ -1586,6 +1631,7 @@ export const rules: ExpansionRules = {
       assedi: [],
       campagne: [],
       torri: state.players.map(() => 0),
+      muraNuove: state.players.map(() => 0),
       lastWar: state.players.map(() => -1),
       lastDrive: state.players.map(() => -1),
       spia: state.players.map(() => -1),
@@ -1598,7 +1644,7 @@ export const rules: ExpansionRules = {
 
   addPlayer(state, i) {
     growPerPlayer(state.ext as SpadeState, i, {
-      mura: () => 0, soldati: () => 0, catapulte: () => 0, torri: () => 0, lastWar: () => -1, lastDrive: () => -1, spia: () => -1,
+      mura: () => 0, muraNuove: () => 0, soldati: () => 0, catapulte: () => 0, torri: () => 0, lastWar: () => -1, lastDrive: () => -1, spia: () => -1,
       leve: () => null, giocata: () => -1, mercenari: () => null, tregue: () => -1, piani: () => null, carte: () => [],
     });
   },
@@ -1641,6 +1687,7 @@ export const rules: ExpansionRules = {
   onTrasferimento(g, i, da) {
     const st = ss(g);
     st.mura[i] = 0;
+    if (st.muraNuove) st.muraNuove[i] = 0;
     if (st.torri) st.torri[i] = 0;
     for (const s of siegesOn(st, i)) {
       goHome(g, st, s.owner, s.n, s.cat, i);
@@ -1721,8 +1768,14 @@ export const rules: ExpansionRules = {
     }
   },
 
-  // tutte le battaglie dell'anno si combattono quando tutti hanno giocato
-  onYearClose: resolveBattles,
+  // tutte le battaglie dell'anno si combattono quando tutti hanno giocato; poi le mura nuove sono pronte
+  onYearClose(g) {
+    resolveBattles(g);
+    completaMura(ss(g));
+  },
+
+  // saldo dei cittadini: chi subisce un assalto perde gente, la lunga pace ne attira
+  migrazione: g => [vocePace(ss(g), g.state.current, g.state.q)],
 
   botBeforeTrade: botBrigands,
 

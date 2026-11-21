@@ -241,7 +241,7 @@ function cittaRows(p: Player, rendita: number): string {
   const chiuse = chiusiM + chiusiO > 0
     ? `<tr class="warn"><td colspan="2">Botteghe chiuse per mancanza di addetti: ${[chiusiM ? `${chiusiM} ${chiusiM === 1 ? 'mercato' : 'mercati'}` : '', chiusiO ? `${chiusiO} ${chiusiO === 1 ? 'opificio' : 'opifici'}` : ''].filter(Boolean).join(' e ')}. Non rendono finché i servi non tornano.</td></tr>`
     : '';
-  return `${chiuse}<tr><td>Spese della città a fine anno <small>(manutenzione ${n(s.manutenzione)} + servizi ${n(s.servizi)})</small></td><td>−${n(s.totale)}</td></tr>`;
+  return `${chiuse}<tr><td>Spese della città a fine anno <small>(manutenzione edifici ${n(s.manutenzione)} + spese cittadine ${n(s.servizi)})</small></td><td>−${n(s.totale)}</td></tr>`;
 }
 
 /** Umore del popolo e fiducia dei mercanti: solo il livello di oggi, nessuna previsione. */

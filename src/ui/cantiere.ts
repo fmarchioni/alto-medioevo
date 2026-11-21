@@ -7,7 +7,7 @@ import { trustFactor } from '../domain/economy';
 import { fiduciaOf, livelloMid, livelloOf, MARKET_MULT, OPIFICIO_MULT, umoreOf, workFactor } from '../domain/gabelle';
 import { ACRI_IN_BLOCCO, ACRI_PER_ACQUISTO, COSTS, canInvest, canInvestTimes, MAX_ACRI, maxBotteghe, MAX_GRANAI, MAX_PALAZZO, type InvestmentKind } from '../domain/investments';
 import { GRANAIO_CAPACITY, granaryCapacity, SETTLER_GRAIN } from '../domain/gabelle';
-import { LISTING_VICTORY, missingFloors, PALAZZO_SERVI, RANK_THRESHOLDS, titleName, victoryRule, wealthIndex, type Victory } from '../domain/rank';
+import { LISTING_VICTORY, missingFloors, PALAZZO_SERVI, palazzoServiMin, RANK_THRESHOLDS, titleName, victoryRule, wealthIndex, type Victory } from '../domain/rank';
 import { addettiDi, addettiNecessari, CITTA, contadiniNecessari, serviLiberi, spesaCitta } from '../domain/citta';
 import { botteghe, ERE, prossimaOpera, puoCostruireOpera, rangoMassimo, tettoBotteghe } from '../domain/ere';
 import type { Game } from '../domain/turn';
@@ -83,17 +83,17 @@ export function opificioYield(p: Player, umore = livelloOf(umoreOf(p))): number 
 }
 
 /** Descrizione dell'effetto di ciascun bene, con i numeri del feudo. */
-/** reale: con il palazzo reale ogni piano attira servi e il palazzo completo serve per il trono. */
-export function effectText(p: Player, k: InvestmentKind, reale = false): string {
+/** reale: con il palazzo reale ogni piano attira servi e il palazzo completo serve per il trono; certa: opzione `crescitaCerta`. */
+export function effectText(p: Player, k: InvestmentKind, reale = false, certa = false): string {
   // la città: ogni bottega vuole i suoi addetti e una manutenzione annua
   if (p.citta && (k === 'mercato' || k === 'opificio')) {
     const extra = ` Vuole ${addettiDi(k)} servi liberi che ci lavorino e ${k === 'mercato' ? CITTA.manutenzioneMercato : CITTA.manutenzioneOpificio} scudi l'anno di manutenzione.`;
-    return effectBase(p, k, reale) + extra;
+    return effectBase(p, k, reale, certa) + extra;
   }
-  return effectBase(p, k, reale);
+  return effectBase(p, k, reale, certa);
 }
 
-function effectBase(p: Player, k: InvestmentKind, reale: boolean): string {
+function effectBase(p: Player, k: InvestmentKind, reale: boolean, certa: boolean): string {
   switch (k) {
     case 'terre':
       return `+25 acri: il raccolto può crescere fino a ${n((p.acri + 25) * 75)} misure. ${p.botteghe ? 'Ogni 100 acri consentono un mercato e un opificio.' : 'Ogni 500 acri in più consentono un mercato e un opificio in più.'}`;
@@ -109,10 +109,10 @@ function effectBase(p: Player, k: InvestmentKind, reale: boolean): string {
         : `Rende circa ${n(opificioYield(p, 'buono'))} scudi l'anno con la gabella corrente sul commerzio e il popolo felice.`;
     case 'palazzo':
       return reale
-        ? `Non rende scudi, ma conta per il rango quanto costa e ogni piano attira da ${PALAZZO_SERVI[0]} a ${n(PALAZZO_SERVI[1])} servi nel feudo. Per salire al trono servono tutti gli ${MAX_PALAZZO} piani.`
+        ? `Non rende scudi, ma conta per il rango quanto costa e ogni piano attira da ${palazzoServiMin(certa)} a ${n(PALAZZO_SERVI[1])} servi nel feudo. Per salire al trono servono tutti gli ${MAX_PALAZZO} piani.`
         : 'Non rende nulla, ma conta per il rango quanto costa. Il massimo è di 11 piani.';
     case 'granaio':
-      return `I granai tengono ${n(GRANAIO_CAPACITY)} misure in più (ora ${n(granaryCapacity(p))}). Grano comprato nelle annate buone e venduto in carestia rende, e ogni ${SETTLER_GRAIN} misure vendute dalle scorte attirano una famiglia nel feudo.`;
+      return `I granai tengono ${n(GRANAIO_CAPACITY)} misure in più (ora ${n(granaryCapacity(p))}). Grano comprato nelle annate buone e venduto in carestia rende, e ${certa ? 'il grano venduto dalle scorte in carestia attira tante famiglie quante ne nascerebbero distribuendolo' : `ogni ${SETTLER_GRAIN} misure vendute dalle scorte attirano una famiglia nel feudo`}.`;
   }
 }
 
@@ -241,12 +241,23 @@ function operaCard(p: Player): string {
     </div>`;
 }
 
+/** Saldo dei cittadini (opzione `migrazioni`): quanti servi arriveranno o partiranno a fine anno, e perché. */
+function saldoLine(g: Game): string {
+  if (!g.state.options.migrazioni) return '';
+  const s = g.saldoCittadini();
+  const voci = g.vociMigrazione().filter(v => v.punti !== 0).map(v => `${v.voce} ${v.punti > 0 ? '+' : '−'}`).join(', ');
+  const testo = s > 0 ? `arriveranno <b>${n(s)}</b> servi` : s < 0 ? `<span class="warn">partiranno <b>${n(-s)}</b> servi</span>` : 'nessuno arriva e nessuno parte';
+  return `<p>Saldo dei cittadini a fine anno: ${testo}${voci ? ` <small>(${voci})</small>` : ''}</p>`;
+}
+
 /** La città: dove lavorano i servi e quanto costerà la città a fine anno (solo con `citta`). */
-function cittaLine(p: Player): string {
-  if (!p.citta) return '';
+function cittaLine(g: Game): string {
+  const p = g.player;
+  if (!p.citta) return saldoLine(g);
   const liberi = serviLiberi(p), s = spesaCitta(p);
   return `<p>Servi: <b>${n(p.servi)}</b> · nelle botteghe <b>${n(addettiNecessari(p))}</b> · per i campi <b>${n(contadiniNecessari(p))}</b> · liberi <b>${n(Math.max(0, liberi))}</b>${liberi < 0 ? ' <span class="warn">(mancano braccia)</span>' : ''}</p>
-    <p>Spese della città a fine anno: circa <b>${n(s.totale)}</b> scudi <small>(manutenzione ${n(s.manutenzione)} + servizi ${n(s.servizi)})</small></p>`;
+    ${saldoLine(g)}
+    <p>Spese della città a fine anno: circa <b>${n(s.totale)}</b> scudi <small>(manutenzione edifici ${n(s.manutenzione)} + spese cittadine ${n(s.servizi)})</small></p>`;
 }
 
 /** war: dopo il cantiere viene il menu Guerra dell'espansione */
@@ -266,7 +277,7 @@ export function renderCantiere(g: Game, ui: CantiereUi, war = false, extra = '')
       <div class="build-body">
         <div class="build-head"><span class="build-title">${TITLES[k]}</span><span class="build-cost">${n(COSTS[k])} scudi</span></div>
         <div class="build-owned">posseduti: <b>${n(cap.owned)}</b>${cap.unit ? ' ' + cap.unit : ''} su ${n(cap.max)}</div>
-        <p class="build-effect">${effectText(p, k, !!g.state.options.palazzoReale)}</p>
+        <p class="build-effect">${effectText(p, k, !!g.state.options.palazzoReale, !!g.state.options.crescitaCerta)}</p>
         ${k === 'terre'
           ? `<div class="build-btns"><button data-act="invest" data-kind="terre" ${c.ok ? 'class="primary"' : `disabled title="${c.reason}"`}>${c.ok ? `Compra ${ACRI_PER_ACQUISTO} acri` : c.reason}</button>${bulkLandButton(p)}</div>`
           : `<button data-act="invest" data-kind="${k}" ${c.ok ? 'class="primary"' : `disabled title="${c.reason}"`}>${c.ok ? 'Costruisci' : c.reason}</button>`}
@@ -282,6 +293,6 @@ export function renderCantiere(g: Game, ui: CantiereUi, war = false, extra = '')
     </div>
     <div class="build-cards">${operaCard(p)}${cards}${extra}</div>
     <p>Tesoro: <b>${n(p.scudi)}</b> scudi · credito degli usurai fino a <b>${n(-p.credito)}</b></p>
-    ${cittaLine(p)}${usury}${g.state.options.pignoramenti ? foreclosureWarning(p, sc) : ''}
+    ${cittaLine(g)}${usury}${g.state.options.pignoramenti ? foreclosureWarning(p, sc) : ''}
     <div class="btns"><button data-act="karta">Karta: guarda lo reame</button>${war ? '<button data-act="warMenu" class="primary">Proximus: guerra</button>' : '<button data-act="next" class="primary">Proximus: fine dell\'anno</button>'}</div>`;
 }

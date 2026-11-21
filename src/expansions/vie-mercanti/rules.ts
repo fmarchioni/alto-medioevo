@@ -24,6 +24,7 @@
  * Il sensale e i pignoramenti degli usurai sono ora nel gioco base.
  */
 import { INT } from '../../domain/economy';
+import { daCento } from '../../domain/migrazioni';
 import { growPerPlayer, type BotCtx, type ExpansionRules } from '../../domain/expansion';
 import type { BotLevel } from '../../domain/types';
 import { ANNI_LIMITE, type DispaccioCasata } from '../../domain/prestiti';
@@ -796,6 +797,12 @@ export const rules: ExpansionRules = {
   },
 
   // i prestiti si rendono prima di interessi e pignoramenti degli usurai; in magazzino un po' di vino si guasta
+  // saldo dei cittadini: mercanti fiduciosi attirano gente in città
+  migrazione(g) {
+    const f = g.player.fiducia;
+    return f === undefined ? [] : [{ voce: 'fiducia dei mercanti', punti: daCento(f, 2), peso: 2 }];
+  },
+
   beforeYearEnd(g) {
     deadlines(fairCtx(g));
     settleLoans(g);

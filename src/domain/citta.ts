@@ -8,12 +8,12 @@
  *   CITTA.contadiniPerAcro per acro; con meno braccia il raccolto cala in proporzione.
  * - Spesa annua della città, pagata a fine anno:
  *   - manutenzione degli edifici, fissa per edificio;
- *   - servizi cittadini (guardie, acquedotti, fogne): una quota della rendita dell'anno, nulla
- *     finché la città è un villaggio (fino a CITTA.abitantiLiberi abitanti), poi sempre più alta
- *     con la grandezza della città, fino a CITTA.quotaMassima. Le città grandi rendono sempre meno
- *     per abitante, e oltre una certa grandezza crescere non conviene più; ma i servizi costano
- *     sempre meno della rendita, così nessuno va in rovina per loro (nemmeno una città popolosa
- *     e povera, piena di coloni).
+ *   - servizi cittadini (guardie, acquedotti, fogne): una quota della rendita dell'anno che si
+ *     paga fin dal villaggio (CITTA.serviziQuota con CITTA.abitantiRiferimento abitanti) e cresce
+ *     con la grandezza della città, ma meno che in proporzione (abitanti alla CITTA.grandezza),
+ *     fino a CITTA.quotaMassima. Le città grandi rendono un po' meno per abitante, ma la spesa non
+ *     esplode: i servizi restano una piccola parte della rendita, così nessuno va in rovina per
+ *     loro (nemmeno una città popolosa e povera, piena di coloni).
  *
  * I numeri stanno in CITTA (modificabile solo dalla taratura, tools/taratura).
  */
@@ -33,14 +33,14 @@ export const CITTA = {
   manutenzioneOpificio: 50,
   manutenzioneGranaio: 30,
   manutenzionePalazzo: 200,
-  /** quota della rendita che va ai servizi per ogni volta abitantiLiberi in più (con grandezza 1) */
-  serviziQuota: 0.1,
-  /** abitanti sotto i quali la città è un villaggio e i servizi non costano */
-  abitantiLiberi: 3000,
-  /** la quota cresce come (abitanti / abitantiLiberi − 1) ^ grandezza */
-  grandezza: 1,
+  /** quota della rendita che va ai servizi con abitantiRiferimento abitanti */
+  serviziQuota: 0.05,
+  /** abitanti di riferimento per la quota dei servizi */
+  abitantiRiferimento: 3000,
+  /** la quota cresce come (abitanti / abitantiRiferimento) ^ grandezza: meno che in proporzione; il tetto arriva verso i 20.000 abitanti */
+  grandezza: 0.85,
   /** i servizi non superano questa quota della rendita dell'anno */
-  quotaMassima: 0.6,
+  quotaMassima: 0.25,
   /** signori del computer: quanto pesa la spesa in più quando decidono se crescere (0: crescono sempre) */
   prudenza: 1,
 };
@@ -86,8 +86,8 @@ export const contadini = (p: Player) => Math.max(0, p.servi - addetti(p));
 /** Quota del raccolto pieno che i contadini riescono a portare a casa (0..1). */
 export const fattoreRaccolto = (p: Player) => (p.acri > 0 && contadiniPerAcro(p) > 0 ? Math.min(1, contadini(p) / (p.acri * contadiniPerAcro(p))) : 1);
 
-/** Grandezza della città: 0 finché gli abitanti non superano abitantiLiberi, poi cresce con gli abitanti in più. */
-export const grandezza = (p: Player) => Math.max(0, Math.max(0, p.servi) / CITTA.abitantiLiberi - 1) ** CITTA.grandezza;
+/** Grandezza della città: 1 con abitantiRiferimento abitanti, poi cresce meno che in proporzione (0 senza abitanti). */
+export const grandezza = (p: Player) => (Math.max(0, p.servi) / CITTA.abitantiRiferimento) ** CITTA.grandezza;
 
 export interface SpesaCitta {
   manutenzione: number;
@@ -103,7 +103,7 @@ export function spesaCitta(p: Player, rendita = p.credito): SpesaCitta {
   return { manutenzione, servizi, totale: manutenzione + servizi };
 }
 
-/** Quota della rendita che va ai servizi della città (0 per un villaggio, al più quotaMassima; lo scriptorium la riduce). */
+/** Quota della rendita che va ai servizi della città (al più quotaMassima; lo scriptorium la riduce). */
 export const quotaServizi = (p: Player) => Math.min(CITTA.quotaMassima, CITTA.serviziQuota * grandezza(p)) * fattoreServizi(p);
 
 /** Spesa della città con `servi` abitanti, a parità di rendita (per valutare se crescere conviene). */

@@ -73,14 +73,41 @@ export function sellGrain(p: Player, sc: Scalars, qty: number): ActionResult {
   return { ok: true };
 }
 
+/** Crescita certa (opzione `crescitaCerta`): quota del massimo sempre garantita; il resto è a sorte. */
+export const CRESCITA_CERTA = 0.8;
+
+/**
+ * Crescita certa: il massimo dei nati del listato (riga 670) si riduce a questa quota, così in media nasce
+ * quanto nel listato (fra CRESCITA_CERTA e 1 del massimo ridotto: 0,9 × 0,55 ≈ 0,5, la media del listato).
+ * Il grano distribuito pesa meno, e la crescita dipende di più dal saldo dei cittadini di fine anno.
+ */
+export const NATI_MAX = 0.55;
+
+/** Servi che nascono al più per ogni misura data oltre la domanda (riga 670); con la crescita certa, ridotti a NATI_MAX. */
+export const natiPerMisura = (servi: number, certa = false) => ((servi / 90) * 29 / 10000) * (certa ? NATI_MAX : 1);
+
+/**
+ * Servi che nascono in media per misura con la crescita certa: il metro comune del grano distribuito e del
+ * grano venduto in carestia (i coloni, src/domain/gabelle.ts), perché le due vie diano la stessa gente.
+ */
+export const natiMediPerMisura = (servi: number) => natiPerMisura(servi, true) * (1 + CRESCITA_CERTA) / 2;
+
+/** Da 0 a `max` a sorte (come nel listato), o con la crescita certa da CRESCITA_CERTA × max a max. */
+export const conSorte = (max: number, r: number, certa = false) => INT(max * (certa ? CRESCITA_CERTA + (1 - CRESCITA_CERTA) * r : r));
+
 /**
  * Righe 660-680: grano distribuito ai servi. Consuma 1 RND.
  * Ritorna nati (+) o morti (-). Chiude la fase di commercio.
+ * `certa` (opzione `crescitaCerta`): il massimo dei nati si riduce a NATI_MAX, e i nati ne sono almeno
+ * CRESCITA_CERTA; i morti restano quelli del listato, a sorte.
  */
-export function feedServants(p: Player, sc: Scalars, qty: number, rng: Rng): ActionResult & { natiMorti?: number } {
+export function feedServants(p: Player, sc: Scalars, qty: number, rng: Rng, certa = false): ActionResult & { natiMorti?: number } {
   sc.s = qty;
   if (qty > p.grano) return { ok: false, reason: 'non possedete tanto grano' };
-  let f = INT(rng.next() * (((p.servi / 90) * 29 * (qty - sc.domanda)) / 10000));
+  // l'espressione del listato, invariata (la fedeltà conta l'ordine delle operazioni)
+  let max = ((p.servi / 90) * 29 * (qty - sc.domanda)) / 10000;
+  if (certa && max > 0) max *= NATI_MAX;
+  let f = conSorte(max, rng.next(), certa && max > 0);
   p.grano -= qty;
   sc.s1 = p.servi;
   p.servi += f;

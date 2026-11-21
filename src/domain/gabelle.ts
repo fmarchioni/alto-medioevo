@@ -19,7 +19,7 @@
  * Il grano non deperisce più a ogni ritocco delle gabelle: perde fino al 10%
  * l'anno solo se il tesoro è in debito (i granai non si riparano).
  */
-import { INT } from './economy';
+import { INT, natiMediPerMisura } from './economy';
 import type { EventOutcome, Player } from './types';
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -251,9 +251,15 @@ export const SETTLER_FLOOR = 2000;
 /** nelle annate medie con il grano almeno a questo prezzo arrivano coloni, a metà ritmo */
 export const SETTLER_MEDIA_PRICE = 30;
 
-/** Coloni attirati vendendo `qty` misure di scorta in carestia. */
-export const settlersFor = (p: Player, qty: number, already: number) =>
-  Math.max(0, Math.min(INT(qty / SETTLER_GRAIN), Math.max(INT(p.servi * SETTLER_MAX), SETTLER_FLOOR) - already));
+/**
+ * Coloni attirati vendendo `qty` misure di scorta in carestia.
+ * `certa` (opzione `crescitaCerta`): tanti quanti ne nascerebbero in media distribuendo quel grano
+ * (natiMediPerMisura), senza tetto: vendere e distribuire danno la stessa gente, e la vendita in più
+ * gli scudi; ma i coloni arrivano solo in carestia (a metà nelle annate medie care), i nati sempre.
+ */
+export const settlersFor = (p: Player, qty: number, already: number, certa = false) => certa
+  ? Math.max(0, INT(qty * natiMediPerMisura(Math.max(0, p.servi))))
+  : Math.max(0, Math.min(INT(qty / SETTLER_GRAIN), Math.max(INT(p.servi * SETTLER_MAX), SETTLER_FLOOR) - already));
 
 /**
  * Fine anno: marcisce il grano oltre la capienza, poi il 2% di quello che resta.

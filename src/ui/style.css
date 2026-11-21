@@ -754,6 +754,7 @@ b, strong { color: var(--gold); }
 .rings { display: inline-flex; gap: 4px; vertical-align: middle; }
 .ring { width: 14px; height: 14px; border: 2px solid var(--line); border-radius: 2px; }
 .ring.on { background: var(--gold); border-color: var(--gold); }
+.ring.building { border-color: var(--gold); border-style: dashed; }
 .ext-map { margin: 8px 0 12px; }
 .mini-map { width: 100%; max-width: 560px; height: auto; display: block; margin: 0 auto; border: 2px solid #8a6b3e; border-radius: 4px; }
 .battle { margin: 6px 0 10px; }

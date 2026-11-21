@@ -18,7 +18,7 @@ import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
 import {
   answerPeace, offerPeace, peaceBlock, BOMBARD_KILL, buildCatapults, CATAPULT_COST, CATAPULT_MAX, CATAPULT_UPKEEP, CATAPULTS_PER_RING, catapultsOf, catAwayOf, FALL_SERVI, liftSiege, PEACE_PER_SOLDIER, peacePrice,
   SIEGE_FALL_WINS, SIEGE_KILL, SIEGE_MORALE_MAX, SIEGE_MORALE_YEARS, SIEGE_SERVI_STEPS, SIEGE_SOLDATI_STEP, siegeNeed, siegesBy, siegesOn, WALL_BONUS, WALL_MEN,
-  ARMY_MAX_SHARE, awayOf, campaignsBy, MILITIA, recruitRoom, volunteersOf, warLooms, buildTower, TORRE_COST, TORRI_MAX, torriOf, towerAlerts, type Campaign, MARCH_SICKNESS, travelYears, BRIGAND_BAND, BRIGAND_PAY, BRIGAND_TAX, buildWall, CAMPAIGN_COST, declareWar, defenseOf, disband, driveBrigands,
+  ARMY_MAX_SHARE, awayOf, campaignsBy, MILITIA, recruitRoom, volunteersOf, warLooms, buildTower, TORRE_COST, TORRI_MAX, torriOf, towerAlerts, muraNuoveOf, muraTotaliOf, type Campaign, MARCH_SICKNESS, travelYears, BRIGAND_BAND, BRIGAND_PAY, BRIGAND_TAX, buildWall, CAMPAIGN_COST, declareWar, defenseOf, disband, driveBrigands,
   LOOT_GRANO, LOOT_SCUDI, maxArmy, moveBrigands, MURA_COST, MURA_MAX, neighbors, payBrigands, RECRUIT_COST, recruit, SOLDIER_VS_HORDE, WALL_VS_HORDE,
   SOLDO, SPY_COST, SPY_YEARS, DESTROY_FROM_Q, USURA_CAMPAGNA, USURA_MINACCIA, USURA_PACE,
   answerTreaty, feud, proposeTreaty, reparation, RIPARAZIONE_MIN, TRATTATO_MAX, TRATTATO_MIN, treatiesOf, treatyBlock, treatyOf, treatyOfferBetween, treatyOffersBy, treatyOffersTo, hasSpy, hireSpy, knownSoldiers, spyUntil, ss, WALL_EVENT_SHIELD, WAR_MIN, type Dispatch, type SpadeState, type WarGoal, type WarResult,
@@ -325,19 +325,20 @@ const reaction = (r: ActionResult, ok: string, p: Player) => (r.ok ? ok : `${pic
 // ---------------------------------------------------------------- pannelli
 
 function muraPanel(g: Game, st: SpadeState): string {
-  const me = g.state.current, m = st.mura[me];
-  const rings = Array.from({ length: MURA_MAX }, (_, i) => `<span class="ring ${i < m ? 'on' : ''}" aria-hidden="true"></span>`).join('');
-  return `<div class="ext-stat"><span class="rings">${rings}</span> <b>${m}</b> di ${MURA_MAX} cerchie</div>
+  const me = g.state.current, m = st.mura[me], nuove = muraNuoveOf(st, me), tot = m + nuove;
+  const rings = Array.from({ length: MURA_MAX }, (_, i) => `<span class="ring ${i < m ? 'on' : i < tot ? 'building' : ''}" aria-hidden="true"></span>`).join('');
+  return `<div class="ext-stat"><span class="rings">${rings}</span> <b>${m}</b> di ${MURA_MAX} cerchie${nuove ? `, <b>${nuove}</b> in costruzione` : ''}</div>
     <ul class="ext-ledger">
+      <li>Una cerchia nuova si costruisce in un anno: è pronta <b>alla chiusura dell'anno, dopo le battaglie</b>. Non difende dall'assalto di quest'anno.</li>
       <li>Difesa del feudo in guerra: <b>${n(defenseOf(g.player, st.soldati[me], m))}</b> (soldati, milizia dei servi e mura)${m < MURA_MAX ? `; con un'altra cerchia: ${n(defenseOf(g.player, st.soldati[me], m + 1))}` : ''}.</li>
       <li>Ogni cerchia vale ${WALL_MEN} difensori e moltiplica la difesa: +${Math.round(WALL_BONUS * 100)}% per cerchia. Solo le catapulte del nemico la annullano: ne servono ${CATAPULTS_PER_RING} per cerchia.</li>
       <li>Contro Longobardi e briganti le perdite di pugna e riscatto calano del ${Math.round(Math.min(1, WALL_EVENT_SHIELD * m) * 100)}%${m < MURA_MAX ? ` (${Math.round(Math.min(1, WALL_EVENT_SHIELD * (m + 1)) * 100)}% con un'altra cerchia)` : ''}.</li>
       <li>Le mura <b>non contano</b> per il rango: sono denaro speso per difendersi.</li>
     </ul>
-    <div class="btns"><button data-act="ext" data-op="wall" ${m >= MURA_MAX ? 'disabled' : ''}>Innalza una cerchia (${n(MURA_COST)} scudi)</button></div>`;
+    <div class="btns"><button data-act="ext" data-op="wall" ${tot >= MURA_MAX ? 'disabled' : ''}>Innalza una cerchia (${n(MURA_COST)} scudi)</button></div>`;
 }
 
-const TORRE_WHEN = ['', 'solo al momento della guerra, alla fine dell\'anno', 'già nei dispendimenti, quando si costruisce', 'all\'inizio dell\'anno, prima di spendere per il grano'];
+const TORRE_WHEN = ['', 'solo al momento della guerra, alla fine dell\'anno, e solo per l\'assalto di quell\'anno: c\'è tempo appena per qualche recluta', 'già nei dispendimenti, quando si costruisce, e si vedono anche gli eserciti che arriveranno l\'anno dopo dai feudi lontani', 'all\'inizio dell\'anno, prima di spendere per il grano'];
 
 function torriPanel(g: Game, st: SpadeState): string {
   const me = g.state.current, lv = torriOf(st, me);
@@ -346,7 +347,7 @@ function torriPanel(g: Game, st: SpadeState): string {
   return `<div class="ext-stat"><span class="rings">${towers}</span> livello <b>${lv}</b> di ${TORRI_MAX}</div>
     <ul class="ext-ledger">
       <li>Le vedette avvistano gli eserciti nemici in marcia verso il feudo e dicono chi li manda e quando arriveranno; non quanti sono (per quello serve una spia).</li>
-      <li>Un esercito che parte quest'anno si vede dall'anno dopo: contro un confinante combatte alla fine di quell'anno, da un feudo lontano un anno più tardi.</li>
+      <li>Un esercito che parte quest'anno si vede dall'anno dopo: contro un confinante combatte alla fine di quell'anno, da un feudo lontano un anno più tardi. Le mura costruite dopo l'avviso non servono per quell'assalto: sono pronte solo a fine anno, dopo le battaglie.</li>
       ${levels}
       <li>Le torri <b>non contano</b> per il rango.</li>
     </ul>
@@ -690,7 +691,7 @@ export const view: ExpansionView = {
     const st = ss(g), me = g.state.current;
     const away = awayOf(st, me), cat = catapultsOf(st, me), catAway = catAwayOf(st, me);
     return [
-      { ico: barIcons.mura, value: `${st.mura[me]}/${MURA_MAX}`, label: 'cerchie di mura' },
+      { ico: barIcons.mura, value: `${st.mura[me]}/${MURA_MAX}`, label: muraNuoveOf(st, me) ? `cerchie di mura, +${muraNuoveOf(st, me)} in costruzione` : 'cerchie di mura' },
       { ico: barIcons.soldati, value: n(st.soldati[me]), label: away ? `soldati, +${n(away)} lontani` : 'soldati' },
       { ico: barIcons.torri, value: `${torriOf(st, me)}/${TORRI_MAX}`, label: 'torri di guardia' },
       { ico: barIcons.catapulte, value: n(cat), label: catAway ? `catapulte, +${n(catAway)} lontane` : 'catapulte' },
@@ -773,7 +774,7 @@ export const view: ExpansionView = {
       case 'wall':
         {
         const r = buildWall(g); // prima l'opera, poi la frase con il nuovo numero di cerchie
-        return { say: reaction(r, `I muratori sono al lavoro, ${h(p)}: le mura hanno ora ${st.mura[me]} ${st.mura[me] === 1 ? 'cerchia' : 'cerchie'}.`, p) };
+        return { say: reaction(r, `I muratori sono al lavoro, ${h(p)}: la nuova cerchia sarà pronta alla fine dell'anno, dopo le battaglie. Allora le mura avranno ${muraTotaliOf(st, me)} ${muraTotaliOf(st, me) === 1 ? 'cerchia' : 'cerchie'}.`, p) };
       }
       case 'recruit': {
         const k = field('recruit-n');

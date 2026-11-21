@@ -12,6 +12,7 @@ import type { BotCtx, ExpansionRules } from '../../domain/expansion';
 import type { BeneCasata, BeniCasata } from '../../domain/prestiti';
 import type { Game } from '../../domain/turn';
 import type { ActionResult, GameState } from '../../domain/types';
+import type { VoceMigrazione } from '../../domain/migrazioni';
 import { SPADE_ID, VIE_ID, VOCAZIONI_ID, vocazioneDelFeudo, type VocazioniExt, type Vocazione } from '../../domain/vocazioni';
 import { casaMadre } from '../../domain/dinastia';
 import { rules as vie } from '../vie-mercanti/rules';
@@ -140,6 +141,11 @@ export const rules: ExpansionRules = {
   onIncome: (g, amount) => tutte(g, r => r.onIncome?.(g, amount)),
   beforeYearEnd: g => tutte(g, r => r.beforeYearEnd?.(g)),
   onYearClose: g => tutte(g, r => r.onYearClose?.(g)),
+  migrazione: g => {
+    const voci: VoceMigrazione[] = [];
+    tutte(g, r => voci.push(...(r.migrazione?.(g) ?? [])));
+    return voci;
+  },
   onTrasferimento: (g, i, da) => tutte(g, r => r.onTrasferimento?.(g, i, da)),
 
   usuryExtra(g) {

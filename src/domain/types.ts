@@ -197,6 +197,10 @@ export interface Options {
   citta?: boolean;
   /** le ere: tetto di botteghe per era, un'opera per passare alla seguente e salire di rango (src/domain/ere.ts) */
   ere?: boolean;
+  /** crescita certa: i nati e i servi attirati dal palazzo sono l'80% del massimo più un 20% a sorte (src/domain/economy.ts, CRESCITA_CERTA) */
+  crescitaCerta?: boolean;
+  /** saldo dei cittadini: a fine anno arrivano o partono fino a 100 servi secondo umore, annata, fiducia dei mercanti e guerre (src/domain/migrazioni.ts) */
+  migrazioni?: boolean;
 }
 
 /**
@@ -238,6 +242,8 @@ export const GAME_OPTIONS: Options = {
   ricorrenza: true,
   citta: true,
   ere: true,
+  crescitaCerta: true,
+  migrazioni: true,
 };
 
 export type Phase =
@@ -352,6 +358,8 @@ export type ChronicleFact =
   | { t: 'income'; amount: number; tribute: number }
   /** la città: spesa annua pagata a fine anno (solo con `citta`) */
   | { t: 'citta'; manutenzione: number; servizi: number }
+  /** saldo dei cittadini di fine anno (opzione `migrazioni`): servi arrivati (+) o partiti (−), e le voci che hanno pesato */
+  | { t: 'migrazioni'; saldo: number; voci: string[] }
   /** le ere: un'opera costruita apre l'era `era` (solo con `ere`) */
   | { t: 'opera'; era: number }
   /** costruzione; servi: accorsi per un piano di palazzo (opzione `palazzoReale`) */

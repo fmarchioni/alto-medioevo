@@ -6,6 +6,7 @@
 import { buyGrain, collectRendite, computeRendite, feedServants, INT, type RateKind, sellGrain, setRate, spoilGrain, startOfTurn, USURA_MIN } from './economy';
 import { fattoreRaccolto, spesaCitta } from './citta';
 import { costruisciOpera } from './ere';
+import { saldoMigratorio, vociBase, type VoceMigrazione } from './migrazioni';
 import { annataOf, initAnnate, setAnnata } from './annate';
 import { granaryCapacity, SETTLER_MEDIA_PRICE, settlersFor, storeGrain } from './gabelle';
 import {
@@ -22,7 +23,7 @@ import {
 import { Mulberry32 } from './rng';
 import { canInvestTimes, invest, roomFor, type InvestmentKind } from './investments';
 import { bottino, cartaInMano, COMPLICE_CHANCE, IMPRESA_SUCCESSO, impresaOfEvent, multa, scadenza, silenzioDal } from './imprese';
-import { calculateVassalTribute, DEBITO_ARRESTO, FEUDI, endOfPlayerYear, PALAZZO_SERVI, rankOf, victoryRule, wealthIndex } from './rank';
+import { calculateVassalTribute, DEBITO_ARRESTO, FEUDI, endOfPlayerYear, palazzoServi, rankOf, victoryRule, wealthIndex } from './rank';
 import {
   accettaNozze, annoFamiglia, casusBelli, celebra, doteCasata, doteForestiera, ETA_MAGGIORE, etaP, nozzeBlock, nozzeDi, parenti, personaOf, REGGENZA_QUOTA, ripudia, ripudiabili, signoreP, type Sposo,
 } from './famiglia';
@@ -826,7 +827,7 @@ export class Game {
       if (p.granai !== undefined && (sc.annata === 'carestia' || media) && sc.scorta !== undefined) {
         const stock = Math.min(qty, sc.scorta);
         sc.scorta -= stock;
-        coloni = settlersFor(p, media ? INT(stock / 2) : stock, sc.coloni ?? 0);
+        coloni = settlersFor(p, media ? INT(stock / 2) : stock, sc.coloni ?? 0, !!this.state.options.crescitaCerta);
         p.servi += coloni;
         sc.coloni = (sc.coloni ?? 0) + coloni;
       }
@@ -841,7 +842,7 @@ export class Game {
     this.expect('commercio');
     if (!isQuantity(qty)) return { ok: false, reason: 'quantità non valida' };
     const serviBefore = this.player.servi, domanda = this.state.scalars.domanda;
-    const r = feedServants(this.player, this.state.scalars, qty, this.rng);
+    const r = feedServants(this.player, this.state.scalars, qty, this.rng, !!this.state.options.crescitaCerta);
     this.sync();
     if (r.ok) {
       const p = this.player, sc = this.state.scalars;
@@ -1189,7 +1190,7 @@ export class Game {
       if (!r.ok) return r;
       this.log(`investe in ${kind}`);
       // palazzo reale: la fama del palazzo che cresce attira servi nel feudo
-      const come = kind === 'palazzo' && this.state.options.palazzoReale ? PALAZZO_SERVI[0] + Math.floor(this.rng.next() * (PALAZZO_SERVI[1] - PALAZZO_SERVI[0] + 1)) : 0;
+      const come = kind === 'palazzo' && this.state.options.palazzoReale ? palazzoServi(this.rng.next(), !!this.state.options.crescitaCerta) : 0;
       this.player.servi += come;
       servi += come;
       this.record(come ? { t: 'build', kind, servi: come } : { t: 'build', kind });
@@ -1207,6 +1208,16 @@ export class Game {
     this.record({ t: 'opera', era: this.player.era! });
     this.enterInvestments();
     return { ok: true };
+  }
+
+  /** Saldo dei cittadini (opzione `migrazioni`): le voci per il signore di turno, del gioco base e dell'espansione. */
+  vociMigrazione(): VoceMigrazione[] {
+    return [...vociBase(this.player, this.state.scalars), ...(this.rules?.migrazione?.(this) ?? [])];
+  }
+
+  /** Servi che arriveranno (o partiranno) a fine anno; 0 senza l'opzione `migrazioni`. */
+  saldoCittadini(): number {
+    return this.state.options.migrazioni ? Math.max(saldoMigratorio(this.vociMigrazione()), -Math.max(0, this.player.servi)) : 0;
   }
 
   /** Opzione 5 "karta": rivede il reame e torna agli investimenti. */
@@ -1233,6 +1244,13 @@ export class Game {
         p.scudi -= spesa.totale;
         this.record({ t: 'citta', manutenzione: spesa.manutenzione, servizi: spesa.servizi });
       }
+    }
+    // il saldo dei cittadini: famiglie che arrivano o lasciano la città
+    const saldo = this.saldoCittadini();
+    if (saldo) {
+      p.servi += saldo;
+      this.log(`saldo dei cittadini: ${saldo > 0 ? '+' : ''}${saldo} servi`);
+      this.record({ t: 'migrazioni', saldo, voci: this.vociMigrazione().filter(v => v.punti !== 0).map(v => v.voce) });
     }
     const kin =st.dinastia?.persone ? (a: number, b: number) => parenti(st.dinastia!, a, b) : undefined;
     const end = endOfPlayerYear(st.players, st.current, st.scalars, this.rules?.usuryScale?.(this) ?? 1, !!st.options.pignoramenti, victoryRule(st.options), kin);

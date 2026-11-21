@@ -7,7 +7,8 @@ import { createPlayer } from '../domain/turn';
 import { MAX_PALAZZO } from '../domain/investments';
 import { CITTA } from '../domain/citta';
 import { OPERE } from '../domain/ere';
-import { PALAZZO_SERVI, THRONE_THRESHOLD } from '../domain/rank';
+import { PALAZZO_SERVI, palazzoServiMin, THRONE_THRESHOLD } from '../domain/rank';
+import { GAME_OPTIONS } from '../domain/types';
 import { merchantPortrait } from './art';
 import { bubble, coin, helmet, hood, person, shield } from './comics';
 import { realmScene } from './realm';
@@ -113,7 +114,7 @@ const PAGES: Page[] = [
       'Il grano però non entra da solo nei granai. Si compra dal raccolto dell\'anno, e mai più di quanto ne sia nato. Quando il raccolto è abbondante costa poco; quando è scarso, il prezzo sale.',
       'Ogni trent\'anni ciascun signore ha dieci annate abbondanti (grano da 1 a 15 scudi ogni mille), dieci medie (da 16 a 40) e dieci di carestia (da 41 a 60), mai più di tre uguali di fila.',
       'I granai tengono 50 misure per ogni acro, e potete costruirne di nuovi: a fine anno il grano in più marcisce, e anche quello conservato perde un poco ogni anno per ratti e muffa.',
-      'Due vie portano al trono. Si può dare al popolo molto grano, che fa nascere servi e rende con la macina. Oppure si può fare i mercanti: comprare nelle annate buone, riempire i granai e vendere le scorte quando i vicini patiscono la fame. Le famiglie affamate verranno allora a stabilirsi nelle vostre terre.',
+      'Due vie portano al trono. Si può dare al popolo molto grano, che fa nascere servi e rende con la macina. Oppure si può fare i mercanti: comprare nelle annate buone, riempire i granai e vendere le scorte quando i vicini patiscono la fame. Le famiglie affamate verranno allora a stabilirsi nelle vostre terre: tante quante ne nascerebbero dando lo stesso grano al popolo, ma in più incassate gli scudi. Nelle annate buone conviene dare, in carestia vendere.',
     ],
     quip: 'Comprate quando i contadini cantano, vendete quando piangono!',
     art: () => frame(`<rect width="320" height="170" fill="#bfe0f2"/>${sun(270, 34)}
@@ -185,7 +186,7 @@ const PAGES: Page[] = [
   {
     title: 'Costruire e salire di rango',
     text: [
-      `Terre, mercati, opifici e piani di palazzo valgono per il rango quanto li pagate: costruire non vi fa perdere terreno. In più, mercati e opifici rendono con la gabella sul commerzio, e ogni piano di palazzo attira da ${PALAZZO_SERVI[0]} a ${PALAZZO_SERVI[1].toLocaleString('it-IT')} servi nel feudo.`,
+      `Terre, mercati, opifici e piani di palazzo valgono per il rango quanto li pagate: costruire non vi fa perdere terreno. In più, mercati e opifici rendono con la gabella sul commerzio, e ogni piano di palazzo attira da ${palazzoServiMin(!!GAME_OPTIONS.crescitaCerta)} a ${PALAZZO_SERVI[1].toLocaleString('it-IT')} servi nel feudo.`,
       `Superate le soglie di ricchezza e diventerete conte, duca, granduca, principe, ma solo se avete costruito l'opera dell'era che quel titolo richiede (ne parla la pagina seguente); i signori di rango inferiore vi pagheranno un tributo, mai più di una piccola parte della loro rendita. Chi supera ${THRONE_THRESHOLD.toLocaleString('it-IT')} di ricchezza, ha completato il palazzo in tutti i suoi ${MAX_PALAZZO} piani e ha costruito tutte e quattro le opere sale al trono; se nello stesso anno ci riescono in più, vince il più ricco.`,
     ],
     quip: 'Un giorno racconterò nelle piazze di Genua del vostro trono. Se mi pagate bene, s\'intende!',
@@ -199,7 +200,7 @@ const PAGES: Page[] = [
     title: 'La città e le ere',
     text: [
       `Ogni bottega vuole i suoi lavoranti: ${CITTA.addettiMercato} servi per un mercato, ${CITTA.addettiOpificio} per un opificio. E i campi vogliono braccia: senza abbastanza contadini il raccolto resta in parte nei campi. Si costruisce solo con servi liberi, che non servono né alle botteghe né ai campi; se poi i servi calano, le botteghe senza lavoranti chiudono.`,
-      'La città costa: ogni anno si paga la manutenzione degli edifici, e quando il villaggio diventa borgo e poi città servono guardie, acquedotti e fogne. Più la città è grande, più parte della rendita se ne va nei servizi. Crescere conviene, ma non all\'infinito.',
+      'La città costa: ogni anno si paga la manutenzione degli edifici, e servono guardie, acquedotti e fogne, che si prendono una parte della rendita. Più la città è grande, più parte della rendita se ne va nei servizi, ma mai più di un quarto. E a fine anno la gente si sposta: con il popolo contento e un buon raccolto arrivano fino a cento servi, con la fame e il malcontento altrettanti se ne vanno. Crescere conviene, ma non all\'infinito.',
       `Il feudo cresce per ere. In ogni era si possono avere solo tanti mercati e opifici; per passare alla seguente servono le botteghe dell'era, e poi si costruisce la sua opera con scudi e grano: ${OPERE.map(o => o.nome.toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' e $1')}. Ogni opera apre botteghe nuove, dà un piccolo vantaggio e sblocca un titolo: senza il mulino non si diventa conti, senza lo scriptorium non si diventa principi.`,
     ],
     quip: 'Una città è come una bottega: più è grande, più costa tenerla aperta!',
