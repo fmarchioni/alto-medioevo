@@ -80,7 +80,9 @@ interface UiState {
   slot: string | null;
   rngKind: RngKind;
   message: string;
-  setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; vocazioni: (Vocazione | '')[]; expansion: string | null; obiettivo: Obiettivo };
+  setup: { count: number; sorte: Sorte; rngKind: RngKind; names: string[]; genders: Gender[]; kinds: PlayerKind[]; levels: BotLevel[]; vocazioni: (Vocazione | '')[]; expansion: string | null; obiettivo: Obiettivo;
+    /** con un solo signore si chiede conferma prima di iniziare: la domanda è aperta, o il giocatore ha scelto di giocare da solo */
+    soloAsk?: boolean; soloOk?: boolean };
   /** pannelli dell'espansione nella Delibera */
   ext: ExtUi;
   /** Dinastia: pannello della casata */
@@ -345,7 +347,7 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       if (a) ui.notice = notaioNotice(a, g);
     }
     const decision = onTurn ? nozzeDecision(g) ?? prestitoDecision(g) ?? exp?.view.decision?.(g) ?? null : null;
-    const modal = !g || ui.tutorial ? '' : ui.confirm ? renderConfirm(ui.confirm) : ui.notice ? renderNotice(ui.notice) : decision ? renderDecision(decision) : '';
+    const modal = !g && ui.setup.soloAsk ? renderDecision(soloDecision(ui.setup.genders[0] ?? 1)) : !g || ui.tutorial ? '' : ui.confirm ? renderConfirm(ui.confirm) : ui.notice ? renderNotice(ui.notice) : decision ? renderDecision(decision) : '';
     // vista moderna: colonna e finestra scorrono per conto loro; il ridisegno non deve riportarle in cima finché la schermata è la stessa
     const screen = moderna && g ? [turnKey(g), g.state.phase.kind, ui.tutorial?.page, ui.chronicleYear, !!ui.realmReview, ui.ext.panel, ui.ext.step, ui.ext.menu, ui.ext.signori, ui.casata.open, ui.trade.mode].join('|') : '';
     const scrolled = ['.m-col', '.m-window'].map(sel => (screen && screen === lastScreen ? root.querySelector(sel)?.scrollTop ?? 0 : 0));
@@ -551,7 +553,23 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'noticeClose':
         ui.notice = null;
         return render();
+      case 'soloYes':
+        ui.setup.soloAsk = false;
+        ui.setup.soloOk = true;
+        // i campi della schermata sono ancora lì, sotto la pergamena
+        return handle({ act: 'start' }, num, true);
+      case 'soloNo':
+        ui.setup.soloAsk = false;
+        render();
+        root.querySelector<HTMLSelectElement>('select[name="count"]')?.focus();
+        return;
       case 'start': {
+        // un signore solo: prima si chiede se non vuole compagnia
+        if (ui.setup.count === 1 && !ui.setup.soloOk) {
+          ui.setup.soloAsk = true;
+          return render();
+        }
+        ui.setup.soloOk = false;
         const players: NewPlayer[] = [];
         for (let i = 0; i < ui.setup.count; i++) {
           const genderEl = root.querySelector<HTMLSelectElement>(`[name="gender${i}"]`);
@@ -947,6 +965,19 @@ function renderSaves(saves: SaveSlot[]): string {
       <div class="save-btns"><button data-act="resume" data-slot="${esc(s.id)}" class="primary">Riprendi</button><button data-act="deleteSave" data-slot="${esc(s.id)}" class="ghost">Elimina</button></div></li>`;
   }).join('');
   return `<div class="saves"><h2>Riprendere una partita?</h2><ul class="save-list">${items}</ul><h2>Oppure iniziatene una nuova</h2></div>`;
+}
+
+/** La domanda a chi vuole iniziare da solo. */
+function soloDecision(gender: Gender) {
+  const m = gender === 6 ? 'Madonna' : 'Messere';
+  return {
+    title: 'Da solo?',
+    body: `${m}, siete ${gender === 6 ? 'sicura' : 'sicuro'} di voler giocare da solo? Posso far partecipare altri messeri, se non avete amici! Scegliete il numero di signori per aggiungerne.`,
+    options: [
+      { label: 'Gioco da solo', op: '', act: 'soloYes' },
+      { label: 'Aggiungi giocatori', op: '', act: 'soloNo', primary: true },
+    ],
+  };
 }
 
 function renderSetup(ui: UiState): string {
