@@ -24,6 +24,10 @@ import {
   answerTreaty, feud, proposeTreaty, reparation, RIPARAZIONE_MIN, TRATTATO_MAX, TRATTATO_MIN, treatiesOf, treatyBlock, treatyOf, treatyOfferBetween, treatyOffersBy, treatyOffersTo, hasSpy, hireSpy, knownSoldiers, spyUntil, ss, WALL_EVENT_SHIELD, WAR_MIN, type Dispatch, type SpadeState, type WarGoal, type WarResult,
 } from './rules';
 import { hireMercs, invokeTruce, mercCost, playTraitor } from './rules';
+import {
+  aidBlock, aidFor, aidRequestBy, aidRequestsTo, aidRoom, AIUTO_SCUDI, allianceBlock, allianceOf, allianceOfferBetween, allianceOffersTo, allyOf,
+  answerAid, answerAlliance, breakAlliance, proposeAlliance, requestAid,
+} from './rules';
 import { mercsOf, TRADITORE_MURA } from './carte';
 import { cardChronicle, cardsAside } from './carte-view';
 
@@ -244,7 +248,23 @@ function cardWords(w: WarResult, forAttacker: boolean): string {
 }
 
 function warText(w: WarResult, ps: Player[], forAttacker: boolean): string {
-  return warTextBase(w, ps, forAttacker) + cardWords(w, forAttacker);
+  return warTextBase(w, ps, forAttacker) + allyWords(w, ps, forAttacker) + cardWords(w, forAttacker);
+}
+
+/** Alleanze: chi ha combattuto con l'assalitore (attacco comune), e chi ha mandato soldati in difesa. */
+function allyWords(w: WarResult, ps: Player[], forAttacker: boolean): string {
+  let out = '';
+  const x = w.alleato;
+  if (x) {
+    const loot = [x.scudi ? `${n(x.scudi)} scudi` : '', x.grano ? `${n(x.grano)} misure di grano` : ''].filter(Boolean).join(' e ');
+    out += forAttacker
+      ? ` <b>Attacco comune</b>: con voi ha combattuto il vostro alleato ${who(ps[x.owner])}, con ${plural(x.sent, 'soldato', 'soldati')}; ne ha perduti ${n(x.lost)}${loot ? `, e la sua parte del bottino è di ${loot}` : ''}.`
+      : ` Con lui marciava il suo alleato ${who(ps[x.owner])}, con altri ${plural(x.sent, 'soldato', 'soldati')}.`;
+  }
+  if (w.aiuto) out += forAttacker
+    ? ` Il nemico era difeso anche da ${plural(w.aiuto.n, 'soldato', 'soldati')} di un suo alleato.`
+    : ` Nella difesa vi hanno aiutato ${plural(w.aiuto.n, 'soldato', 'soldati')} del vostro alleato${w.aiuto.lost ? `: ne sono caduti ${n(w.aiuto.lost)}` : ''}.`;
+  return out;
 }
 
 function warTextBase(w: WarResult, ps: Player[], forAttacker: boolean): string {
@@ -269,7 +289,10 @@ function battleTale(w: WarResult, ps: Player[]): string {
   const A = who(ps[w.attacker]), D = who(ps[w.defender]);
   const spoils = [w.scudi ? `${n(w.scudi)} scudi` : '', w.grano ? `${n(w.grano)} misure di grano` : ''].filter(Boolean).join(' e ');
   const round = (w.round ?? 1) > 1 ? `Al ${w.round}° assalto dell'assedio, ` : '';
-  const head = `${round}${A} ha assalito il feudo di ${D} ${w.goal === 'distruzione' ? 'per distruggerlo' : 'per le risorse'} con ${n(w.sent)} soldati${w.cat ? ` e ${plural(w.cat, 'catapulta', 'catapulte')}` : ''}.`;
+  const x = w.alleato;
+  const head = x
+    ? `${round}${A} e il suo alleato ${who(ps[x.owner])} hanno assalito insieme il feudo di ${D} ${w.goal === 'distruzione' ? 'per distruggerlo' : 'per le risorse'} con ${n(w.sent + x.sent)} soldati${(w.cat ?? 0) + x.cat ? ` e ${plural((w.cat ?? 0) + x.cat, 'catapulta', 'catapulte')}` : ''}.`
+    : `${round}${A} ha assalito il feudo di ${D} ${w.goal === 'distruzione' ? 'per distruggerlo' : 'per le risorse'} con ${n(w.sent)} soldati${w.cat ? ` e ${plural(w.cat, 'catapulta', 'catapulte')}` : ''}.`;
   if (w.fell) return `${head} <b>Il feudo è caduto</b>: ${D} esce dalla partita.`;
   const tale = battleTaleBody(w, head, spoils);
   // il doppio gioco si racconta a tutti; i mercenari e il traditore dell'assalitore no (restano segreti)
@@ -310,6 +333,21 @@ function dispatchItem(d: Dispatch, st: GameState): ScrollItem {
   }
   if (d.k === 'treatyRecall') return { title: "L'esercito torna indietro", from: 'dalla marcia', body: `Con la pace firmata, i ${n(d.n)} soldati in marcia contro ${who(st.players[d.target])} hanno fatto dietrofront e tornano al fortino.` };
   if (d.k === 'treatyEnd') return { title: 'Il trattato è scaduto', from: "dall'ambasceria", body: `Il trattato di pace con ${who(st.players[d.with])} è scaduto: da quest'anno ciascuno dei due può di nuovo muovere guerra all'altro, o proporre una nuova pace.` };
+  if (d.k === 'allianceAnswer') {
+    const P = who(st.players[d.by]);
+    if (d.ok) return { title: 'Alleanza firmata', from: "dall'ambasceria", body: `${P} ha accettato la vostra alleanza. Fra voi niente guerra; potete assalire insieme lo stesso nemico, se i vostri eserciti arrivano nello stesso anno, e chiedervi aiuto in difesa, a turno.` };
+    return d.scaduta
+      ? { title: 'Nessuna risposta', from: "dall'ambasceria", body: `${P} non ha risposto alla vostra proposta d'alleanza, che decade.` }
+      : { title: 'Alleanza respinta', from: "dall'ambasceria", body: `${P} ha respinto la vostra proposta d'alleanza.` };
+  }
+  if (d.k === 'allianceEnd') return { title: "L'alleanza è rotta", from: "dall'ambasceria", body: `${who(st.players[d.by])} ha rotto la vostra alleanza: si torna come prima, e fra voi la guerra è di nuovo possibile.${d.tornano ? ` ${plural(d.tornano, 'soldato in viaggio torna', 'soldati in viaggio tornano')} indietro.` : ''}` };
+  if (d.k === 'aidAnswer') {
+    const P = who(st.players[d.by]);
+    if (d.scaduta) return { title: 'Nessuna risposta', from: "dall'ambasceria", body: `${P} non ha risposto alla vostra richiesta d'aiuto, che decade. Potete chiederlo di nuovo.` };
+    if (!d.ok) return { title: 'Aiuto negato', from: "dall'ambasceria", body: `${P} non vi manda aiuto quest'anno. Potete chiederlo di nuovo.` };
+    if (d.scudi) return { title: 'Aiuto in scudi', from: "dall'ambasceria", body: `${P}, signore mercante, non manda la sua milizia ma <b>${n(d.scudi)} scudi</b> per armare la difesa. Ora tocca a voi aiutarlo, prima di poter chiedere ancora.` };
+    return { title: 'Arrivano gli alleati', from: "dall'ambasceria", body: `${P} vi manda <b>${plural(d.n, 'soldato', 'soldati')}</b>: difenderanno il vostro feudo alla fine del ${900 + (d.arrive ?? 0)}, poi torneranno a casa. Il soldo, ${n(d.n * SOLDO)} scudi, l'avete pagato voi. Ora tocca a voi aiutarlo, prima di poter chiedere ancora.` };
+  }
   return {
     title: 'Briganti nel feudo',
     from: 'dai boschi',
@@ -362,6 +400,31 @@ function alertBox(g: Game, seen: Campaign[]): string {
   return `<div class="tower-alert" role="alert"><b class="tower-alert-head">Truppe nemiche in avvicinamento!</b><span class="tower-alert-from">dalle torri di guardia</span><ul>${rows}</ul></div>`;
 }
 
+/** Nel pannello dell'esercito: l'aiuto in difesa dell'alleato (chiederlo, e quello in arrivo o mandato). */
+function aidSection(g: Game, st: SpadeState): string {
+  const me = g.state.current, ps = g.state.players, ally = allyOf(st, me), q = g.state.q;
+  if (ally === null) return '';
+  const A = who(ps[ally]);
+  const incoming = aidFor(st, me).map(a => `<li>${plural(a.n, 'soldato', 'soldati')} di ${A} ${a.arrive <= q ? "difendono il vostro feudo fino alla fine dell'anno" : `arriveranno in difesa alla fine del ${900 + a.arrive}`}.</li>`).join('');
+  const sent = (st.aiuti ?? []).filter(a => a.owner === me).map(a => `<li>${plural(a.n, 'vostro soldato è', 'vostri soldati sono')} in aiuto a ${A}: ${a.arrive <= q ? 'difendono il suo feudo' : `arriveranno alla fine del ${900 + a.arrive}`}, poi torneranno.</li>`).join('');
+  const block = aidBlock(g), pending = aidRequestBy(st, me);
+  const room = aidRoom(g, ally), scudi = !!vietato(ps[ally], 'marcia');
+  const max = scudi ? Math.floor(room.scudi / AIUTO_SCUDI) : room.soldati;
+  const ask = block || max <= 0
+    ? `<p class="hint">${pending ? `Avete chiesto ${plural(pending.n, 'soldato', 'soldati')} a ${A}: risponderà nel suo turno.` : block ?? `${A} quest'anno non ha volontari da mandarvi.`}</p>`
+    : `<div class="ext-form">
+        <label>Chiedere all'alleato <input type="number" name="aid-n" min="1" max="${max}" value="${max}" inputmode="numeric"></label>
+        <button data-act="ext" data-op="aidAsk">Chiedete aiuto</button>
+      </div>`;
+  return `<h3>Aiuto dell'alleato</h3>
+    <ul class="ext-ledger">${incoming}${sent}
+      <li>${scudi
+        ? `${A} è un signore mercante: la sua milizia non lascia il feudo, ma può mandarvi ${AIUTO_SCUDI} scudi per ogni soldato chiesto: quest'anno fino a <b>${n(room.scudi)} scudi</b>.`
+        : `${A} può arruolare per voi quest'anno fino a <b>${plural(max, 'soldato', 'soldati')}</b>, i suoi volontari, armati a sue spese. Il soldo, ${SOLDO} scudo a testa, lo pagate voi. Arrivano ${travelYears(g, ally, me) === 1 ? 'in tempo per la battaglia di fine anno' : "alla fine dell'anno prossimo, dal suo feudo lontano"}, difendono il feudo per quella battaglia e poi tornano a casa.`}</li>
+      <li>L'aiuto si chiede a turno: chi l'ha ricevuto non può chiederlo di nuovo finché non ha aiutato l'alleato.</li>
+    </ul>${ask}`;
+}
+
 function eserPanel(g: Game, st: SpadeState): string {
   const me = g.state.current, p = g.player, s = st.soldati[me], away = awayOf(st, me), max = maxArmy(p, s + away);
   const cat = catapultsOf(st, me), catAway = catAwayOf(st, me), catRoom = CATAPULT_MAX - cat - catAway;
@@ -387,7 +450,7 @@ function eserPanel(g: Game, st: SpadeState): string {
       <button data-act="ext" data-op="recruit" ${room <= 0 ? 'disabled' : ''}>Arruola</button>
       <label>Congedare <input type="number" name="disband-n" min="1" max="${s}" value="${s}" inputmode="numeric"></label>
       <button data-act="ext" data-op="disband" ${s === 0 ? 'disabled' : ''}>Congeda</button>
-    </div>${senzaCatapulte ? '' : `
+    </div>${aidSection(g, st)}${senzaCatapulte ? '' : `
     <h3>Catapulte</h3>
     <div class="ext-stat"><b>${n(cat)}</b> catapulte nel fortino${catAway ? `, <b>${n(catAway)}</b> lontane` : ''}</div>
     <ul class="ext-ledger">
@@ -400,6 +463,16 @@ function eserPanel(g: Game, st: SpadeState): string {
       <label>Costruire <input type="number" name="catapult-n" min="1" max="${Math.max(0, catRoom)}" value="${Math.max(0, Math.min(CATAPULTS_PER_RING, catRoom))}" inputmode="numeric"></label>
       <button data-act="ext" data-op="catapults" ${catRoom <= 0 ? 'disabled' : ''}>Costruisci (${n(CATAPULT_COST)} scudi l'una)</button>
     </div>`}`;
+}
+
+/** Attacco comune: l'alleato marcia contro questo feudo; si arriva insieme se la distanza lo consente. */
+function jointNote(g: Game, st: SpadeState, target: number): string {
+  const me = g.state.current, ally = allyOf(st, me);
+  if (ally === null) return '';
+  const A = esc(g.state.players[ally].name), mine = (q: number) => g.state.q + travelYears(g, me, target) === q;
+  return campaignsBy(st, ally).filter(c => c.target === target).map(c => `<small class="${mine(c.arrive) ? 'good' : ''}">Il vostro alleato ${A} marcia contro di lui: arriva alla fine del ${900 + c.arrive}${c.goal === 'distruzione' ? ', per distruggerlo' : ', per le risorse'}. ${mine(c.arrive)
+    ? `Partendo ora arrivereste insieme: <b>attacco comune</b>, se lo scopo è lo stesso.`
+    : `Partendo ora arrivereste alla fine del ${900 + g.state.q + travelYears(g, me, target)}: niente attacco comune.`}</small><br>`).join('');
 }
 
 function guerraPanel(g: Game, st: SpadeState): string {
@@ -418,7 +491,7 @@ function guerraPanel(g: Game, st: SpadeState): string {
     const anni = travelYears(g, me, i);
     const siege = mine.find(x => x.target === i);
     const going = campaignsBy(st, me).filter(c => c.target === i);
-    const goingText = going.map(c => `<small>${n(c.n)} vostri soldati in marcia: battaglia alla fine del ${900 + c.arrive}</small><br>`).join('');
+    const goingText = going.map(c => `<small>${n(c.n)} vostri soldati in marcia: battaglia alla fine del ${900 + c.arrive}</small><br>`).join('') + jointNote(g, st, i);
     // senza spia si vedono solo le mura e la milizia dei servi: l'esercito resta segreto
     const known = knownSoldiers(g, me, i);
     const breach = st.mura[i] && cat ? `<br><small>con ${Math.min(cat, st.mura[i] * CATAPULTS_PER_RING)} catapulte: ${known === null ? 'almeno ' : ''}${n(defenseOf(d, known ?? 0, st.mura[i], cat))}</small>` : '';
@@ -498,14 +571,19 @@ function pacePanel(g: Game, st: SpadeState): string {
   if (!lords.length) return '<p>Nel regno non c\'è nessun altro signore con cui trattare.</p>';
   const rows = lords.map(i => {
     const t = treatyOf(g, me, i), x = treatyOfferBetween(st, me, i), block = treatyBlock(g, i);
-    const state = t ? `<b>in pace</b> fino al ${900 + t.fino}`
+    const ally = allyOf(st, me) === i, ax = allianceOfferBetween(st, me, i), aBlock = allianceBlock(g, i);
+    const state = ally ? `<b>alleato</b> dal ${900 + allianceOf(st, me)!.dal}`
+      : t ? `<b>in pace</b> fino al ${900 + t.fino}`
+      : ax ? (ax.from === me ? 'alleanza proposta' : "vi ha proposto l'alleanza")
       : x ? (x.from === me ? `proposta inviata: ${x.anni} anni${x.dono ? `, dono di ${n(x.dono)} scudi` : ''}` : 'vi ha proposto la pace')
         : (st.assedi ?? []).some(s => (s.owner === i && s.target === me) || (s.owner === me && s.target === i)) ? 'assedio in corso' : 'nessun trattato';
+    const allyOfThem = !ally && allyOf(st, i) !== null ? `<br><small>alleato di ${esc(ps[allyOf(st, i)!].name)}</small>` : '';
     return `<tr>
-      <th scope="row" data-label="Feudo">${who(ps[i])}</th>
+      <th scope="row" data-label="Feudo">${who(ps[i])}${allyOfThem}</th>
       <td data-label="Offese">${feudWords(g, i)}</td>
       <td data-label="Stato">${state}</td>
-      <td data-label="">${block ? '' : `<button data-act="ext" data-op="treaty" data-target="${i}">Proponete la pace</button>`}</td>
+      <td data-label="" class="war-acts">${block ? '' : `<button data-act="ext" data-op="treaty" data-target="${i}">Proponete la pace</button>`}
+        ${ally ? `<button data-act="ext" data-op="allianceBreak">Rompete l'alleanza</button>` : aBlock ? '' : `<button data-act="ext" data-op="allianceOffer" data-target="${i}">Proponete l'alleanza</button>`}</td>
     </tr>`;
   }).join('');
   return `<table class="ext-table"><thead><tr><th>Feudo</th><th>Conto delle offese</th><th>Stato</th><th></th></tr></thead><tbody>${rows}</tbody></table>
@@ -518,6 +596,7 @@ function pacePanel(g: Game, st: SpadeState): string {
       <li>Il dono esce subito dalle casse (solo denaro che avete, non a credito) e passa all'altro signore se accetta; se rifiuta, o non risponde entro il vostro prossimo turno, torna a voi.</li>
       <li><b>Conto delle offese</b>: la pace si fa volentieri a conti pari, quando nessuno ha assalito l'altro o il colpo è stato reso. Chi è stato assalito senza rendere il colpo cerca vendetta: accetterà solo un dono che ripari il bottino perduto (almeno ${n(RIPARAZIONE_MIN)} scudi per offesa).</li>
       <li>Chi vi muove guerra respinge la pace che gli avevate proposto. Con un feudo che assediate, o che vi assedia, la pace si tratta al campo dell'assedio.</li>
+      <li><b>Alleanza</b>: un solo alleato per volta, finché uno dei due non la rompe (non costa nulla). Fra alleati niente guerra. Se i vostri eserciti arrivano alla fine dello stesso anno contro lo stesso feudo, per lo stesso scopo, combattono insieme: le forze si sommano, perdite e bottino si dividono in proporzione ai soldati. Dal pannello dell'esercito potete chiedere all'alleato i suoi volontari in difesa, a turno. Chi rompe l'alleanza richiama i soldati in viaggio.</li>
     </ul>`;
 }
 
@@ -541,7 +620,7 @@ const PANELS: Record<string, { title: string; render: (g: Game, st: SpadeState) 
   esercito: { title: "L'esercito", render: eserPanel },
   guerra: { title: 'La guerra', render: guerraPanel },
   assedio: { title: "L'assedio", render: assedioPanel },
-  pace: { title: 'Trattati di pace', render: pacePanel },
+  pace: { title: 'Trattati e alleanze', render: pacePanel },
   briganti: { title: 'I briganti', render: brigantiPanel },
 };
 
@@ -558,6 +637,7 @@ export const view: ExpansionView = {
     `Una volta l'anno potete assalire un feudo, per le risorse (saccheggio e ritorno) o per la distruzione (l'esercito resta ad assediare finché il feudo cade, e il suo signore esce dalla partita; non prima dell'anno ${900 + DESTROY_FROM_Q}). Ci si può sempre ritirare; l'assediato può proporre la pace, e l'assediante decide se accettarla. I soldati che tornano restano in marcia: un anno di ritorno dai confinanti, due dai feudi lontani, e intanto il feudo resta sguarnito. Per via la malattia ne porta via fino al ${Math.round(MARCH_SICKNESS * 100)}% per anno.`,
     `Usura: il feudo minacciato da un esercito o assediato paga agli usurai il ${USURA_MINACCIA}% in più, chi ha l'esercito in campo il ${USURA_CAMPAGNA}% in più; il feudo in pace il ${-USURA_PACE}% in meno.`,
     `Trattati di pace: proponete a un signore la pace per ${TRATTATO_MIN}-${TRATTATO_MAX} anni, con un dono in scudi se volete; finché dura nessuno dei due può assalire l'altro. A conti pari la pace si fa volentieri; chi è stato assalito senza rendere il colpo cerca vendetta, e vuole un dono che ripari.`,
+    `Alleanze: un alleato per volta. Gli eserciti di due alleati che arrivano nello stesso anno contro lo stesso feudo combattono insieme e si dividono il bottino; in difesa si chiede all'alleato, a turno, di mandare i suoi volontari (un mercante manda scudi).`,
     `Spia: gli eserciti altrui sono segreti; una spia costa ${SPY_COST} scudi, se ne tiene una sola e per ${SPY_YEARS} anni rivela i soldati di tutti i signori.`,
     `Mura: fino a ${MURA_MAX} cerchie, difendono da guerre, fazioni e briganti (+${Math.round(WALL_VS_HORDE * 100)}% di difesa contro le orde per cerchia), ma non contano per il rango.`,
     `Briganti: chi li subisce li manda sul feudo di un avversario, che perde un quarto delle rendite finché non li scaccia o non paga.`,
@@ -576,7 +656,7 @@ export const view: ExpansionView = {
       { panel: 'torri', title: 'Torri di guardia', sub: towerAlerts(g, me, 'guerra').length ? 'nemici in vista!' : `livello ${torriOf(st, me)} di ${TORRI_MAX}`, art: art.torri },
       { panel: 'esercito', title: 'Esercito', sub: `${n(st.soldati[me])} soldati${awayOf(st, me) ? `, ${n(awayOf(st, me))} lontani` : ''}${catapultsOf(st, me) ? `, ${n(catapultsOf(st, me))} catapulte` : ''}`, art: art.esercito },
       { panel: 'guerra', title: 'Guerra', sub: st.lastWar[me] === g.state.q ? 'gia\' combattuta quest\'anno' : siegesBy(st, me).length ? `${siegesBy(st, me).length === 1 ? 'un assedio' : `${siegesBy(st, me).length} assedi`} in corso` : `${neighbors(g, me).length} confinanti, ${g.state.players.filter((x, i) => i !== me && x.caduto === undefined).length - neighbors(g, me).length} lontani`, art: art.guerra, disabled: g.state.players.length < 2 },
-      { panel: 'pace', title: 'Trattati di pace', sub: treatiesOf(g, me).length ? `in pace con ${treatiesOf(g, me).length === 1 ? 'un signore' : `${treatiesOf(g, me).length} signori`}` : treatyOffersBy(st, me).length ? 'proposta in attesa' : 'ambascerie e doni', art: art.pace, disabled: g.state.players.length < 2 },
+      { panel: 'pace', title: 'Trattati e alleanze', sub: allyOf(st, me) !== null ? `alleato di ${esc(g.state.players[allyOf(st, me)!].name)}` : treatiesOf(g, me).length ? `in pace con ${treatiesOf(g, me).length === 1 ? 'un signore' : `${treatiesOf(g, me).length} signori`}` : treatyOffersBy(st, me).length ? 'proposta in attesa' : 'ambascerie e doni', art: art.pace, disabled: g.state.players.length < 2 },
       ...siege,
       ...(hasBand ? [band] : []),
     ] as ExtCard[]).map(c => ({ ...c, menu: 'guerra' as const }));
@@ -589,7 +669,9 @@ export const view: ExpansionView = {
         case 'attacked': return d.war.win ? 'scongiuro' : 'festa';
         case 'battle': case 'siege': return d.war.win ? 'festa' : 'scongiuro';
         case 'brigandsIn': return 'scongiuro';
-        case 'peaceAnswer': case 'treatyAnswer': return d.ok ? 'festa' : null;
+        case 'peaceAnswer': case 'treatyAnswer': case 'allianceAnswer': return d.ok ? 'festa' : null;
+        case 'aidAnswer': return d.ok ? 'festa' : null;
+        case 'allianceEnd': return 'scongiuro';
         case 'casata': return d.d.k === 'negato' || d.d.k === 'mancato' ? 'scongiuro' : null;
         default: return null;
       }
@@ -660,6 +742,34 @@ export const view: ExpansionView = {
     if (kind !== 'commercio' && kind !== 'investimenti') return null;
     const st = ss(g), me = g.state.current, p = g.player, ps = g.state.players;
     const s = siegesBy(st, me).find(x => x.offerta);
+    const ao = allianceOffersTo(st, me)[0];
+    if (!s && ao) {
+      const f = feud(g, me, ao.from), mio = allyOf(st, me);
+      return {
+        title: "Ambasceria d'alleanza",
+        body: `${h(p)}, un messo di ${who(ps[ao.from])} chiede udienza. Vi propone un'<b>alleanza</b>: fra voi niente guerra; se i vostri eserciti arrivano nello stesso anno contro lo stesso nemico combatteranno insieme, e in difesa potrete chiedervi aiuto, a turno. Dura finché uno dei due non la rompe.${mio !== null ? ` Ma avete già un alleato, ${who(ps[mio])}: per accettare dovreste prima rompere quell'alleanza.` : ''}${f.conto > 0 ? ' Ricordate però che vi ha assalito senza che rendeste il colpo.' : ''}`,
+        options: [
+          ...(mio === null ? [{ label: "Firmo l'alleanza", op: 'allianceAccept', target: ao.from, primary: true }] : []),
+          { label: 'Respingo il messo', op: 'allianceReject', target: ao.from },
+        ],
+      };
+    }
+    const rq = aidRequestsTo(st, me)[0];
+    if (!s && rq) {
+      const room = aidRoom(g, me), scudi = !!vietato(p, 'marcia');
+      const dare = scudi ? Math.min(rq.n * AIUTO_SCUDI, room.scudi) : Math.min(rq.n, room.soldati);
+      const quando = travelYears(g, me, rq.from) === 1 ? 'in tempo per la battaglia di fine anno' : "alla fine dell'anno prossimo";
+      return {
+        title: "L'alleato chiede aiuto",
+        body: `${h(p)}, il vostro alleato ${who(ps[rq.from])} chiede aiuto per difendere il suo feudo: ${plural(rq.n, 'soldato', 'soldati')}. ${scudi
+          ? `Siete un signore mercante: la milizia non lascia il feudo, ma potete mandargli <b>${n(dare)} scudi</b>.`
+          : dare > 0 ? `Potete arruolarne per lui <b>${n(dare)}</b> fra i volontari di quest'anno, pagando le armi (${n(dare * RECRUIT_COST)} scudi); il soldo lo paga lui. Arriveranno ${quando}, poi torneranno.` : "Quest'anno però non avete volontari da mandargli."} Se lo aiutate, la prossima volta toccherà a voi chiedere.`,
+        options: [
+          ...(dare > 0 ? [{ label: scudi ? `Mando ${n(dare)} scudi` : `Mando ${n(dare)} soldati`, op: 'aidAccept', target: rq.from, primary: true }] : []),
+          { label: "Nego l'aiuto", op: 'aidReject', target: rq.from },
+        ],
+      };
+    }
     const x = treatyOffersTo(st, me)[0];
     if (!s && x) {
       const f = feud(g, me, x.from), rep = reparation(g, me, x.from);
@@ -842,6 +952,53 @@ export const view: ExpansionView = {
           ? { say: `${foe} ha firmato, ${h(p)}: pace fino al ${900 + t2!.fino}. Ora possiamo rinforzarci senza guardarci da quella parte.`, notice: { title: 'Pace firmata', body: `${foe} ha accettato il vostro trattato: <b>pace fino alla fine del ${900 + t2!.fino}</b>${gift ? `; il dono di ${n(dono)} scudi è suo` : ''}. ${treasury(p)}` } }
           : { say: `${foe} ha respinto il messo, ${h(p)}.${dono ? ' Il dono torna nelle nostre casse.' : ''}`, notice: { title: 'Pace respinta', body: `${foe} ha respinto la vostra proposta di pace.${feud(g, t, me).conto > 0 ? ' Non ha dimenticato le vostre offese: forse un dono più ricco lo placherebbe.' : ''}${dono ? ` Il dono di ${n(dono)} scudi torna a voi.` : ''}` } };
       }
+      case 'allianceOffer': {
+        const t = Number(data.target), foe = who(g.state.players[t]);
+        const r = proposeAlliance(g, t);
+        if (!r.ok) return { say: reaction(r, '', p) };
+        if (!r.answered) return { say: `Il messo è partito per ${FEUDI[g.state.players[t].feudo]}, ${h(p)}. ${foe} risponderà nel suo turno.`, notice: { title: "Ambasceria d'alleanza", body: `Avete proposto l'alleanza a ${foe}. Risponderà nel suo turno; se non risponde entro il vostro prossimo turno, la proposta decade.` } };
+        return r.accepted
+          ? { say: `${foe} ha firmato l'alleanza, ${h(p)}! Ora possiamo marciare insieme e chiederci aiuto.`, suono: 'corno', notice: { title: 'Alleanza firmata', body: `${foe} è vostro alleato. Fra voi niente guerra; se i vostri eserciti arrivano nello stesso anno contro lo stesso feudo combatteranno insieme, e dal pannello dell'esercito potete chiedergli aiuto in difesa, a turno.` } }
+          : { say: `${foe} ha respinto la nostra alleanza, ${h(p)}.`, notice: { title: 'Alleanza respinta', body: `${foe} non vuole allearsi con voi.${feud(g, t, me).conto > 0 ? ' Non ha dimenticato le vostre offese.' : ''}` } };
+      }
+      case 'allianceAccept':
+      case 'allianceReject': {
+        const t = Number(data.target), foe = who(g.state.players[t]);
+        const r = answerAlliance(g, t, op === 'allianceAccept');
+        if (!r.ok) return { say: reaction(r, '', p) };
+        return op === 'allianceAccept'
+          ? { say: `Alleanza firmata con ${foe}, ${h(p)}.`, suono: 'corno', notice: { title: 'Alleanza firmata', body: `${foe} è vostro alleato: fra voi niente guerra, e potete marciare insieme e chiedervi aiuto in difesa, a turno.` } }
+          : { say: `Il messo di ${foe} riparte senza alleanza, ${h(p)}.` };
+      }
+      case 'allianceBreak': {
+        const other = allyOf(st, me);
+        const r = breakAlliance(g);
+        if (!r.ok || other === null) return { say: reaction(r, '', p) };
+        const foe = who(g.state.players[other]);
+        const back = r.tornano ? ` ${plural(r.tornano, 'soldato in viaggio torna', 'soldati in viaggio tornano')} indietro.` : '';
+        return { say: `L'alleanza con ${foe} è rotta, ${h(p)}.${back}`, notice: { title: "L'alleanza è rotta", body: `Non siete più alleati di ${foe}: si torna come prima, e fra voi la guerra è di nuovo possibile.${back}` } };
+      }
+      case 'aidAsk': {
+        const k = field('aid-n'), other = allyOf(st, me);
+        const r = requestAid(g, k);
+        if (!r.ok || other === null) return { say: reaction(r, '', p) };
+        const foe = who(g.state.players[other]);
+        if (!r.answered) return { say: `Il messo è partito per ${FEUDI[g.state.players[other].feudo]}, ${h(p)}: ${foe} risponderà nel suo turno.` };
+        if (!r.accepted) return { say: `${foe} non ci manda aiuto quest'anno, ${h(p)}.`, notice: { title: 'Aiuto negato', body: `${foe} ha negato l'aiuto. Potete chiederlo di nuovo.` } };
+        return r.scudi
+          ? { say: `${foe} ci manda ${n(r.scudi)} scudi per armare la difesa, ${h(p)}.`, notice: { title: 'Aiuto in scudi', body: `${foe}, signore mercante, vi manda <b>${n(r.scudi)} scudi</b>. ${treasury(p)}` } }
+          : { say: `${foe} ci manda ${plural(r.sent ?? 0, 'soldato', 'soldati')}, ${h(p)}!`, suono: 'metallo', notice: { title: 'Arrivano gli alleati', body: `${foe} vi manda <b>${plural(r.sent ?? 0, 'soldato', 'soldati')}</b>: difenderanno il feudo alla fine del ${900 + (r.arrive ?? g.state.q)}, poi torneranno a casa. Avete pagato il soldo, ${n((r.sent ?? 0) * SOLDO)} scudi. ${treasury(p)}` } };
+      }
+      case 'aidAccept':
+      case 'aidReject': {
+        const t = Number(data.target), foe = who(g.state.players[t]);
+        const r = answerAid(g, t, op === 'aidAccept');
+        if (!r.ok) return { say: reaction(r, '', p) };
+        if (op === 'aidReject' || (!r.sent && !r.scudi)) return { say: `Niente aiuto per ${foe} quest'anno, ${h(p)}.` };
+        return r.scudi
+          ? { say: `Mandati ${n(r.scudi)} scudi a ${foe}, ${h(p)}.`, notice: { title: 'Aiuto mandato', body: `Avete mandato <b>${n(r.scudi)} scudi</b> a ${foe}. La prossima volta toccherà a voi chiedere. ${treasury(p)}` } }
+          : { say: `${plural(r.sent ?? 0, 'soldato parte', 'soldati partono')} per difendere ${foe}, ${h(p)}.`, suono: 'metallo', notice: { title: 'Aiuto mandato', body: `${plural(r.sent ?? 0, 'vostro volontario parte', 'vostri volontari partono')} per difendere il feudo di ${foe}, armati a vostre spese. Arriveranno alla fine del ${900 + (r.arrive ?? g.state.q)} e poi torneranno. La prossima volta toccherà a voi chiedere. ${treasury(p)}` } };
+      }
       case 'treatyAccept':
       case 'treatyReject': {
         const t = Number(data.target), foe = who(g.state.players[t]);
@@ -901,6 +1058,12 @@ export const view: ExpansionView = {
       case 'tower': return d.level === 1 ? 'Fece costruire una torre di guardia sui confini.' : `Alzò le torri di guardia al ${d.level}° livello.`;
       case 'wall': return d.level === 1 ? 'Cinse il feudo di una prima cerchia di mura.' : `Innalzò la ${d.level}ª cerchia di mura.`;
       case 'war': {
+        // attacco comune: la stessa frase, con l'alleato accanto
+        if (d.ally !== undefined) {
+          const { ally, ...solo } = d;
+          const frase = view.chronicle!({ ...f, data: solo }, players) ?? '';
+          return frase.replace(/\.$/, `, insieme al suo alleato ${P(ally)}.`);
+        }
         const spoils = [d.scudi ? `${n(d.scudi)} scudi` : '', d.grano ? `${n(d.grano)} misure di grano` : '', d.acri ? `${n(d.acri)} acri di terra` : ''].filter(Boolean).join(', ');
         if (d.fell) return `Prese il feudo di ${P(d.target)}, che cadde dopo l'assedio${spoils ? `, e ne ebbe ${spoils}` : ''}.`;
         if ((d.round ?? 1) > 1) return d.win ? `Tornò all'assalto di ${P(d.target)} (${d.round}° assalto dell'assedio) e vinse${spoils ? `, prendendo ${spoils}` : ''}.` : `Tornò all'assalto di ${P(d.target)} (${d.round}° assalto dell'assedio), ma fu respinto.`;
@@ -909,7 +1072,12 @@ export const view: ExpansionView = {
           ? `Mosse guerra a ${P(d.target)} con ${n(d.sent)} soldati e vinse${spoils ? `, tornando con ${spoils}` : ''}.`
           : `Mosse guerra a ${P(d.target)} con ${n(d.sent)} soldati, ma fu respinto e perse ${n(d.lost)} uomini.`;
       }
-      case 'besieged': if ((d.round ?? 1) > 1) return d.held ? `Resistette a un nuovo assalto dell'assedio di ${P(d.attacker)}${d.bombard ? `, ma le catapulte gli uccisero ${n(d.bombard)} servi` : ''}.` : `Cedette a un nuovo assalto dell'assedio di ${P(d.attacker)}${d.rings ? ', che gli abbatté una cerchia di mura' : ''}.`;
+      case 'besieged':
+        if (d.ally !== undefined) {
+          const { ally, ...solo } = d;
+          return (view.chronicle!({ ...f, data: solo }, players) ?? '').replace(P(d.attacker), `${P(d.attacker)} e del suo alleato ${P(ally)}`);
+        }
+        if ((d.round ?? 1) > 1) return d.held ? `Resistette a un nuovo assalto dell'assedio di ${P(d.attacker)}${d.bombard ? `, ma le catapulte gli uccisero ${n(d.bombard)} servi` : ''}.` : `Cedette a un nuovo assalto dell'assedio di ${P(d.attacker)}${d.rings ? ', che gli abbatté una cerchia di mura' : ''}.`;
         return d.held
         ? `Resistette all'assalto di ${P(d.attacker)}${d.bombard ? `, ma le catapulte gli uccisero ${n(d.bombard)} servi` : ''}.`
         : `Fu sconfitto da ${P(d.attacker)}${d.acri ? `, che gli tolse ${n(d.acri)} acri` : d.scudi || d.grano ? `, che ne saccheggiò le casse e i granai` : ''}.`;
@@ -925,6 +1093,11 @@ export const view: ExpansionView = {
       case 'peace': return `Comprò la pace da ${P(d.attacker)} per ${n(d.scudi)} scudi.`;
       case 'peaceOffer': return null;
       case 'treatyOffer': return null;
+      case 'alliance': return `Strinse alleanza con ${P(d.other)}.`;
+      case 'allianceRefused': return `Propose l'alleanza a ${P(d.target)}, che la respinse.`;
+      case 'allianceEnd': return d.broke ? `Ruppe l'alleanza con ${P(d.other)}.` : `${P(d.other)} ruppe l'alleanza con lui.`;
+      case 'aidSent': return d.scudi ? `Mandò ${n(d.scudi)} scudi al suo alleato ${P(d.other)} per la difesa.` : `Mandò soldati in difesa del suo alleato ${P(d.other)}.`;
+      case 'aidGot': return d.scudi ? `Ricevette ${n(d.scudi)} scudi dal suo alleato ${P(d.other)}.` : `Il suo alleato ${P(d.other)} gli mandò soldati in difesa.`;
       case 'treaty': return d.gave
         ? `Firmò la pace con ${P(d.other)} fino al ${d.fino}${d.dono ? `, donandogli ${n(d.dono)} scudi` : ''}.`
         : `Firmò la pace con ${P(d.other)} fino al ${d.fino}${d.dono ? `, ricevendone in dono ${n(d.dono)} scudi` : ''}.`;
@@ -956,6 +1129,7 @@ export const view: ExpansionView = {
       case 'fallen': return { prio: 1, title: `La caduta di ${luogo(me)}`, art: 'esito-sconfitta' };
       case 'brigandsDriven': return { prio: 1, title: `I briganti a ${luogo(me)}`, art: 'briganti' };
       case 'treaty': return { prio: 1, title: `La pace fra ${luogo(me)} e ${luogo(d.other)}`, art: 'esito-patto', group: coppia('pace', me, d.other) };
+      case 'alliance': return { prio: 1, title: `L'alleanza fra ${luogo(me)} e ${luogo(d.other)}`, art: 'esito-patto', group: coppia('alleanza', me, d.other) };
       case 'peace': return { prio: 1, title: `La pace comprata`, art: 'esito-riscatto', group: coppia('pace', me, d.attacker) };
       case 'peaceAccepted': return { prio: 1, title: `La pace comprata`, art: 'esito-riscatto', group: coppia('pace', me, d.target) };
     }

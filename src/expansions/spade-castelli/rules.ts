@@ -215,6 +215,10 @@ export interface WarResult {
   traditore?: 'aperte' | 'chiuse';
   /** il traditore del difensore faceva il doppio gioco e gli ha aperto le porte */
   tradito?: boolean;
+  /** attacco comune: l'alleato che ha combattuto con l'assalitore, con la sua parte (i campi sopra sono dell'assalitore) */
+  alleato?: { owner: number; sent: number; lost: number; scudi: number; grano: number; cat: number; catLost: number };
+  /** soldati alleati arrivati in difesa del feudo, e quanti ne sono caduti */
+  aiuto?: { n: number; lost: number };
 }
 
 /** Notizie per un signore, lette all'inizio del suo turno. */
@@ -239,7 +243,13 @@ export type Dispatch =
   /** l'esercito in marcia contro il nuovo alleato torna indietro */
   | { k: 'treatyRecall'; target: number; n: number }
   /** il trattato con `with` è scaduto */
-  | { k: 'treatyEnd'; with: number };
+  | { k: 'treatyEnd'; with: number }
+  /** a chi ha proposto l'alleanza: accettata, respinta, o decaduta senza risposta */
+  | { k: 'allianceAnswer'; by: number; ok: boolean; scaduta?: boolean }
+  /** l'alleato `by` ha rotto l'alleanza; tornano indietro i soldati in viaggio */
+  | { k: 'allianceEnd'; by: number; tornano: number }
+  /** a chi ha chiesto aiuto: mandato (soldati, o scudi da un mercante), negato, o decaduto */
+  | { k: 'aidAnswer'; by: number; ok: boolean; n: number; scudi: number; arrive?: number; scaduta?: boolean };
 
 /** Una schiera di ritorno da una campagna. */
 export interface March {
@@ -334,6 +344,11 @@ export interface SpadeState {
   /** trattati di pace fra signori e proposte in attesa di risposta (assenti nei salvataggi vecchi) */
   trattati?: Trattato[];
   proposte?: PropostaTrattato[];
+  /** alleanze fra signori, proposte in attesa, richieste d'aiuto in difesa e aiuti in viaggio o sul posto (assenti nei salvataggi vecchi) */
+  alleanze?: Alleanza[];
+  proposteAlleanza?: PropostaAlleanza[];
+  richieste?: RichiestaAiuto[];
+  aiuti?: Aiuto[];
   wars: WarResult[];
   mail: { to: number; d: Dispatch }[];
   inbox: Dispatch[];
@@ -381,9 +396,13 @@ export function towerAlerts(g: Game, i: number, where: keyof typeof TORRE_ALERT)
   // la torre più bassa vede solo chi è già sotto i monti: l'assalto di quest'anno
   return lv >= TORRE_LONTANO ? incomingOf(g, i) : incomingOf(g, i).filter(c => c.arrive <= g.state.q);
 }
-/** Soldati del signore `i` fuori dal fortino: verso il nemico, all'assedio o di ritorno. */
+/** Soldati del signore `i` mandati in difesa di un alleato (in viaggio o sul posto). */
+export const aidAwayOf = (st: SpadeState, i: number) => (st.aiuti ?? []).filter(a => a.owner === i).reduce((k, a) => k + a.n, 0);
+/** Soldati alleati in difesa del feudo `i` alla chiusura dell'anno `q` (arrivati). */
+export const aidAtOf = (st: SpadeState, i: number, q: number) => (st.aiuti ?? []).filter(a => a.to === i && a.arrive <= q).reduce((k, a) => k + a.n, 0);
+/** Soldati del signore `i` fuori dal fortino: verso il nemico, all'assedio, di ritorno o in aiuto a un alleato. */
 export const awayOf = (st: SpadeState, i: number) =>
-  (st.marcia ?? []).filter(m => m.owner === i).reduce((a, m) => a + m.n, 0) + siegesBy(st, i).reduce((a, s) => a + s.n, 0) + campaignsBy(st, i).reduce((a, c) => a + c.n, 0);
+  (st.marcia ?? []).filter(m => m.owner === i).reduce((a, m) => a + m.n, 0) + siegesBy(st, i).reduce((a, s) => a + s.n, 0) + campaignsBy(st, i).reduce((a, c) => a + c.n, 0) + aidAwayOf(st, i);
 /** Catapulte del signore `i` fuori dal fortino. */
 export const catAwayOf = (st: SpadeState, i: number) =>
   (st.marcia ?? []).filter(m => m.owner === i).reduce((a, m) => a + (m.cat ?? 0), 0) + siegesBy(st, i).reduce((a, s) => a + s.cat, 0) + campaignsBy(st, i).reduce((a, c) => a + c.cat, 0);
@@ -609,20 +628,26 @@ function goHome(g: Game, st: SpadeState, owner: number, n: number, cat: number, 
  * Applica perdite e saccheggio; in distruzione anche strage, incendio e
  * mura abbattute. Ritorna l'esito (le schiere non si spostano qui).
  */
-function fight(g: Game, attacker: number, target: number, n: number, cat: number, goal: WarGoal, round: number, merc = 0): WarResult {
+function fight(g: Game, attacker: number, target: number, n1: number, cat1: number, goal: WarGoal, round: number, merc1 = 0, ally?: Alleato): WarResult {
   const st = ss(g), ps = g.state.players, p = ps[attacker], d = ps[target];
   const rnd = roll(st);
+  // attacco comune: le forze dei due alleati si sommano in una sola battaglia
+  const n = n1 + (ally?.n ?? 0), cat = cat1 + (ally?.cat ?? 0), merc = merc1 + (ally?.merc ?? 0);
   // carte di guerra: il traditore apre le porte (al nemico, o al suo padrone se fa il doppio gioco);
   // i mercenari del fortino difendono e poi se ne vanno
   const tr = traitorsAt(g, st, attacker, target);
   const mura = Math.max(0, st.mura[target] - (tr.help ? TRADITORE_MURA : 0) - (tr.betrayed ? TRADITORE_MURA : 0));
   const mercDef = mercsOf(g, st, target);
   if (st.mercenari?.[target]) st.mercenari[target] = null;
+  // i soldati mandati in difesa da un alleato combattono con la guarnigione
+  const aidN = aidAtOf(st, target, g.state.q);
   const attack = (n + merc) * (0.7 + 0.6 * rnd());
-  const defense = defenseOf(d, fieldSoldiers(g, target) + mercDef, mura, cat) * (0.7 + 0.6 * rnd());
+  const defense = defenseOf(d, fieldSoldiers(g, target) + mercDef + aidN, mura, cat) * (0.7 + 0.6 * rnd());
   const win = attack > defense;
   const attackerLost = INT(n * (win ? 0.05 + 0.15 * rnd() : 0.3 + 0.3 * rnd()));
-  const defenderLost = INT(st.soldati[target] * (win ? 0.3 + 0.3 * rnd() : 0.05 + 0.15 * rnd()));
+  const defFrac = win ? 0.3 + 0.3 * rnd() : 0.05 + 0.15 * rnd();
+  const defenderLost = INT(st.soldati[target] * defFrac);
+  const aidLost = aidN ? loseAid(st, target, g.state.q, defFrac) : 0;
   // le catapulte si perdono soprattutto nelle sconfitte
   const catLost = cat ? Math.min(cat, Math.round(cat * (win ? 0.15 * rnd() : 0.3 + 0.4 * rnd()))) : 0;
   const destroy = goal === 'distruzione';
@@ -642,8 +667,8 @@ function fight(g: Game, attacker: number, target: number, n: number, cat: number
     scudi = INT(Math.min(Math.max(0, d.scudi), survivors * LOOT_SCUDI));
     grano = INT(Math.min(d.grano * 0.5, survivors * LOOT_GRANO));
     d.scudi -= scudi;
-    p.scudi += scudi;
     d.grano -= grano;
+    p.scudi += scudi;
     p.grano += grano;
     if (destroy) {
       // l'assedio brucia i granai e, con le catapulte, abbatte una cerchia
@@ -654,8 +679,57 @@ function fight(g: Game, attacker: number, target: number, n: number, cat: number
       }
     }
   }
-  return { q: g.state.q, anni: travelYears(g, attacker, target), attacker, defender: target, goal, sent: n, win, attackerLost, defenderLost, serviLost, scudi, grano, acri: 0, cat, catLost, rings, round, ...(bombard ? { bombard } : {}),
-    ...(merc ? { merc } : {}), ...(mercDef ? { mercDef } : {}), ...(tr.played ? { traditore: tr.help ? ('aperte' as const) : ('chiuse' as const) } : {}), ...(tr.betrayed ? { tradito: true } : {}) };
+  const w: WarResult = { q: g.state.q, anni: travelYears(g, attacker, target), attacker, defender: target, goal, sent: n, win, attackerLost, defenderLost, serviLost, scudi, grano, acri: 0, cat, catLost, rings, round, ...(bombard ? { bombard } : {}),
+    ...(merc ? { merc } : {}), ...(mercDef ? { mercDef } : {}), ...(tr.played ? { traditore: tr.help ? ('aperte' as const) : ('chiuse' as const) } : {}), ...(tr.betrayed ? { tradito: true } : {}),
+    ...(aidN ? { aiuto: { n: aidN, lost: aidLost } } : {}) };
+  return ally ? splitAlly(g, w, n1, cat1, ally) : w;
+}
+
+/** Le forze di un alleato nell'attacco comune. */
+export interface Alleato { owner: number; n: number; cat: number; merc: number }
+
+/**
+ * Attacco comune: perdite, catapulte perdute e bottino si dividono in proporzione ai soldati (e alle catapulte)
+ * di ciascuno. Il bottino era tutto dell'assalitore: la parte dell'alleato passa a lui. I campi dell'esito
+ * restano dell'assalitore; quelli dell'alleato vanno in `alleato`.
+ */
+function splitAlly(g: Game, w: WarResult, n1: number, cat1: number, ally: Alleato): WarResult {
+  const ps = g.state.players, lead = ps[w.attacker], a = ps[ally.owner];
+  const quota = (part: number, tot: number) => (tot ? part / tot : 0);
+  const lost1 = INT(w.attackerLost * quota(n1, w.sent)), lost2 = w.attackerLost - lost1;
+  const catLost1 = INT((w.catLost ?? 0) * quota(cat1, w.cat ?? 0)), catLost2 = (w.catLost ?? 0) - catLost1;
+  // il bottino si divide fra chi è rimasto in piedi
+  const vivi1 = n1 - lost1 + (w.merc ?? 0) - ally.merc, vivi2 = ally.n - lost2 + ally.merc;
+  const s2 = INT(w.scudi * quota(vivi2, vivi1 + vivi2)), g2 = INT(w.grano * quota(vivi2, vivi1 + vivi2));
+  lead.scudi -= s2;
+  lead.grano -= g2;
+  a.scudi += s2;
+  a.grano += g2;
+  return {
+    ...w, sent: n1, attackerLost: lost1, cat: cat1, catLost: catLost1, scudi: w.scudi - s2, grano: w.grano - g2,
+    ...(w.merc ? { merc: w.merc - ally.merc } : {}),
+    alleato: { owner: ally.owner, sent: ally.n, lost: lost2, scudi: s2, grano: g2, cat: ally.cat, catLost: catLost2 },
+  };
+}
+
+/** L'esito visto dall'alleato dell'attacco comune: i suoi numeri al posto di quelli dell'assalitore. */
+export function perAlleato(w: WarResult): WarResult {
+  const x = w.alleato!;
+  return {
+    ...w, attacker: x.owner, sent: x.sent, attackerLost: x.lost, scudi: x.scudi, grano: x.grano, cat: x.cat, catLost: x.catLost,
+    anni: w.anni, alleato: { owner: w.attacker, sent: w.sent, lost: w.attackerLost, scudi: w.scudi, grano: w.grano, cat: w.cat ?? 0, catLost: w.catLost ?? 0 },
+  };
+}
+
+/** I soldati alleati in difesa del feudo `to` perdono la stessa quota della guarnigione. Ritorna i caduti. */
+function loseAid(st: SpadeState, to: number, q: number, frac: number): number {
+  let lost = 0;
+  for (const a of (st.aiuti ?? []).filter(x => x.to === to && x.arrive <= q)) {
+    const k = INT(a.n * frac);
+    a.n -= k;
+    lost += k;
+  }
+  return lost;
 }
 
 /** Pubblica l'esito: storia, notizie e cronaca. */
@@ -668,7 +742,13 @@ function publish(g: Game, w: WarResult): void {
   send(st, w.defender, { k: 'attacked', war: w });
   const data = { target: w.defender, win: w.win ? 1 : 0, goal: w.goal === 'distruzione' ? 1 : 0, sent: w.sent, lost: w.attackerLost, scudi: w.scudi, grano: w.grano, acri: w.acri, round: w.round ?? 1, fell: w.fell ? 1 : 0, cat: w.cat ?? 0 };
   note(g, w.attacker, 'war', data);
-  note(g, w.defender, 'besieged', { attacker: w.attacker, held: w.win ? 0 : 1, lost: w.defenderLost, servi: w.serviLost, scudi: w.scudi, grano: w.grano, acri: w.acri, round: w.round ?? 1, rings: w.rings ?? 0, bombard: w.bombard ?? 0 });
+  note(g, w.defender, 'besieged', { attacker: w.attacker, held: w.win ? 0 : 1, lost: w.defenderLost, servi: w.serviLost, scudi: w.scudi, grano: w.grano, acri: w.acri, round: w.round ?? 1, rings: w.rings ?? 0, bombard: w.bombard ?? 0, ...(w.alleato ? { ally: w.alleato.owner } : {}) });
+  // attacco comune: anche l'alleato ha combattuto, con la sua parte di perdite e bottino
+  const x = w.alleato;
+  if (x) {
+    g.pericolo(x.owner, 'battaglia', w.win ? RISCHIO_BATTAGLIA.vinta : RISCHIO_BATTAGLIA.persa);
+    note(g, x.owner, 'war', { ...data, sent: x.sent, lost: x.lost, scudi: x.scudi, grano: x.grano, cat: x.cat, ally: w.attacker });
+  }
 }
 
 /**
@@ -676,11 +756,15 @@ function publish(g: Game, w: WarResult): void {
  * (fino al massimo), metà dei servi rimasti e il tesoro. Gli eserciti del
  * caduto si sciolgono; chi lo assediava torna a casa.
  */
-function conquer(g: Game, attacker: number, target: number, w: WarResult): void {
+function conquer(g: Game, attacker: number, target: number, w: WarResult, socio?: { owner: number; quota: number }): void {
   const st = ss(g), ps = g.state.players, p = ps[attacker], d = ps[target];
-  const acri = Math.min(Math.max(0, d.acri), MAX_ACRI - p.acri);
-  const servi = INT(Math.max(0, d.servi) * CONQUEST_SERVI);
-  const scudi = INT(Math.max(0, d.scudi));
+  // attacco comune: terre, servi e tesoro si dividono con l'alleato, in proporzione ai soldati rimasti
+  const quota = socio?.quota ?? 0, s = socio ? ps[socio.owner] : null;
+  const acriTot = Math.max(0, d.acri), serviTot = INT(Math.max(0, d.servi) * CONQUEST_SERVI), scudiTot = INT(Math.max(0, d.scudi));
+  const acri2 = s ? Math.min(INT(acriTot * quota), MAX_ACRI - s.acri) : 0, servi2 = INT(serviTot * quota), scudi2 = INT(scudiTot * quota);
+  const acri = Math.min(acriTot - acri2, MAX_ACRI - p.acri);
+  const servi = serviTot - servi2;
+  const scudi = scudiTot - scudi2;
   p.acri += acri;
   p.servi += servi;
   p.scudi += scudi;
@@ -688,10 +772,18 @@ function conquer(g: Game, attacker: number, target: number, w: WarResult): void 
   w.scudi += scudi;
   w.fell = true;
   note(g, attacker, 'conquest', { target, acri, servi, scudi });
+  if (s && w.alleato) {
+    s.acri += acri2;
+    s.servi += servi2;
+    s.scudi += scudi2;
+    w.alleato.scudi += scudi2;
+    note(g, socio!.owner, 'conquest', { target, acri: acri2, servi: servi2, scudi: scudi2 });
+  }
   st.soldati[target] = 0;
   if (st.catapulte) st.catapulte[target] = 0;
   st.marcia = (st.marcia ?? []).filter(m => m.owner !== target);
-  for (const s of siegesOn(st, target).filter(s => s.owner !== attacker)) {
+  sciogliAlleanze(g, target);
+  for (const s of siegesOn(st, target).filter(s => s.owner !== attacker && s.owner !== socio?.owner)) {
     goHome(g, st, s.owner, s.n, s.cat, target);
     send(st, s.owner, { k: 'lifted', by: target });
   }
@@ -731,6 +823,7 @@ export function declareWar(g: Game, target: number, sent: number, goal: WarGoal,
   if (target === me || !g.state.players[target] || !alive(g, target)) return { ok: false, reason: 'scegliete il feudo di un altro signore' };
   const tr = treatyOf(g, me, target);
   if (tr) return { ok: false, reason: `avete un trattato di pace con ${g.state.players[target].name} fino al ${900 + tr.fino}` };
+  if (alleati(st, me, target)) return { ok: false, reason: `siete alleati di ${g.state.players[target].name}: per muovergli guerra rompete prima l'alleanza` };
   // Dinastia: fra casate imparentate non ci si fa guerra (prima bisogna ripudiare)
   if (g.parenti(me, target)) return { ok: false, reason: `siete imparentati con ${g.state.players[target].name}: per muovergli guerra dovete prima sciogliere il matrimonio` };
   if ((st.proposte ?? []).some(x => x.from === me && x.to === target)) return { ok: false, reason: `avete proposto la pace a ${g.state.players[target].name}: attendete la sua risposta` };
@@ -763,24 +856,32 @@ export function declareWar(g: Game, target: number, sent: number, goal: WarGoal,
 }
 
 /** Una battaglia d'apertura: l'esercito arrivato assale il feudo. */
-function openBattle(g: Game, c: Campaign): void {
+function openBattle(g: Game, c: Campaign, p?: Campaign): void {
   const st = ss(g);
+  // attacco comune: l'esercito dell'alleato `p`, arrivato nello stesso anno, combatte con quello di `c`
+  const ally = p ? { owner: p.owner, n: p.n, cat: p.cat, merc: p.merc ?? 0 } : undefined;
   // i mercenari combattono questa battaglia e se ne vanno: l'assedio lo tengono solo i soldati
-  const w = fight(g, c.owner, c.target, c.n, c.cat, c.goal, 1, c.merc ?? 0);
+  const w = fight(g, c.owner, c.target, c.n, c.cat, c.goal, 1, c.merc ?? 0, ally);
   const left = c.n - w.attackerLost, catLeft = c.cat - (w.catLost ?? 0);
-  if (c.goal === 'distruzione' && w.win && (left >= WAR_MIN || falls(g, c.target, 1))) {
+  const left2 = p ? p.n - w.alleato!.lost : 0, catLeft2 = p ? p.cat - w.alleato!.catLost : 0;
+  if (c.goal === 'distruzione' && w.win && (left + left2 >= WAR_MIN || falls(g, c.target, 1))) {
     if (falls(g, c.target, 1)) {
-      conquer(g, c.owner, c.target, w);
+      conquer(g, c.owner, c.target, w, p ? { owner: p.owner, quota: left2 / Math.max(1, left + left2) } : undefined);
       goHome(g, st, c.owner, left, catLeft, c.target);
+      if (p) goHome(g, st, p.owner, left2, catLeft2, c.target);
     } else {
+      // ciascuno tiene il suo campo: gli assalti degli anni seguenti si danno insieme
       (st.assedi ??= []).push({ owner: c.owner, target: c.target, n: left, cat: catLeft, last: g.state.q, wins: 1, rounds: 1 });
+      if (p && left2 > 0) st.assedi.push({ owner: p.owner, target: c.target, n: left2, cat: catLeft2, last: g.state.q, wins: 1, rounds: 1 });
       w.siege = true;
     }
   } else {
     goHome(g, st, c.owner, left, catLeft, c.target);
+    if (p) goHome(g, st, p.owner, left2, catLeft2, c.target);
   }
   publish(g, w);
   send(st, c.owner, { k: 'battle', war: w });
+  if (p) send(st, p.owner, { k: 'battle', war: { ...perAlleato(w), anni: travelYears(g, p.owner, c.target) } });
 }
 
 /**
@@ -827,15 +928,30 @@ export function resolveBattles(g: Game): void {
     } else fresh.push(c);
   }
   for (const s of [...(st.assedi ?? [])].filter(x => x.last < q)) {
-    if (!(st.assedi ?? []).includes(s) || !alive(g, s.owner) || !alive(g, s.target)) continue;
-    if (truceOn(g, st, s.target)) truceRound(g, s);
-    else siegeRound(g, s);
+    if (!(st.assedi ?? []).includes(s) || s.last >= q || !alive(g, s.owner) || !alive(g, s.target)) continue;
+    if (truceOn(g, st, s.target)) { truceRound(g, s); continue; }
+    // due alleati che assediano lo stesso feudo danno l'assalto insieme
+    const s2 = (st.assedi ?? []).find(x => x !== s && x.target === s.target && x.last < q && alive(g, x.owner) && alleati(st, s.owner, x.owner));
+    siegeRound(g, s, s2);
   }
+  const done = new Set<Campaign>();
   for (const c of fresh) {
+    if (done.has(c)) continue;
+    done.add(c);
     // il feudo è già caduto: l'esercito torna indietro senza combattere
-    if (!alive(g, c.target)) goHome(g, st, c.owner, c.n, c.cat, c.target);
-    else openBattle(g, c);
+    if (!alive(g, c.target)) { goHome(g, st, c.owner, c.n, c.cat, c.target); continue; }
+    // attacco comune: l'esercito di un alleato arrivato nello stesso anno contro lo stesso feudo, per lo stesso scopo
+    const p = fresh.find(x => !done.has(x) && x.target === c.target && x.goal === c.goal && alive(g, x.owner) && alleati(st, c.owner, x.owner));
+    if (p) done.add(p);
+    openBattle(g, c, p);
   }
+}
+
+/** Chiusura dell'anno, dopo le battaglie: i soldati mandati in aiuto tornano a casa. */
+function rimandaAiuti(g: Game): void {
+  const st = ss(g), q = g.state.q;
+  for (const a of (st.aiuti ?? []).filter(x => x.arrive <= q)) if (alive(g, a.owner)) goHome(g, st, a.owner, a.n, 0, a.to);
+  st.aiuti = (st.aiuti ?? []).filter(x => x.arrive > q);
 }
 
 /** Tregua di Dio sull'assedio: niente assalto, ma il campo si ammala come sempre. */
@@ -852,30 +968,47 @@ function truceRound(g: Game, s: Siege): void {
 }
 
 /** Un nuovo assalto dell'assedio, alla chiusura dell'anno. */
-function siegeRound(g: Game, s: Siege): void {
+function siegeRound(g: Game, s: Siege, s2?: Siege): void {
   const st = ss(g);
-  s.rounds += 1;
-  s.last = g.state.q;
+  // s2: l'assedio di un alleato sullo stesso feudo, che dà l'assalto insieme
+  for (const x of s2 ? [s, s2] : [s]) {
+    x.rounds += 1;
+    x.last = g.state.q;
+  }
   // il campo si ammala: l'assedio logora anche chi lo pone
   s.n -= INT(s.n * SIEGE_ATTRITION * (0.5 + 0.5 * roll(st)()));
-  const w = fight(g, s.owner, s.target, s.n, s.cat, 'distruzione', s.rounds, s.merc ?? 0);
+  if (s2) s2.n -= INT(s2.n * SIEGE_ATTRITION * (0.5 + 0.5 * roll(st)()));
+  const w = fight(g, s.owner, s.target, s.n, s.cat, 'distruzione', s.rounds, s.merc ?? 0, s2 ? { owner: s2.owner, n: s2.n, cat: s2.cat, merc: s2.merc ?? 0 } : undefined);
   s.merc = undefined;
   s.n -= w.attackerLost;
   s.cat -= w.catLost ?? 0;
-  if (w.win) s.wins += 1;
-  if (w.win && falls(g, s.target, s.wins)) {
-    st.assedi = (st.assedi ?? []).filter(x => x !== s);
-    conquer(g, s.owner, s.target, w);
-    goHome(g, st, s.owner, s.n, s.cat, s.target);
-  } else if (s.n < WAR_MIN) {
+  if (s2) {
+    s2.merc = undefined;
+    s2.n -= w.alleato!.lost;
+    s2.cat -= w.alleato!.catLost;
+  }
+  if (w.win) {
+    s.wins += 1;
+    if (s2) s2.wins += 1;
+  }
+  const camps = s2 ? [s, s2] : [s], tot = s.n + (s2?.n ?? 0);
+  const leave = () => {
+    st.assedi = (st.assedi ?? []).filter(x => !camps.includes(x));
+    for (const x of camps) goHome(g, st, x.owner, x.n, x.cat, x.target);
+  };
+  if (w.win && falls(g, s.target, Math.max(s.wins, s2?.wins ?? 0))) {
+    st.assedi = (st.assedi ?? []).filter(x => !camps.includes(x));
+    conquer(g, s.owner, s.target, w, s2 ? { owner: s2.owner, quota: s2.n / Math.max(1, tot) } : undefined);
+    leave();
+  } else if (tot < WAR_MIN) {
     // troppo pochi per restare: si torna a casa
-    st.assedi = (st.assedi ?? []).filter(x => x !== s);
-    goHome(g, st, s.owner, s.n, s.cat, s.target);
+    leave();
   } else {
     w.siege = true;
   }
   publish(g, w);
   send(st, s.owner, { k: 'siege', war: w });
+  if (s2) send(st, s2.owner, { k: 'siege', war: perAlleato(w) });
 }
 
 /** L'assediante toglie l'assedio: l'esercito si rimette in marcia. */
@@ -979,7 +1112,8 @@ export const treatyOffersBy = (st: SpadeState, i: number) => (st.proposte ?? [])
 
 /** Assalti aperti da `a` contro `b` (un assedio conta una volta) e il bottino che ne ha portato via. */
 function offese(st: SpadeState, a: number, b: number): { n: number; bottino: number } {
-  const ws = st.wars.filter(w => w.attacker === a && w.defender === b);
+  // nell'attacco comune l'offesa è di tutti e due gli assalitori, ciascuno con il suo bottino
+  const ws = st.wars.filter(w => w.defender === b && (w.attacker === a || w.alleato?.owner === a)).map(w => (w.attacker === a ? w : perAlleato(w)));
   return { n: ws.filter(w => (w.round ?? 1) === 1).length, bottino: ws.reduce((s, w) => s + w.scudi + INT(w.grano * 0.03), 0) };
 }
 
@@ -1010,6 +1144,7 @@ export function treatyBlock(g: Game, target: number): string | null {
   if (target === me || !ps[target] || !alive(g, target)) return 'scegliete il feudo di un altro signore';
   const t = treatyOf(g, me, target);
   if (t) return `siete già in pace con ${ps[target].name} fino al ${900 + t.fino}`;
+  if (alleati(st, me, target)) return `siete alleati di ${ps[target].name}: l'alleanza vale già come pace`;
   const x = treatyOfferBetween(st, me, target);
   if (x) return x.from === me ? `la vostra proposta attende la risposta di ${ps[target].name}` : `${ps[target].name} vi ha già proposto la pace: rispondetegli`;
   if ((st.assedi ?? []).some(s => isPair(s.owner, s.target, me, target))) return "c'è un assedio fra voi: la pace si tratta al campo dell'assedio";
@@ -1141,6 +1276,365 @@ function botAnswerTreaties(c: BotCtx): void {
     settleTreaty(g, x, yes);
     log.push(yes ? `accetta la pace di ${g.state.players[x.from].name}` : `respinge la pace di ${g.state.players[x.from].name}`);
   }
+}
+
+// ---------------------------------------------------------------- alleanze
+
+/**
+ * Alleanze fra due signori (un solo alleato per volta), finché uno dei due non la rompe, senza costi.
+ * - Gli alleati non si fanno guerra (l'alleanza vale come pace).
+ * - Attacco comune: gli eserciti dei due alleati che arrivano alla fine dello stesso anno contro lo stesso
+ *   feudo, per lo stesso scopo, combattono insieme (resolveBattles); perdite e bottino si dividono in
+ *   proporzione ai soldati. Per il morale del nemico è una sola sconfitta.
+ * - Aiuto in difesa: un signore chiede all'alleato i volontari che quello può arruolare quest'anno;
+ *   l'alleato li arruola e paga le armi, chi chiede paga il soldo. Arrivano subito da un confinante,
+ *   l'anno dopo da un feudo lontano, difendono il feudo alla chiusura di quell'anno e poi tornano a casa.
+ *   Un mercante (Dinastia a vocazioni) non manda la milizia: manda scudi.
+ * - A turno: chi ha ricevuto aiuto non può chiederne ancora finché l'alleato non è stato aiutato a sua volta.
+ * - Rompere l'alleanza: i soldati mandati in aiuto e gli eserciti dell'attacco comune ancora in viaggio
+ *   tornano indietro.
+ */
+export interface Alleanza {
+  a: number;
+  b: number;
+  /** anno (q) della firma */
+  dal: number;
+  /** l'ultimo dei due che ha ricevuto aiuto in difesa (assente: nessuno ancora); non può chiederne finché non tocca all'altro */
+  aiutato?: number;
+}
+export interface PropostaAlleanza { from: number; to: number; q: number }
+/** `from` chiede a `to` `n` soldati (o il loro valore in scudi, se `to` è un mercante) */
+export interface RichiestaAiuto { from: number; to: number; n: number; q: number }
+/** soldati di `owner` in difesa del feudo `to`: combattono alla chiusura dell'anno `arrive`, poi tornano */
+export interface Aiuto { owner: number; to: number; n: number; arrive: number }
+
+/** Scudi che un mercante manda per ogni soldato chiesto: armi, soldo e un compenso per i mercenari. */
+export const AIUTO_SCUDI = 10;
+
+export const allianceOf = (st: SpadeState, i: number) => (st.alleanze ?? []).find(x => x.a === i || x.b === i);
+/** L'alleato del signore `i`, o null. */
+export const allyOf = (st: SpadeState, i: number): number | null => {
+  const x = allianceOf(st, i);
+  return x ? (x.a === i ? x.b : x.a) : null;
+};
+export const alleati = (st: SpadeState, i: number, j: number) => i !== j && allyOf(st, i) === j;
+export const allianceOfferBetween = (st: SpadeState, i: number, j: number) => (st.proposteAlleanza ?? []).find(x => isPair(x.from, x.to, i, j));
+export const allianceOffersTo = (st: SpadeState, i: number) => (st.proposteAlleanza ?? []).filter(x => x.to === i);
+export const aidRequestsTo = (st: SpadeState, i: number) => (st.richieste ?? []).filter(x => x.to === i);
+export const aidRequestBy = (st: SpadeState, i: number) => (st.richieste ?? []).find(x => x.from === i);
+/** Aiuti in arrivo (o già arrivati) in difesa del feudo `i`. */
+export const aidFor = (st: SpadeState, i: number) => (st.aiuti ?? []).filter(a => a.to === i);
+
+/** Il signore manda scudi invece di soldati: la milizia di un mercante non lascia il feudo. */
+const mandaScudi = (g: Game, i: number) => !!vietato(g.state.players[i], 'marcia');
+
+/** Quanto può dare l'alleato `i` quest'anno: i volontari che può arruolare (e pagare), o il loro valore in scudi. */
+export function aidRoom(g: Game, i: number): { soldati: number; scudi: number } {
+  const p = g.state.players[i], room = recruitRoom(g, i);
+  if (mandaScudi(g, i)) return { soldati: 0, scudi: Math.max(0, Math.min(room * AIUTO_SCUDI, Math.floor(p.scudi))) };
+  return { soldati: Math.max(0, Math.min(room, Math.floor((p.scudi + p.credito) / RECRUIT_COST))), scudi: 0 };
+}
+
+/** Perché `me` non può chiedere aiuto ora (null: può). */
+export function aidBlock(g: Game, me = g.state.current): string | null {
+  const st = ss(g), x = allianceOf(st, me);
+  if (!x) return 'non avete alleati';
+  const ally = allyOf(st, me)!, ps = g.state.players;
+  if (aidRequestBy(st, me)) return `avete già chiesto aiuto a ${ps[ally].name}: attendete la risposta`;
+  if (x.aiutato === me) return `avete già ricevuto aiuto: ora tocca a ${ps[ally].name} essere aiutato, prima di poterlo chiedere di nuovo`;
+  return null;
+}
+
+/** Perché `me` non può proporre l'alleanza a `target` (null: può). */
+export function allianceBlock(g: Game, target: number, me = g.state.current): string | null {
+  const st = ss(g), ps = g.state.players;
+  if (target === me || !ps[target] || !alive(g, target)) return 'scegliete il feudo di un altro signore';
+  if (alleati(st, me, target)) return `siete già alleati di ${ps[target].name}`;
+  if (allyOf(st, me) !== null) return `avete già un alleato, ${ps[allyOf(st, me)!].name}: per allearvi con altri rompete prima l'alleanza`;
+  if (allyOf(st, target) !== null) return `${ps[target].name} ha già un alleato`;
+  const x = allianceOfferBetween(st, me, target);
+  if (x) return x.from === me ? `la vostra proposta attende la risposta di ${ps[target].name}` : `${ps[target].name} vi ha già proposto l'alleanza: rispondetegli`;
+  if ((st.proposteAlleanza ?? []).some(y => y.from === me)) return 'avete già proposto un\'alleanza: attendete la risposta';
+  if ((st.assedi ?? []).some(s => isPair(s.owner, s.target, me, target)) || (st.campagne ?? []).some(c => isPair(c.owner, c.target, me, target))) return 'siete in guerra: prima fate la pace';
+  return null;
+}
+
+/** Propone l'alleanza a `target`. Un signore del computer risponde subito, un giocatore nel suo turno. */
+export function proposeAlliance(g: Game, target: number): ActionResult & { answered?: boolean; accepted?: boolean } {
+  const no = phaseIs(g, 'commercio', 'investimenti');
+  if (no) return no;
+  const block = allianceBlock(g, target);
+  if (block) return { ok: false, reason: block };
+  const st = ss(g), me = g.state.current;
+  const x: PropostaAlleanza = { from: me, to: target, q: g.state.q };
+  (st.proposteAlleanza ??= []).push(x);
+  const bot = g.state.players[target].bot;
+  if (!bot) return { ok: true, answered: false };
+  const yes = botAcceptsAlliance(g, x, bot, roll(st));
+  settleAlliance(g, x, yes);
+  return { ok: true, answered: true, accepted: yes };
+}
+
+/** Il signore di turno risponde alla proposta d'alleanza di `from`. */
+export function answerAlliance(g: Game, from: number, accept: boolean): ActionResult {
+  const st = ss(g), me = g.state.current;
+  const x = (st.proposteAlleanza ?? []).find(y => y.from === from && y.to === me);
+  if (!x) return { ok: false, reason: 'nessuna proposta d\'alleanza da quel signore' };
+  if (accept && allyOf(st, me) !== null) return { ok: false, reason: 'avete già un alleato' };
+  settleAlliance(g, x, accept);
+  return { ok: true };
+}
+
+/** Alleanza firmata (gli eserciti in marcia fra i due tornano indietro, come per la pace) o respinta. */
+function settleAlliance(g: Game, x: PropostaAlleanza, accept: boolean): void {
+  const st = ss(g), q = g.state.q;
+  st.proposteAlleanza = (st.proposteAlleanza ?? []).filter(y => y !== x);
+  const ok = accept && alive(g, x.to) && alive(g, x.from) && allyOf(st, x.from) === null && allyOf(st, x.to) === null;
+  send(st, x.from, { k: 'allianceAnswer', by: x.to, ok });
+  if (!ok) {
+    note(g, x.from, 'allianceRefused', { target: x.to });
+    return;
+  }
+  (st.alleanze ??= []).push({ a: x.from, b: x.to, dal: q });
+  // le altre proposte d'alleanza dei due decadono
+  st.proposteAlleanza = st.proposteAlleanza.filter(y => ![x.from, x.to].includes(y.from) && ![x.from, x.to].includes(y.to));
+  for (const c of (st.campagne ?? []).filter(k => isPair(k.owner, k.target, x.from, x.to))) {
+    (st.marcia ??= []).push({ owner: c.owner, n: c.n, cat: c.cat, back: q + 1 + Math.max(0, q - c.q), anni: Math.max(1, q - c.q), from: c.target });
+    send(st, c.owner, { k: 'treatyRecall', target: c.target, n: c.n });
+  }
+  st.campagne = (st.campagne ?? []).filter(k => !isPair(k.owner, k.target, x.from, x.to));
+  st.traditori = (st.traditori ?? []).filter(t => !isPair(t.owner, t.target, x.from, x.to));
+  note(g, x.from, 'alliance', { other: x.to });
+  note(g, x.to, 'alliance', { other: x.from });
+}
+
+/**
+ * Rompe l'alleanza del signore di turno: si torna come prima. I soldati mandati in aiuto (in viaggio o sul
+ * posto) e gli eserciti dell'attacco comune ancora in marcia tornano indietro. Ritorna quanti soldati tornano.
+ */
+export function breakAlliance(g: Game): ActionResult & { tornano?: number } {
+  const no = phaseIs(g, 'commercio', 'investimenti');
+  if (no) return no;
+  const st = ss(g), me = g.state.current, other = allyOf(st, me);
+  if (other === null) return { ok: false, reason: 'non avete alleati' };
+  const tornano = chiudiAlleanza(g, me, other);
+  send(st, other, { k: 'allianceEnd', by: me, tornano });
+  note(g, me, 'allianceEnd', { other, broke: 1 });
+  note(g, other, 'allianceEnd', { other: me, broke: 0 });
+  return { ok: true, tornano };
+}
+
+/** Scioglie l'alleanza fra `a` e `b`; i soldati in viaggio per l'alleanza tornano indietro. */
+function chiudiAlleanza(g: Game, a: number, b: number): number {
+  const st = ss(g), q = g.state.q;
+  st.alleanze = (st.alleanze ?? []).filter(x => !isPair(x.a, x.b, a, b));
+  st.richieste = (st.richieste ?? []).filter(x => !isPair(x.from, x.to, a, b));
+  let tornano = 0;
+  // gli aiuti dell'uno all'altro tornano a casa
+  for (const x of (st.aiuti ?? []).filter(y => isPair(y.owner, y.to, a, b))) {
+    (st.marcia ??= []).push({ owner: x.owner, n: x.n, back: q + 1, anni: 1, from: x.to });
+    tornano += x.n;
+  }
+  st.aiuti = (st.aiuti ?? []).filter(y => !isPair(y.owner, y.to, a, b));
+  // gli eserciti dell'attacco comune: i due marciano contro lo stesso feudo e arriverebbero insieme
+  const comuni = (st.campagne ?? []).filter(c => (c.owner === a || c.owner === b)
+    && (st.campagne ?? []).some(k => k !== c && k.owner === (c.owner === a ? b : a) && k.target === c.target && k.arrive === c.arrive));
+  for (const c of comuni) {
+    (st.marcia ??= []).push({ owner: c.owner, n: c.n, cat: c.cat, back: q + 1 + Math.max(0, q - c.q), anni: Math.max(1, q - c.q), from: c.target });
+    if (c.owner !== g.state.current) send(st, c.owner, { k: 'treatyRecall', target: c.target, n: c.n });
+    tornano += c.n;
+  }
+  st.campagne = (st.campagne ?? []).filter(c => !comuni.includes(c));
+  return tornano;
+}
+
+/** Un feudo è caduto o il suo signore è uscito: le sue alleanze si sciolgono. */
+function sciogliAlleanze(g: Game, i: number): void {
+  const st = ss(g), other = allyOf(st, i);
+  if (other !== null) chiudiAlleanza(g, i, other);
+  st.proposteAlleanza = (st.proposteAlleanza ?? []).filter(x => x.from !== i && x.to !== i);
+}
+
+/**
+ * Il signore di turno chiede aiuto in difesa all'alleato: `n` soldati (o, a un mercante, il loro valore in
+ * scudi). Un signore del computer risponde subito, un giocatore nel suo turno.
+ */
+export function requestAid(g: Game, n: number): ActionResult & { answered?: boolean; accepted?: boolean; sent?: number; scudi?: number; arrive?: number } {
+  const no = phaseIs(g, 'commercio', 'investimenti');
+  if (no) return no;
+  const block = aidBlock(g);
+  if (block) return { ok: false, reason: block };
+  if (!isCount(n)) return { ok: false, reason: 'numero non valido' };
+  const st = ss(g), me = g.state.current, ally = allyOf(st, me)!;
+  const room = aidRoom(g, ally);
+  const max = mandaScudi(g, ally) ? Math.floor(room.scudi / AIUTO_SCUDI) : room.soldati;
+  if (n > max) return { ok: false, reason: max > 0 ? `${g.state.players[ally].name} può darvi al più ${max} soldati quest'anno` : `${g.state.players[ally].name} quest'anno non ha uomini da mandarvi` };
+  const x: RichiestaAiuto = { from: me, to: ally, n, q: g.state.q };
+  (st.richieste ??= []).push(x);
+  const bot = g.state.players[ally].bot;
+  if (!bot) return { ok: true, answered: false };
+  const yes = botGrantsAid(g, x, bot, roll(st));
+  const r = settleAid(g, x, yes);
+  return { ok: true, answered: true, accepted: r.ok, sent: r.n, scudi: r.scudi, arrive: r.arrive };
+}
+
+/** Il signore di turno risponde alla richiesta d'aiuto del suo alleato `from`. */
+export function answerAid(g: Game, from: number, accept: boolean): ActionResult & { sent?: number; scudi?: number; arrive?: number } {
+  const st = ss(g), me = g.state.current;
+  const x = (st.richieste ?? []).find(y => y.from === from && y.to === me);
+  if (!x) return { ok: false, reason: 'nessuna richiesta d\'aiuto da quel signore' };
+  const r = settleAid(g, x, accept);
+  return { ok: true, sent: r.n, scudi: r.scudi, arrive: r.arrive };
+}
+
+/**
+ * L'alleato manda (o nega) l'aiuto. Con i suoi volontari di quest'anno, armati a sue spese: partono subito
+ * e arrivano alla fine di quest'anno da un confinante, del prossimo da un feudo lontano; chi li riceve paga
+ * il soldo. Un mercante manda scudi. L'aiuto dato (anche solo in parte) fa passare il turno dell'aiuto all'altro.
+ */
+function settleAid(g: Game, x: RichiestaAiuto, accept: boolean): { ok: boolean; n: number; scudi: number; arrive?: number } {
+  const st = ss(g), ps = g.state.players, q = g.state.q, helper = ps[x.to], helped = ps[x.from];
+  st.richieste = (st.richieste ?? []).filter(y => y !== x);
+  const alliance = (st.alleanze ?? []).find(y => isPair(y.a, y.b, x.from, x.to));
+  const no = () => {
+    send(st, x.from, { k: 'aidAnswer', by: x.to, ok: false, n: x.n, scudi: 0 });
+    return { ok: false, n: 0, scudi: 0 };
+  };
+  if (!accept || !alliance || !alive(g, x.from) || !alive(g, x.to)) return no();
+  const room = aidRoom(g, x.to);
+  if (mandaScudi(g, x.to)) {
+    const scudi = Math.min(x.n * AIUTO_SCUDI, room.scudi);
+    if (scudi <= 0) return no();
+    helper.scudi -= scudi;
+    helped.scudi += scudi;
+    alliance.aiutato = x.from;
+    send(st, x.from, { k: 'aidAnswer', by: x.to, ok: true, n: 0, scudi });
+    note(g, x.to, 'aidSent', { other: x.from, n: 0, scudi });
+    note(g, x.from, 'aidGot', { other: x.to, n: 0, scudi });
+    return { ok: true, n: 0, scudi };
+  }
+  const k = Math.min(x.n, room.soldati);
+  if (k <= 0) return no();
+  // l'alleato arruola i suoi volontari dell'anno e paga le armi; chi riceve l'aiuto paga il soldo
+  const l = levyOf(g, x.to);
+  helper.servi -= k;
+  helper.scudi -= k * RECRUIT_COST;
+  (st.leve ??= ps.map(() => null))[x.to] = { q, n: l.n + k, leve: l.leve };
+  helped.scudi -= k * SOLDO;
+  const arrive = q + travelYears(g, x.to, x.from) - 1;
+  (st.aiuti ??= []).push({ owner: x.to, to: x.from, n: k, arrive });
+  alliance.aiutato = x.from;
+  send(st, x.from, { k: 'aidAnswer', by: x.to, ok: true, n: k, scudi: 0, arrive });
+  note(g, x.to, 'aidSent', { other: x.from, n: k, scudi: 0 });
+  note(g, x.from, 'aidGot', { other: x.to, n: k, scudi: 0 });
+  return { ok: true, n: k, scudi: 0, arrive };
+}
+
+/** Inizio del turno: le proposte d'alleanza e le richieste d'aiuto rimaste senza risposta decadono. */
+function allianceTurn(g: Game): void {
+  const st = ss(g), me = g.state.current, q = g.state.q;
+  for (const x of (st.proposteAlleanza ?? []).filter(y => y.from === me && y.q < q)) st.inbox.push({ k: 'allianceAnswer', by: x.to, ok: false, scaduta: true });
+  st.proposteAlleanza = (st.proposteAlleanza ?? []).filter(y => !(y.from === me && y.q < q));
+  for (const x of (st.richieste ?? []).filter(y => y.from === me && y.q < q)) st.inbox.push({ k: 'aidAnswer', by: x.to, ok: false, n: x.n, scudi: 0, scaduta: true });
+  st.richieste = (st.richieste ?? []).filter(y => !(y.from === me && y.q < q));
+}
+
+/**
+ * Signori del computer: accettano l'alleanza se non hanno conti aperti con chi la propone e non è un
+ * capofila che corre troppo avanti; il facile spesso, il medio volentieri, il difficile se gli serve.
+ */
+function botAcceptsAlliance(g: Game, x: PropostaAlleanza, level: string, rnd: () => number): boolean {
+  const st = ss(g), me = x.to, ps = g.state.players;
+  if (allyOf(st, me) !== null) return false;
+  if (feud(g, me, x.from).conto > 0) return false;
+  if (level === 'facile') return rnd() < 0.6;
+  if (wealthIndex(ps[x.from]) > wealthIndex(ps[me]) * RIVAL_LEAD) return false;
+  if (level === 'medio') return rnd() < 0.75;
+  // il difficile si allea quando teme qualcuno, o con chi è forte
+  const threatened = recentlyAttacked(st, me, g.state.q) > 0 || threatOf(g, me) > st.soldati[me];
+  return threatened || guessSoldiers(g, me, x.from) >= st.soldati[me] * 0.7 || rnd() < 0.4;
+}
+
+/** Signori del computer: mandano l'aiuto chiesto se non hanno la guerra alle porte. */
+function botGrantsAid(g: Game, x: RichiestaAiuto, level: string, rnd: () => number): boolean {
+  if (warLooms(g, x.to)) return false;
+  if (level === 'facile') return rnd() < 0.6;
+  return level === 'medio' ? rnd() < 0.85 : true;
+}
+
+/** Signori del computer: rispondono alle proposte d'alleanza e alle richieste d'aiuto rimaste in sospeso. */
+function botAnswerAlliances(c: BotCtx): void {
+  const { g, level, rnd, log } = c;
+  const st = ss(g), me = g.state.current, ps = g.state.players;
+  for (const x of allianceOffersTo(st, me)) {
+    const yes = botAcceptsAlliance(g, x, level, rnd);
+    settleAlliance(g, x, yes);
+    log.push(yes ? `accetta l'alleanza di ${ps[x.from].name}` : `respinge l'alleanza di ${ps[x.from].name}`);
+  }
+  for (const x of aidRequestsTo(st, me)) {
+    const r = settleAid(g, x, botGrantsAid(g, x, level, rnd));
+    log.push(r.ok ? `manda aiuto a ${ps[x.from].name}: ${r.n ? `${r.n} soldati` : `${r.scudi} scudi`}` : `nega l'aiuto a ${ps[x.from].name}`);
+  }
+}
+
+/**
+ * Signori del computer: il medio e il difficile cercano un alleato fra chi non ha conti aperti con loro,
+ * preferendo il più forte (un capofila troppo avanti no); una proposta ogni tanto.
+ */
+function botAlliance(c: BotCtx): void {
+  const { g, level, rnd, log } = c;
+  if (level === 'facile' || g.state.q < 3) return;
+  const st = ss(g), me = g.state.current, ps = g.state.players;
+  if (allyOf(st, me) !== null || (st.proposteAlleanza ?? []).some(x => x.from === me)) return;
+  if (rnd() >= (level === 'difficile' ? 0.35 : 0.2)) return;
+  const pool = others(g, me).filter(i => !allianceBlock(g, i) && feud(g, me, i).conto <= 0 && feud(g, i, me).conto <= 0
+    && wealthIndex(ps[i]) <= wealthIndex(ps[me]) * RIVAL_LEAD);
+  if (!pool.length) return;
+  const best = pool.sort((a, b) => guessSoldiers(g, me, b) - guessSoldiers(g, me, a))[0];
+  const r = proposeAlliance(g, best);
+  if (r.ok) log.push(`propone l'alleanza a ${ps[best].name}${r.answered ? (r.accepted ? ': accettata' : ': respinta') : ''}`);
+}
+
+/**
+ * Signori del computer: l'alleato marcia contro un feudo e il bot può arrivarci nello stesso anno: si unisce
+ * all'attacco comune, con lo stesso scopo, lasciando una guarnigione.
+ */
+function botJoinAlly(c: BotCtx): void {
+  const { g, level, log } = c;
+  if (level === 'facile') return;
+  const st = ss(g), me = g.state.current, ally = allyOf(st, me), q = g.state.q;
+  if (ally === null || st.lastWar[me] === q || vietato(g.player, 'marcia')) return;
+  const sent = Math.floor(st.soldati[me] * 0.7);
+  if (sent < WAR_MIN) return;
+  for (const k of campaignsBy(st, ally)) {
+    if (k.arrive !== q + travelYears(g, me, k.target) || !alive(g, k.target) || k.target === me) continue;
+    const goal = k.goal === 'distruzione' && q >= DESTROY_FROM_Q ? 'distruzione' : 'bottino';
+    if (goal !== k.goal) continue;
+    const r = declareWar(g, k.target, sent, goal);
+    if (r.ok) {
+      log.push(`si unisce all'attacco di ${g.state.players[ally].name} contro ${g.state.players[k.target].name} con ${sent} soldati`);
+      return;
+    }
+  }
+}
+
+/** Signori del computer: con un esercito avvistato più forte delle difese, chiedono aiuto all'alleato. */
+function botAskAid(c: BotCtx): void {
+  const { g, level, log } = c;
+  if (level === 'facile') return;
+  const st = ss(g), me = g.state.current, p = g.player, ally = allyOf(st, me);
+  if (ally === null || aidBlock(g)) return;
+  const seen = towerAlerts(g, me, 'guerra');
+  const foe = seen.reduce((a, k) => a + guessSoldiers(g, me, k.owner) + awayOf(st, k.owner) * 0.5, 0) + siegesOn(st, me).reduce((a, s) => a + s.n, 0);
+  if (!foe) return;
+  const def = defenseOf(p, st.soldati[me] + aidAtOf(st, me, g.state.q + 1), st.mura[me]);
+  if (def >= foe * 1.1) return;
+  const room = aidRoom(g, ally);
+  const max = room.soldati || Math.floor(room.scudi / AIUTO_SCUDI);
+  const n = Math.min(max, Math.ceil((foe * 1.1 - def) / (1 + WALL_BONUS * st.mura[me])));
+  if (n <= 0) return;
+  const r = requestAid(g, n);
+  if (r.ok) log.push(`chiede aiuto a ${g.state.players[ally].name}${r.answered ? (r.accepted ? `: ${r.sent ? `${r.sent} soldati` : `${r.scudi} scudi`}` : ': negato') : ''}`);
 }
 
 // ---------------------------------------------------------------- carte di guerra (carte.ts)
@@ -1668,6 +2162,7 @@ export const rules: ExpansionRules = {
     st.inbox = st.mail.filter(m => m.to === me).map(m => m.d);
     st.mail = st.mail.filter(m => m.to !== me);
     treatyTurn(g);
+    allianceTurn(g);
     // le schiere che arrivano a casa: la malattia ne ha portati via fino al 5% per anno di viaggio
     const home = (st.marcia ?? []).filter(m => m.owner === me && m.back <= g.state.q);
     if (home.length) {
@@ -1758,8 +2253,8 @@ export const rules: ExpansionRules = {
     const st = ss(g), me = g.state.current, p = g.player;
     // una decisione rimasta in sospeso: i briganti vanno sul più ricco
     if (st.pendingMove === me) moveBrigands(g, botBrigandTarget(g, 'difficile', roll(st)));
-    // il soldo spetta anche a chi è lontano; le catapulte vogliono manutenzione
-    const army = st.soldati[me] + awayOf(st, me);
+    // il soldo spetta anche a chi è lontano (non a chi è in aiuto a un alleato: lo paga lui); le catapulte vogliono manutenzione
+    const army = st.soldati[me] + awayOf(st, me) - aidAwayOf(st, me);
     const cat = catapultsOf(st, me) + catAwayOf(st, me);
     const soldo = army * SOLDO + cat * CATAPULT_UPKEEP;
     if (soldo > 0) {
@@ -1771,6 +2266,7 @@ export const rules: ExpansionRules = {
   // tutte le battaglie dell'anno si combattono quando tutti hanno giocato; poi le mura nuove sono pronte
   onYearClose(g) {
     resolveBattles(g);
+    rimandaAiuti(g);
     completaMura(ss(g));
   },
 
@@ -1799,13 +2295,17 @@ export const rules: ExpansionRules = {
 
   botBeforeInvest(c) {
     botAnswerTreaties(c);
+    botAnswerAlliances(c);
+    botAlliance(c);
     botCards(c);
     botBrigands(c);
     botSpy(c);
     botTreaty(c);
     botUnderSiege(c);
     botDefend(c);
+    botAskAid(c);
     botSiege(c);
+    botJoinAlly(c);
     botWar(c);
     botGarrison(c);
   },
