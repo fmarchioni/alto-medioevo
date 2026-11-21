@@ -26,7 +26,7 @@ import {
 } from './rules';
 import { hireMercs, invokeTruce, mercCost, playTraitor } from './rules';
 import {
-  aidBlock, aidFor, aidRequestBy, aidRequestsTo, aidRoom, AIUTO_SCUDI, allianceBlock, allianceOf, allianceOfferBetween, allianceOffersTo, allyOf,
+  aidBlock, aidFor, chiesteAnno, aidRequestBy, aidRequestsTo, aidRoom, AIUTO_SCUDI, allianceBlock, allianceOf, allianceOfferBetween, allianceOffersTo, allyOf,
   answerAid, answerAlliance, breakAlliance, proposeAlliance, requestAid,
 } from './rules';
 import { mercsOf, TRADITORE_MURA } from './carte';
@@ -351,6 +351,11 @@ function dispatchItem(d: Dispatch, st: GameState): ScrollItem {
     if (d.scudi) return { title: 'Aiuto in scudi', from: "dall'ambasceria", body: `${P}, signore mercante, non manda la sua milizia ma <b>${n(d.scudi)} scudi</b> per armare la difesa. Ora tocca a voi aiutarlo, prima di poter chiedere ancora.` };
     return { title: 'Arrivano gli alleati', from: "dall'ambasceria", body: `${P} vi manda <b>${plural(d.n, 'soldato', 'soldati')}</b>: difenderanno il vostro feudo alla fine del ${900 + (d.arrive ?? 0)}, poi torneranno a casa. Il soldo, ${n(d.n * SOLDO)} scudi, l'avete pagato voi. Ora tocca a voi aiutarlo, prima di poter chiedere ancora.` };
   }
+  if (d.k === 'aidGiven') {
+    const P = who(st.players[d.to]);
+    if (d.scudi) return { title: "L'alleato chiede aiuto", from: "dall'ambasceria", body: `${P} vi ha chiesto aiuto in difesa: come vuole l'alleanza, gli avete mandato <b>${n(d.scudi)} scudi</b>. Ora tocca a voi, la prossima volta che vi servirà.` };
+    return { title: "L'alleato chiede aiuto", from: "dall'ambasceria", body: `${P} vi ha chiesto aiuto in difesa: come vuole l'alleanza, ${plural(d.n, 'vostro volontario è partito', 'vostri volontari sono partiti')}, armati a vostre spese. Difenderanno il suo feudo alla fine del ${900 + (d.arrive ?? 0)} e poi torneranno. Ora tocca a voi, la prossima volta che vi servirà.` };
+  }
   return {
     title: 'Briganti nel feudo',
     from: 'dai boschi',
@@ -424,7 +429,8 @@ function aidSection(g: Game, st: SpadeState): string {
       <li>${scudi
         ? `${A} è un signore mercante: la sua milizia non lascia il feudo, ma può mandarvi ${AIUTO_SCUDI} scudi per ogni soldato chiesto: quest'anno fino a <b>${n(room.scudi)} scudi</b>.`
         : `${A} può arruolare per voi quest'anno fino a <b>${plural(max, 'soldato', 'soldati')}</b>, i suoi volontari, armati a sue spese. Il soldo, ${SOLDO} scudo a testa, lo pagate voi. Arrivano ${travelYears(g, ally, me) === 1 ? 'in tempo per la battaglia di fine anno' : "alla fine dell'anno prossimo, dal suo feudo lontano"}, difendono il feudo per quella battaglia e poi tornano a casa.`}</li>
-      <li>L'aiuto si chiede a turno: chi l'ha ricevuto non può chiederlo di nuovo finché non ha aiutato l'alleato.</li>
+      <li>L'aiuto in difesa fa parte dell'alleanza: l'alleato lo manda senza bisogno di chiedergli il permesso.</li>
+      <li>Si chiede a turno, a conti pari: chi l'ha ricevuto non può chiederlo di nuovo finché non ha reso il favore.</li>
     </ul>${ask}`;
 }
 
@@ -589,7 +595,9 @@ function pacePanel(g: Game, st: SpadeState): string {
         ${ally ? `<button data-act="ext" data-op="allianceBreak">Rompete l'alleanza</button>` : aBlock ? '' : `<button data-act="ext" data-op="allianceOffer" data-target="${i}">Alleanza</button>`}</td>
     </tr>`;
   }).join('');
-  return `<table class="ext-table war-table pace-table"><thead><tr><th>Feudo</th><th>Conto delle offese</th><th>Stato</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+  const anno = chiesteAnno(g, me).map(x => `${x.k === 'pace' ? 'la pace' : "l'alleanza"} a ${esc(ps[x.to].name)}`);
+  const fatte = anno.length ? `<p class="hint">Quest'anno avete già proposto ${anno.join(' e ')}. Si propone una pace e un'alleanza l'anno, e non entrambe allo stesso signore.</p>` : '';
+  return `${fatte}<table class="ext-table war-table pace-table"><thead><tr><th>Feudo</th><th>Conto delle offese</th><th>Stato</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     <div class="ext-form">
       <label>Anni di pace <input type="number" name="treaty-years" min="${TRATTATO_MIN}" max="${TRATTATO_MAX}" value="3" inputmode="numeric"></label>
       <label>Dono in scudi <input type="number" name="treaty-gift" min="0" max="${Math.max(0, Math.floor(p.scudi))}" step="50" value="0" inputmode="numeric"></label>
@@ -946,23 +954,16 @@ export const view: ExpansionView = {
         const r = proposeTreaty(g, t, anni, dono);
         if (!r.ok) return { say: reaction(r, '', p) };
         const gift = dono ? ` con un dono di ${n(dono)} scudi` : '';
-        if (!r.answered) return {
-          say: `Il messo è partito per ${FEUDI[g.state.players[t].feudo]}${gift}, ${h(p)}. ${foe} risponderà nel suo turno.`,
-          notice: { title: 'Ambasceria di pace', body: `Avete proposto a ${foe} un trattato di pace per <b>${anni} anni</b>${gift}. Risponderà nel suo turno; se rifiuta, o non risponde entro il vostro prossimo turno, il dono torna a voi. ${treasury(p)}` },
+        return {
+          say: `Il messo è partito per ${FEUDI[g.state.players[t].feudo]}${gift}, ${h(p)}. ${foe} risponderà nel suo turno: la risposta ci arriverà con un dispaccio.`,
+          notice: { title: 'Ambasceria di pace', body: `Avete proposto a ${foe} un trattato di pace per <b>${anni} anni</b>${gift}. Risponderà nel suo turno e la risposta vi arriverà con un dispaccio; se rifiuta, o non risponde entro il vostro prossimo turno, il dono torna a voi. ${treasury(p)}` },
         };
-        const t2 = treatyOf(g, me, t);
-        return r.accepted
-          ? { say: `${foe} ha firmato, ${h(p)}: pace fino al ${900 + t2!.fino}. Ora possiamo rinforzarci senza guardarci da quella parte.`, notice: { title: 'Pace firmata', body: `${foe} ha accettato il vostro trattato: <b>pace fino alla fine del ${900 + t2!.fino}</b>${gift ? `; il dono di ${n(dono)} scudi è suo` : ''}. ${treasury(p)}` } }
-          : { say: `${foe} ha respinto il messo, ${h(p)}.${dono ? ' Il dono torna nelle nostre casse.' : ''}`, notice: { title: 'Pace respinta', body: `${foe} ha respinto la vostra proposta di pace.${feud(g, t, me).conto > 0 ? ' Non ha dimenticato le vostre offese: forse un dono più ricco lo placherebbe.' : ''}${dono ? ` Il dono di ${n(dono)} scudi torna a voi.` : ''}` } };
       }
       case 'allianceOffer': {
         const t = Number(data.target), foe = who(g.state.players[t]);
         const r = proposeAlliance(g, t);
         if (!r.ok) return { say: reaction(r, '', p) };
-        if (!r.answered) return { say: `Il messo è partito per ${FEUDI[g.state.players[t].feudo]}, ${h(p)}. ${foe} risponderà nel suo turno.`, notice: { title: "Ambasceria d'alleanza", body: `Avete proposto l'alleanza a ${foe}. Risponderà nel suo turno; se non risponde entro il vostro prossimo turno, la proposta decade.` } };
-        return r.accepted
-          ? { say: `${foe} ha firmato l'alleanza, ${h(p)}! Ora possiamo marciare insieme e chiederci aiuto.`, suono: 'corno', notice: { title: 'Alleanza firmata', body: `${foe} è vostro alleato. Fra voi niente guerra; se i vostri eserciti arrivano nello stesso anno contro lo stesso feudo combatteranno insieme, e dal pannello dell'esercito potete chiedergli aiuto in difesa, a turno.` } }
-          : { say: `${foe} ha respinto la nostra alleanza, ${h(p)}.`, notice: { title: 'Alleanza respinta', body: `${foe} non vuole allearsi con voi.${feud(g, t, me).conto > 0 ? ' Non ha dimenticato le vostre offese.' : ''}` } };
+        return { say: `Il messo è partito per ${FEUDI[g.state.players[t].feudo]}, ${h(p)}. ${foe} risponderà nel suo turno: la risposta ci arriverà con un dispaccio.`, notice: { title: "Ambasceria d'alleanza", body: `Avete proposto l'alleanza a ${foe}. Risponderà nel suo turno e la risposta vi arriverà con un dispaccio; se non risponde entro il vostro prossimo turno, la proposta decade.` } };
       }
       case 'allianceAccept':
       case 'allianceReject': {
@@ -986,8 +987,7 @@ export const view: ExpansionView = {
         const r = requestAid(g, k);
         if (!r.ok || other === null) return { say: reaction(r, '', p) };
         const foe = who(g.state.players[other]);
-        if (!r.answered) return { say: `Il messo è partito per ${FEUDI[g.state.players[other].feudo]}, ${h(p)}: ${foe} risponderà nel suo turno.` };
-        if (!r.accepted) return { say: `${foe} non ci manda aiuto quest'anno, ${h(p)}.`, notice: { title: 'Aiuto negato', body: `${foe} ha negato l'aiuto. Potete chiederlo di nuovo.` } };
+        if (!r.accepted) return { say: `${foe} quest'anno non ha uomini da mandarci, ${h(p)}.` };
         return r.scudi
           ? { say: `${foe} ci manda ${n(r.scudi)} scudi per armare la difesa, ${h(p)}.`, notice: { title: 'Aiuto in scudi', body: `${foe}, signore mercante, vi manda <b>${n(r.scudi)} scudi</b>. ${treasury(p)}` } }
           : { say: `${foe} ci manda ${plural(r.sent ?? 0, 'soldato', 'soldati')}, ${h(p)}!`, suono: 'metallo', notice: { title: 'Arrivano gli alleati', body: `${foe} vi manda <b>${plural(r.sent ?? 0, 'soldato', 'soldati')}</b>: difenderanno il feudo alla fine del ${900 + (r.arrive ?? g.state.q)}, poi torneranno a casa. Avete pagato il soldo, ${n((r.sent ?? 0) * SOLDO)} scudi. ${treasury(p)}` } };

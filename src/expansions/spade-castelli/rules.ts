@@ -249,7 +249,9 @@ export type Dispatch =
   /** l'alleato `by` ha rotto l'alleanza; tornano indietro i soldati in viaggio */
   | { k: 'allianceEnd'; by: number; tornano: number }
   /** a chi ha chiesto aiuto: mandato (soldati, o scudi da un mercante), negato, o decaduto */
-  | { k: 'aidAnswer'; by: number; ok: boolean; n: number; scudi: number; arrive?: number; scaduta?: boolean };
+  | { k: 'aidAnswer'; by: number; ok: boolean; n: number; scudi: number; arrive?: number; scaduta?: boolean }
+  /** all'alleato: `to` ha chiesto aiuto e gli sono partiti `n` volontari (o `scudi`, da un mercante) */
+  | { k: 'aidGiven'; to: number; n: number; scudi: number; arrive?: number };
 
 /** Una schiera di ritorno da una campagna. */
 export interface March {
@@ -347,6 +349,8 @@ export interface SpadeState {
   /** alleanze fra signori, proposte in attesa, richieste d'aiuto in difesa e aiuti in viaggio o sul posto (assenti nei salvataggi vecchi) */
   alleanze?: Alleanza[];
   proposteAlleanza?: PropostaAlleanza[];
+  /** proposte di pace e d'alleanza fatte quest'anno (una per tipo, e non entrambe allo stesso signore); assente nei salvataggi vecchi */
+  chieste?: Chiesta[];
   richieste?: RichiestaAiuto[];
   aiuti?: Aiuto[];
   wars: WarResult[];
@@ -1139,6 +1143,28 @@ export const reparation = (g: Game, i: number, j: number) => {
 };
 
 /** Si può proporre la pace a `target`? (null: sì, altrimenti il motivo) */
+/** Una proposta fatta nell'anno `q`: di pace o d'alleanza. */
+export interface Chiesta { from: number; to: number; k: 'pace' | 'alleanza'; q: number }
+
+/** Le proposte fatte quest'anno dal signore `me`. */
+export const chiesteAnno = (g: Game, me = g.state.current) => (ss(g).chieste ?? []).filter(x => x.from === me && x.q === g.state.q);
+
+/** Si annota la proposta dell'anno (quelle degli anni passati si dimenticano). */
+function segnaChiesta(g: Game, to: number, k: Chiesta['k']): void {
+  const st = ss(g), q = g.state.q;
+  st.chieste = [...(st.chieste ?? []).filter(x => x.q >= q), { from: g.state.current, to, k, q }];
+}
+
+/** Una proposta di pace e una d'alleanza l'anno, e non entrambe allo stesso signore. */
+function chiestaBlock(g: Game, target: number, k: Chiesta['k'], me: number): string | null {
+  const ps = g.state.players, anno = chiesteAnno(g, me);
+  const same = anno.find(x => x.k === k);
+  if (same) return `quest'anno avete già proposto ${k === 'pace' ? 'la pace' : "l'alleanza"} a ${ps[same.to].name}: se ne propone una l'anno`;
+  const other = anno.find(x => x.to === target);
+  if (other) return `quest'anno avete già proposto ${other.k === 'pace' ? 'la pace' : "l'alleanza"} a ${ps[target].name}: il resto l'anno prossimo`;
+  return null;
+}
+
 export function treatyBlock(g: Game, target: number): string | null {
   const st = ss(g), me = g.state.current, ps = g.state.players;
   if (target === me || !ps[target] || !alive(g, target)) return 'scegliete il feudo di un altro signore';
@@ -1148,13 +1174,13 @@ export function treatyBlock(g: Game, target: number): string | null {
   const x = treatyOfferBetween(st, me, target);
   if (x) return x.from === me ? `la vostra proposta attende la risposta di ${ps[target].name}` : `${ps[target].name} vi ha già proposto la pace: rispondetegli`;
   if ((st.assedi ?? []).some(s => isPair(s.owner, s.target, me, target))) return "c'è un assedio fra voi: la pace si tratta al campo dell'assedio";
-  return null;
+  return chiestaBlock(g, target, 'pace', me);
 }
 
 /**
  * Propone a `target` un trattato di `anni` anni, con un dono in scudi che esce
- * subito dalle casse (e torna se la proposta è respinta). Un signore del
- * computer risponde subito, un giocatore nel suo turno.
+ * subito dalle casse (e torna se la proposta è respinta). Chi la riceve
+ * risponde nel suo turno, anche un signore del computer: la risposta arriva con un dispaccio.
  */
 export function proposeTreaty(g: Game, target: number, anni: number, dono: number): ActionResult & { answered?: boolean; accepted?: boolean } {
   const no = phaseIs(g, 'commercio', 'investimenti');
@@ -1166,14 +1192,12 @@ export function proposeTreaty(g: Game, target: number, anni: number, dono: numbe
   if (!Number.isInteger(dono) || dono < 0) return { ok: false, reason: 'dono non valido' };
   if (dono > Math.max(0, p.scudi)) return { ok: false, reason: 'si dona solo il denaro che si possiede' };
   p.scudi -= dono;
+  segnaChiesta(g, target, 'pace');
   const x: PropostaTrattato = { from: me, to: target, anni, dono, q: g.state.q };
   (st.proposte ??= []).push(x);
   note(g, me, 'treatyOffer', { target, anni, dono });
-  const bot = g.state.players[target].bot;
-  if (!bot) return { ok: true, answered: false };
-  const yes = botAcceptsTreaty(g, x, bot, roll(st));
-  settleTreaty(g, x, yes);
-  return { ok: true, answered: true, accepted: yes };
+  // anche un signore del computer risponde nel suo turno: la risposta arriva con un dispaccio
+  return { ok: true, answered: false };
 }
 
 /** Il signore di turno risponde alla proposta di pace di `from`. */
@@ -1268,6 +1292,25 @@ function botTreaty(c: BotCtx): void {
   }
 }
 
+/**
+ * Il signore del computer `to` risponde, con il suo giudizio, alle proposte di pace e d'alleanza che ha ricevuto
+ * (lo fa a inizio turno; serve anche ai provini). Restituisce le risposte, per chi le propose.
+ */
+export function botRisponde(g: Game, to: number): { from: number; k: 'pace' | 'alleanza'; ok: boolean }[] {
+  const st = ss(g), level = g.state.players[to].bot ?? 'medio', out: { from: number; k: 'pace' | 'alleanza'; ok: boolean }[] = [];
+  for (const x of treatyOffersTo(st, to)) {
+    const ok = botAcceptsTreaty(g, x, level, roll(st));
+    settleTreaty(g, x, ok);
+    out.push({ from: x.from, k: 'pace', ok });
+  }
+  for (const x of allianceOffersTo(st, to)) {
+    const ok = botAcceptsAlliance(g, x, level, roll(st));
+    settleAlliance(g, x, ok);
+    out.push({ from: x.from, k: 'alleanza', ok });
+  }
+  return out;
+}
+
 /** Signori del computer: una proposta di pace ricevuta da un giocatore (rimasta in sospeso) ha subito risposta. */
 function botAnswerTreaties(c: BotCtx): void {
   const { g, level, rnd, log } = c;
@@ -1356,10 +1399,10 @@ export function allianceBlock(g: Game, target: number, me = g.state.current): st
   if (x) return x.from === me ? `la vostra proposta attende la risposta di ${ps[target].name}` : `${ps[target].name} vi ha già proposto l'alleanza: rispondetegli`;
   if ((st.proposteAlleanza ?? []).some(y => y.from === me)) return 'avete già proposto un\'alleanza: attendete la risposta';
   if ((st.assedi ?? []).some(s => isPair(s.owner, s.target, me, target)) || (st.campagne ?? []).some(c => isPair(c.owner, c.target, me, target))) return 'siete in guerra: prima fate la pace';
-  return null;
+  return chiestaBlock(g, target, 'alleanza', me);
 }
 
-/** Propone l'alleanza a `target`. Un signore del computer risponde subito, un giocatore nel suo turno. */
+/** Propone l'alleanza a `target`, che risponde nel suo turno (anche un signore del computer): la risposta arriva con un dispaccio. */
 export function proposeAlliance(g: Game, target: number): ActionResult & { answered?: boolean; accepted?: boolean } {
   const no = phaseIs(g, 'commercio', 'investimenti');
   if (no) return no;
@@ -1367,12 +1410,10 @@ export function proposeAlliance(g: Game, target: number): ActionResult & { answe
   if (block) return { ok: false, reason: block };
   const st = ss(g), me = g.state.current;
   const x: PropostaAlleanza = { from: me, to: target, q: g.state.q };
+  segnaChiesta(g, target, 'alleanza');
   (st.proposteAlleanza ??= []).push(x);
-  const bot = g.state.players[target].bot;
-  if (!bot) return { ok: true, answered: false };
-  const yes = botAcceptsAlliance(g, x, bot, roll(st));
-  settleAlliance(g, x, yes);
-  return { ok: true, answered: true, accepted: yes };
+  // anche un signore del computer risponde nel suo turno: la risposta arriva con un dispaccio
+  return { ok: true, answered: false };
 }
 
 /** Il signore di turno risponde alla proposta d'alleanza di `from`. */
@@ -1469,12 +1510,8 @@ export function requestAid(g: Game, n: number): ActionResult & { answered?: bool
   const room = aidRoom(g, ally);
   const max = mandaScudi(g, ally) ? Math.floor(room.scudi / AIUTO_SCUDI) : room.soldati;
   if (n > max) return { ok: false, reason: max > 0 ? `${g.state.players[ally].name} può darvi al più ${max} soldati quest'anno` : `${g.state.players[ally].name} quest'anno non ha uomini da mandarvi` };
-  const x: RichiestaAiuto = { from: me, to: ally, n, q: g.state.q };
-  (st.richieste ??= []).push(x);
-  const bot = g.state.players[ally].bot;
-  if (!bot) return { ok: true, answered: false };
-  const yes = botGrantsAid(g, x, bot, roll(st));
-  const r = settleAid(g, x, yes);
+  // l'aiuto in difesa fa parte dell'alleanza: non serve il consenso dell'alleato, arriva subito
+  const r = settleAid(g, { from: me, to: ally, n, q: g.state.q }, true, true);
   return { ok: true, answered: true, accepted: r.ok, sent: r.n, scudi: r.scudi, arrive: r.arrive };
 }
 
@@ -1492,12 +1529,13 @@ export function answerAid(g: Game, from: number, accept: boolean): ActionResult 
  * e arrivano alla fine di quest'anno da un confinante, del prossimo da un feudo lontano; chi li riceve paga
  * il soldo. Un mercante manda scudi. L'aiuto dato (anche solo in parte) fa passare il turno dell'aiuto all'altro.
  */
-function settleAid(g: Game, x: RichiestaAiuto, accept: boolean): { ok: boolean; n: number; scudi: number; arrive?: number } {
+/** `subito`: chiesto e mandato nello stesso momento (chi chiede lo sa già, all'alleato va il dispaccio). */
+function settleAid(g: Game, x: RichiestaAiuto, accept: boolean, subito = false): { ok: boolean; n: number; scudi: number; arrive?: number } {
   const st = ss(g), ps = g.state.players, q = g.state.q, helper = ps[x.to], helped = ps[x.from];
   st.richieste = (st.richieste ?? []).filter(y => y !== x);
   const alliance = (st.alleanze ?? []).find(y => isPair(y.a, y.b, x.from, x.to));
   const no = () => {
-    send(st, x.from, { k: 'aidAnswer', by: x.to, ok: false, n: x.n, scudi: 0 });
+    if (!subito) send(st, x.from, { k: 'aidAnswer', by: x.to, ok: false, n: x.n, scudi: 0 });
     return { ok: false, n: 0, scudi: 0 };
   };
   if (!accept || !alliance || !alive(g, x.from) || !alive(g, x.to)) return no();
@@ -1508,7 +1546,8 @@ function settleAid(g: Game, x: RichiestaAiuto, accept: boolean): { ok: boolean; 
     helper.scudi -= scudi;
     helped.scudi += scudi;
     alliance.aiutato = x.from;
-    send(st, x.from, { k: 'aidAnswer', by: x.to, ok: true, n: 0, scudi });
+    if (subito) send(st, x.to, { k: 'aidGiven', to: x.from, n: 0, scudi });
+    else send(st, x.from, { k: 'aidAnswer', by: x.to, ok: true, n: 0, scudi });
     note(g, x.to, 'aidSent', { other: x.from, n: 0, scudi });
     note(g, x.from, 'aidGot', { other: x.to, n: 0, scudi });
     return { ok: true, n: 0, scudi };
@@ -1524,7 +1563,8 @@ function settleAid(g: Game, x: RichiestaAiuto, accept: boolean): { ok: boolean; 
   const arrive = q + travelYears(g, x.to, x.from) - 1;
   (st.aiuti ??= []).push({ owner: x.to, to: x.from, n: k, arrive });
   alliance.aiutato = x.from;
-  send(st, x.from, { k: 'aidAnswer', by: x.to, ok: true, n: k, scudi: 0, arrive });
+  if (subito) send(st, x.to, { k: 'aidGiven', to: x.from, n: k, scudi: 0, arrive });
+  else send(st, x.from, { k: 'aidAnswer', by: x.to, ok: true, n: k, scudi: 0, arrive });
   note(g, x.to, 'aidSent', { other: x.from, n: k, scudi: 0 });
   note(g, x.from, 'aidGot', { other: x.to, n: k, scudi: 0 });
   return { ok: true, n: k, scudi: 0, arrive };
@@ -1558,13 +1598,6 @@ function botAcceptsAlliance(g: Game, x: PropostaAlleanza, level: string, rnd: ()
   return threatened || guessSoldiers(g, me, x.from) >= st.soldati[me] * 0.7 || rnd() < 0.4;
 }
 
-/** Signori del computer: mandano l'aiuto chiesto se non hanno la guerra alle porte. */
-function botGrantsAid(g: Game, x: RichiestaAiuto, level: string, rnd: () => number): boolean {
-  if (warLooms(g, x.to)) return false;
-  if (level === 'facile') return rnd() < 0.6;
-  return level === 'medio' ? rnd() < 0.85 : true;
-}
-
 /** Signori del computer: rispondono alle proposte d'alleanza e alle richieste d'aiuto rimaste in sospeso. */
 function botAnswerAlliances(c: BotCtx): void {
   const { g, level, rnd, log } = c;
@@ -1575,7 +1608,8 @@ function botAnswerAlliances(c: BotCtx): void {
     log.push(yes ? `accetta l'alleanza di ${ps[x.from].name}` : `respinge l'alleanza di ${ps[x.from].name}`);
   }
   for (const x of aidRequestsTo(st, me)) {
-    const r = settleAid(g, x, botGrantsAid(g, x, level, rnd));
+    // richieste rimaste in sospeso da un salvataggio vecchio: l'aiuto fa parte dell'alleanza
+    const r = settleAid(g, x, true);
     log.push(r.ok ? `manda aiuto a ${ps[x.from].name}: ${r.n ? `${r.n} soldati` : `${r.scudi} scudi`}` : `nega l'aiuto a ${ps[x.from].name}`);
   }
 }
