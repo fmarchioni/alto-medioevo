@@ -92,6 +92,11 @@ export const LEVA_ANNI = 2;
  */
 export const HORDE_BASE = 450;
 export const HORDE_GROWTH = 1.16;
+/** Gli Ungari vengono per il grano: un feudo che ne ha meno di queste misure non lo assalgono, e si sorteggia un'altra carta. */
+export const UNGARI_GRANO_MIN = 1000;
+/** Carte che si possono scartare così nello stesso anno, prima di lasciarlo senza imprevisto. */
+export const UNGARI_TENTATIVI = 5;
+
 export const FACTION_STRENGTH: Record<FactionId, number> = { franchi: 1.1, ungari: 1.25, longobardi: 1, bizantini: 1.05, saraceni: 0.9 };
 /** un servo armato alla meglio vale mezzo soldato nemico */
 export const SERVO_VALUE = 0.5;

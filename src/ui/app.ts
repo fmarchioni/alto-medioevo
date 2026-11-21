@@ -19,6 +19,7 @@ import { playBotTurn } from '../domain/bots';
 import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
 import { VOCAZIONI_ID, type Vocazione } from '../domain/vocazioni';
+import { serviLiberi } from '../domain/citta';
 import { dinastiaAside, renderDinastiaEnd, renderObiettivi, renderSuccessione, type Obiettivo } from './dinastia';
 import { nozzeDecision, renderCasata, type CasataUi } from './casata';
 import { esitoRichiestaText, prestitoDecision } from './prestiti';
@@ -1054,6 +1055,9 @@ function resourceBar(g: Game, exp: Expansion | null): string {
   const umoreLv = livelloOf(umoreOf(p)), fiduciaLv = livelloOf(fiduciaOf(p));
   const item = (ico: string, label: string, value: string, cls = '') =>
     `<div class="rb-item ${cls}" title="${label || value}">${ico}<span class="rb-val">${value}</span>${label ? `<span class="rb-lab">${label}</span>` : ''}</div>`;
+  // la città: i servi liberi per una bottega nuova (negativi: mancano braccia nei campi o nelle botteghe)
+  const sl = p.citta ? serviLiberi(p) : null;
+  const liberi = sl === null ? '' : ` · liberi ${fmt(sl)}`, liberiLow = sl !== null && sl < 0 ? 'low' : '';
   // l'espansione aggiunge una seconda riga (Spade e Castelli: soldati, torri, catapulte)
   const espansione = exp?.view.resourceBar?.(g) ?? [];
   // mercati e opifici in tutte le modalità: in testa alla seconda riga, se l'espansione non li mette già al suo posto
@@ -1061,7 +1065,7 @@ function resourceBar(g: Game, exp: Expansion | null): string {
   return `<div class="resource-bar">
     ${item(icons.grano, 'grano', fmt(p.grano), p.grano < sc.domanda ? 'low' : '')}
     ${item(icons.scudi, 'scudi', fmt(p.scudi), p.scudi < 0 ? 'low' : '')}
-    ${p.umore === undefined ? item(icons.servi, 'servi', fmt(p.servi)) : item(icons.servi, `servi ${SERVI_WORD[umoreLv]}`, fmt(p.servi), sereno(umoreLv) ? '' : 'low')}
+    ${p.umore === undefined ? item(icons.servi, `servi${liberi}`, fmt(p.servi), liberiLow) : item(icons.servi, `servi ${SERVI_WORD[umoreLv]}${liberi}`, fmt(p.servi), sereno(umoreLv) && !liberiLow ? '' : 'low')}
     ${p.fiducia !== undefined ? item(icons.mercanti, MERCANTI_WORD[fiduciaLv], 'mercanti', sereno(fiduciaLv) ? '' : 'low') : ''}
     ${item(icons.acri, 'acri', fmt(p.acri))}
     <span class="rb-sep"></span>

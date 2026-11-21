@@ -394,6 +394,8 @@ export function outcomeArt(o: EventOutcome): string {
   if (won === true) return illustrationUrl('esito-vittoria');
   if (won === false || o.option === 'saccheggio') return illustrationUrl('esito-sconfitta');
   if (o.option === 'mura') return illustrationUrl('esito-mura');
+  // gli Ungari prendono il grano e passano oltre: i loro cavalieri con i carri del raccolto
+  if (o.option === 'passaggio') return illustrationUrl('esito-ungari-grano');
   if (o.option === 'matrimonio' || o.option === 'vassallo' || o.option === 'protettorato' || o.option === 'accordi' || o.option === 'concedere') return illustrationUrl('esito-patto');
   return illustrationUrl('esito-riscatto');
 }

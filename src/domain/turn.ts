@@ -19,6 +19,7 @@ import { applyFixedEvent, ATTACK, capLuck, EVENTS, drawEvent, eventKey, fattoKey
 import {
   attackSlots, CLAUSOLE_QUOTA, LEVA_OPTIONS, LEVA_QUOTA, LEVA_SOLDATI, LEVA_UMORE, CIGNO_CHANCE, CIGNO_MULT, CIGNO_OPTIONS, CIGNO_RANK, defenseFrom, expirePacts, FACTION_EVENT, FACTION_OPTIONS, GIOGO_QUOTA, harvestFactor, hasPact, hordeSize, optionAvailable, pickFaction, PROTETTORATO_TRIBUTE,
   resolveFaction, winChance, type Defense, type FactionOption,
+  UNGARI_GRANO_MIN, UNGARI_TENTATIVI,
 } from './fazioni';
 import { Mulberry32 } from './rng';
 import { canInvestTimes, invest, roomFor, type InvestmentKind } from './investments';
@@ -885,8 +886,13 @@ export class Game {
 
   /** Estrae l'evento dell'anno (dopo il nutrimento, ed eventualmente gli affari fra signori). */
   private drawYearEvent(): void {
-    const p = this.player;
     if (this.cignoNero()) return;
+    this.estraiEvento();
+  }
+
+  /** L'estrazione dell'imprevisto; `tentativo`: quante carte sono già state scartate (gli Ungari senza grano). */
+  private estraiEvento(tentativo = 0): void {
+    const p = this.player;
     // un'impresa temeraria arriva solo a chi non ne ha già una in serbo o in corso; con un'espansione ci sono solo le sue
     const impresa = !!this.state.options.imprese && !this.rules && !p.impresa;
     const riot = p.umore === undefined ? 0 : riotSlots(umoreOf(p)), fuga = fugaSlots(p), attack = p.patti ? attackSlots(p) : -1;
@@ -920,6 +926,8 @@ export class Game {
       const f = pickFaction(p, this.rng.next());
       this.sync();
       if (!f) return this.enterRendite();
+      // gli Ungari vengono per il grano: in un feudo che ne ha meno di UNGARI_GRANO_MIN misure non passano, e si sorteggia un'altra carta
+      if (f === 'ungari' && p.grano < UNGARI_GRANO_MIN) return tentativo < UNGARI_TENTATIVI ? this.estraiEvento(tentativo + 1) : this.enterRendite();
       // l'orda cresce con gli anni
       const nemici = hordeSize(f, this.state.q, this.rng.next());
       this.sync();
@@ -954,6 +962,8 @@ export class Game {
     const f = leva ? 'franchi' : pickFaction(p, this.rng.next());
     this.sync();
     if (!f) return false;
+    // nemmeno il grande esercito degli Ungari viene per un feudo senza grano
+    if (f === 'ungari' && p.grano < UNGARI_GRANO_MIN) return false;
     p.cignoNero = this.state.q;
     const nemici = Math.round(hordeSize(f, this.state.q, this.rng.next()) * (this.rules?.cignoNero ?? CIGNO_MULT));
     this.sync();
