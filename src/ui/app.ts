@@ -32,7 +32,7 @@ import { DEED_MS, makeDeed, renderDeed, type Deed } from './deed';
 import { renderConfirm, renderDecision, renderNotice, type DebtConfirm, type Notice } from './notice';
 import { seizedNotice } from './pignoramenti';
 import { hiredLine, renderSensaleOffer, sensaleBadges } from './sensale';
-import { hasSensale, hireSensale, sensaleCost, sensaleNow } from '../domain/sensale';
+import { hasSensale, hireSensale, sensaleConsiglio, sensaleCost, sensaleNow } from '../domain/sensale';
 import type { RateBadges } from './rendite';
 import { deleteSave, listSaves, loadGame, newSlotId, saveGame, type SaveSlot } from '../persistence/save';
 import { feedingOutcome, greeting, question, reaction, refusal, type TradeMode } from './advisor';
@@ -736,6 +736,15 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
       case 'hireSensale': {
         const r = hireSensale(g!);
         ui.rendite.sensaleSay = r.ok ? hiredLine(g!) : `Non si può, ${g!.player.gender === 1 ? 'Messere' : 'Madonna'}: ${r.reason}.`;
+        // il sensale mette subito sui cursori le gabelle che consiglia
+        const c = r.ok ? sensaleConsiglio(g!) : null;
+        if (c) ui.rendite.draft = { ...c.ideali };
+        return render();
+      }
+      case 'sensaleRates': {
+        const c = sensaleConsiglio(g!);
+        const r = btn.dataset.which === 'rapide' ? c?.rapide : c?.ideali;
+        if (r) ui.rendite.draft = { ...r };
         return render();
       }
       case 'tradeBack':

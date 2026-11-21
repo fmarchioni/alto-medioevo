@@ -1547,6 +1547,9 @@ function botAcceptsAlliance(g: Game, x: PropostaAlleanza, level: string, rnd: ()
   const st = ss(g), me = x.to, ps = g.state.players;
   if (allyOf(st, me) !== null) return false;
   if (feud(g, me, x.from).conto > 0) return false;
+  // chi si vede scavalcato da un'alleanza altrui accetta volentieri chi gli offre la sua (non chi ne fa parte)
+  const m = minacciaAlleanza(g, me, level);
+  if (m && !m.coppia.includes(x.from)) return rnd() < ALLEANZA_TEMUTA[level].accetta;
   if (level === 'facile') return rnd() < 0.6;
   if (wealthIndex(ps[x.from]) > wealthIndex(ps[me]) * RIVAL_LEAD) return false;
   if (level === 'medio') return rnd() < 0.75;
@@ -1578,14 +1581,89 @@ function botAnswerAlliances(c: BotCtx): void {
 }
 
 /**
+ * Come i signori del computer misurano la forza degli altri (e la propria, con lo stesso metro):
+ * - il difficile conta i soldati, con la spia esattamente, senza a stima (guessSoldiers), più quelli lontani;
+ * - il medio va a spanne dai servi: un terzo dell'esercito che potrebbero arruolare;
+ * - il facile guarda la ricchezza.
+ */
+function forzaStimata(g: Game, viewer: number, i: number, level: string): number {
+  const st = ss(g), p = g.state.players[i];
+  if (level === 'difficile') return (i === viewer ? st.soldati[i] : guessSoldiers(g, viewer, i)) + awayOf(st, i);
+  if (level === 'medio') return (Math.max(0, p.servi) * ARMY_MAX_SHARE) / 3;
+  return Math.max(0, wealthIndex(p));
+}
+
+/**
+ * Reazione dei signori del computer a un'alleanza altrui che li scavalca: quanto spesso se ne accorgono,
+ * quanto spesso provano prima la pace con il più forte dei due, e con che voglia accettano a loro volta
+ * un'alleanza. Più il signore è bravo, più se ne accorge e più cerca subito un alleato.
+ */
+export const ALLEANZA_TEMUTA: Record<string, { nota: number; pace: number; accetta: number }> = {
+  facile: { nota: 0.35, pace: 0.6, accetta: 0.8 },
+  medio: { nota: 0.65, pace: 0.35, accetta: 0.9 },
+  difficile: { nota: 0.9, pace: 0, accetta: 1 },
+};
+
+/**
+ * L'alleanza altrui più forte che scavalca il signore `me` (con il suo alleato, se ne ha uno), secondo il
+ * suo metro (forzaStimata); null se nessuna lo supera. Il difficile non si spaventa di alleanze di
+ * poche decine di soldati.
+ */
+export function minacciaAlleanza(g: Game, me: number, level: string): { coppia: [number, number]; forza: number; mia: number } | null {
+  const st = ss(g);
+  const f = (i: number) => forzaStimata(g, me, i, level);
+  const ally = allyOf(st, me);
+  const mia = f(me) + (ally !== null ? f(ally) : 0);
+  let worst: { coppia: [number, number]; forza: number; mia: number } | null = null;
+  for (const x of st.alleanze ?? []) {
+    if (x.a === me || x.b === me || !alive(g, x.a) || !alive(g, x.b)) continue;
+    const forza = f(x.a) + f(x.b);
+    if (forza <= mia || (level === 'difficile' && forza < WAR_MIN)) continue;
+    if (!worst || forza > worst.forza) worst = { coppia: [x.a, x.b], forza, mia };
+  }
+  return worst;
+}
+
+/**
+ * Signori del computer scavalcati da un'alleanza altrui: se se ne accorgono, cercano anche loro un alleato
+ * fra gli altri (il più forte, anche un capofila: la paura conta più dell'invidia). Il medio e il facile a
+ * volte provano prima a chiedere la pace al più forte dei due. Vero se hanno fatto qualcosa.
+ */
+function botAllianceThreat(c: BotCtx): boolean {
+  const { g, level, rnd, log } = c;
+  const me = g.state.current, ps = g.state.players;
+  const m = minacciaAlleanza(g, me, level);
+  const t = ALLEANZA_TEMUTA[level] ?? ALLEANZA_TEMUTA.medio;
+  if (!m || rnd() >= t.nota) return false;
+  const f = (i: number) => forzaStimata(g, me, i, level);
+  if (rnd() < t.pace) {
+    const foe = [...m.coppia].sort((a, b) => f(b) - f(a)).find(i => !treatyBlock(g, i));
+    if (foe !== undefined) {
+      const r = proposeTreaty(g, foe, 3, 0);
+      if (r.ok) {
+        log.push(`teme l'alleanza di ${ps[m.coppia[0]].name} e ${ps[m.coppia[1]].name}: propone la pace a ${ps[foe].name}${r.answered ? (r.accepted ? ': accettata' : ': respinta') : ''}`);
+        return true;
+      }
+    }
+  }
+  const pool = others(g, me).filter(i => !m.coppia.includes(i) && !allianceBlock(g, i) && feud(g, me, i).conto <= 0 && feud(g, i, me).conto <= 0);
+  if (!pool.length) return false;
+  const best = pool.sort((a, b) => f(b) - f(a))[0];
+  const r = proposeAlliance(g, best);
+  if (!r.ok) return false;
+  log.push(`teme l'alleanza di ${ps[m.coppia[0]].name} e ${ps[m.coppia[1]].name}: propone l'alleanza a ${ps[best].name}${r.answered ? (r.accepted ? ': accettata' : ': respinta') : ''}`);
+  return true;
+}
+
+/**
  * Signori del computer: il medio e il difficile cercano un alleato fra chi non ha conti aperti con loro,
  * preferendo il più forte (un capofila troppo avanti no); una proposta ogni tanto.
  */
 function botAlliance(c: BotCtx): void {
   const { g, level, rnd, log } = c;
-  if (level === 'facile' || g.state.q < 3) return;
   const st = ss(g), me = g.state.current, ps = g.state.players;
-  if (allyOf(st, me) !== null || (st.proposteAlleanza ?? []).some(x => x.from === me)) return;
+  if (g.state.q < 3 || allyOf(st, me) !== null || (st.proposteAlleanza ?? []).some(x => x.from === me)) return;
+  if (botAllianceThreat(c) || level === 'facile') return;
   if (rnd() >= (level === 'difficile' ? 0.35 : 0.2)) return;
   const pool = others(g, me).filter(i => !allianceBlock(g, i) && feud(g, me, i).conto <= 0 && feud(g, i, me).conto <= 0
     && wealthIndex(ps[i]) <= wealthIndex(ps[me]) * RIVAL_LEAD);

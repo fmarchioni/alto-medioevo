@@ -5,9 +5,10 @@
  */
 import { rankOf } from '../domain/rank';
 import {
-  hasSensale, SENSALE_IDS, SENSALE_RANK, SENSALI, sensaleCost, sensaleNow, sensaleUseful, sensaleVerdict, type SensaleId,
+  hasSensale, sensaleConsiglio, SENSALE_IDS, SENSALE_RANK, SENSALI, sensaleCost, sensaleNow, sensaleUseful, sensaleVerdict, type SensaleId,
 } from '../domain/sensale';
 import type { Game } from '../domain/turn';
+import type { Rates } from '../domain/strategy';
 import type { Player } from '../domain/types';
 import { honorific } from './advisor';
 import type { RateBadges } from './rendite';
@@ -57,7 +58,7 @@ const RANK_NAMES = ['messere o madonna', 'conte o contessa', 'duca o duchessa', 
 /** Saluto del sensale di quest'anno. */
 function greeting(g: Game): string {
   const p = g.player, who = sensaleNow(g), cost = n(sensaleCost(p, who)), h = honorific(p);
-  if (hasSensale(g)) return `Muovete pure i cursori, ${h}: accanto a ogni gabella vi dico cosa ne pensa la piazza. Io ascolto, voi decidete.`;
+  if (hasSensale(g)) return consiglioLine(g);
   return {
     baldo: `Riverisco, ${h}. Sono Baldo, e sento anche quel che si dice sottovoce in fondo all'osteria. Costo caro, ${cost} scudi, ma sbaglio di rado.`,
     cecco: `${h}, il popolo non dice al signore quel che pensa, ma all'oste sì: e io ci bevo insieme ogni sera. Per ${cost} scudi, tutto l'anno.`,
@@ -72,28 +73,49 @@ export function renderSensaleOffer(g: Game, say?: string): string {
   const who = sensaleNow(g), info = SENSALI[who], cost = sensaleCost(p, who), hired = hasSensale(g);
   const rk = rankOf(p) - 1;
   const rows = SENSALE_IDS.map(id => `<tr class="${id === who ? 'cur' : ''}"><td>${SENSALI[id].name}${id === who ? " <b>(quest'anno)</b>" : ''}</td><td>al più ${SENSALI[id].err} punti</td><td>${n(sensaleCost(p, id))} scudi</td></tr>`).join('');
-  if (hired) return `<div class="sensale-offer">${speechBox(SENSALE_SPEAKERS[who], say || greeting(g))}</div>`;
+  if (hired) {
+    const c = sensaleConsiglio(g);
+    const btns = c?.rapide ? `<div class="btns"><button data-act="sensaleRates" data-which="ideali">Gabelle consigliate</button><button data-act="sensaleRates" data-which="rapide" class="primary">Per recuperare più in fretta</button></div>` : '';
+    return `<div class="sensale-offer">${speechBox(SENSALE_SPEAKERS[who], say || greeting(g))}${btns}</div>`;
+  }
   return `<div class="sensale-offer">${speechBox(SENSALE_SPEAKERS[who], say || greeting(g))}
     <details class="sensale-info"><summary>Il sensale di piazza: cosa fa e quanto costa</summary><ul class="ext-ledger">
       <li>Quest'anno alla vostra porta bussa <b>${info.name}</b>. Gira osterie, mulini e banchi del mercato, e sa cosa pensano popolo e mercanti delle vostre gabelle.</li>
-      <li>Quando fissate le gabelle vi dice se sono <b>basse</b>, <b>eque</b> o <b>inique</b>: per il popolo (bevere e macina) e per i mercanti (commerzio).<ul><li><b>Iniqua</b>: secondo lui l'anno prossimo saranno scontenti, e rivolte o mercanti in fuga sono probabili.</li><li><b>Equa</b>: secondo lui saranno contenti. Ma se si sbaglia e l'anno gira storto, qualche guaio resta possibile.</li><li><b>Bassa</b>: saranno contenti comunque, qualunque cosa accada; però state lasciando scudi in tasca ai sudditi.</li></ul></li>
+      <li>Quando fissate le gabelle vi dice se sono <b>basse</b>, <b>eque</b> o <b>inique</b>: per il popolo (bevere e macina) e per i mercanti (commerzio). Giudica la gabella, cioè dove porta i sudditi se la tenete così:<ul><li><b>Iniqua</b>: a lungo andare saranno scontenti, e rivolte o mercanti in fuga diventeranno probabili.</li><li><b>Equa</b>: secondo lui resteranno contenti. Ma se si sbaglia, qualche guaio resta possibile.</li><li><b>Bassa</b>: resteranno contenti comunque; però state lasciando scudi in tasca ai sudditi.</li></ul></li>
+      <li>L'umore cambia piano, di anno in anno. Se oggi il popolo o i mercanti sono scontenti, anche con gabelle eque o basse lo saranno <b>ancora</b> l'anno prossimo, e ve lo dice: per farli risalire prima, abbassate ancora.</li>
       <li>Tiene conto del grano dato e venduto quest'anno. Ma è un uomo, non un oracolo: la sua stima può sbagliare fino a <b>${info.err} punti</b> su cento, e vicino al limite il suo giudizio può essere sbagliato. Chi sbaglia di più dice "bassa" solo con un margine più largo.</li>
       <li>Il suo consiglio vale per un anno solo: popolo e mercanti cambiano umore di anno in anno anche senza una ragione che il signore possa vedere. Lui lo sente in piazza; dal castello non si indovina.</li>
-      <li>Ogni anno se ne presenta uno dei tre, a caso; il compenso cresce con il rango (voi siete ${RANK_NAMES[rk]}, ×${SENSALE_RANK[rk]}):</li>
+      <li>Ogni anno se ne presenta uno dei tre, a caso; il compenso raddoppia a ogni rango (voi siete ${RANK_NAMES[rk]}, ×${SENSALE_RANK[rk]}):</li>
     </ul>
     <table class="ext-table sensali"><thead><tr><th>Sensale</th><th>Errore</th><th>Compenso</th></tr></thead><tbody>${rows}</tbody></table></details>
     <div class="btns"><button data-act="hireSensale" ${p.scudi + p.credito < cost ? 'disabled' : ''}>Assoldate ${info.name} (${n(cost)} scudi)</button></div></div>`;
 }
 
+const aliquote = (r: Rates) => `bevere <b>${r.bevere}%</b>, macina <b>${r.macina}%</b>, commerzio <b>${r.commerzio}%</b>`;
+
+/** Il consiglio del sensale assoldato: le gabelle ideali e, con l'umore basso, quelle per recuperare. */
+export function consiglioLine(g: Game): string {
+  const c = sensaleConsiglio(g), h = honorific(g.player);
+  if (!c) return `Muovete pure i cursori, ${h}: accanto a ogni gabella vi dico cosa ne pensa la piazza.`;
+  let t = `Queste sono le gabelle che consiglio a Vostra Signoria, dalle voci che corrono nel reame: ${aliquote(c.ideali)}. Le ho già messe sui cursori; accanto a ogni gabella vi dico se è bassa, equa o iniqua.`;
+  if (c.rapide) {
+    const chi = c.popolo && c.mercanti ? 'della gente e dei mercanti' : c.popolo ? 'della gente' : 'dei mercanti';
+    t += ` Ma l'umore ${chi} non è dei migliori: se volete recuperare più rapidamente vi consiglio ${aliquote(c.rapide)}.`;
+  }
+  return t;
+}
+
 /** Frase del sensale appena assoldato. */
-export const hiredLine = (g: Game) => `Affare fatto, ${honorific(g.player)}. Accanto a ogni gabella vi dico se è bassa, equa o iniqua: muovete i cursori e ascoltate.`;
+export const hiredLine = (g: Game) => `Affare fatto, ${honorific(g.player)}. ${consiglioLine(g)}`;
 
 /** Giudizi del sensale accanto alle gabelle, alle rendite. */
 export const sensaleBadges: RateBadges = (g, r) => {
   const v = sensaleVerdict(g, r);
   if (!v) return null;
   const b = (who: string, x: string) => `<span class="verdict ${x}" title="${SENSALI[sensaleNow(g)].name}, sensale">${who}: <b>${x}</b></span>`;
-  return { bevere: b('popolo', v.popolo), macina: b('popolo', v.popolo), commerzio: b('mercanti', v.mercanti) };
+  const still = (on: boolean, x: string) => (on && x !== 'iniqua' ? ` <span class="verdict-ancora" title="secondo il sensale l'anno prossimo saranno ancora scontenti">ancora scontenti</span>` : '');
+  const pop = b('popolo', v.popolo) + still(v.popoloAncora, v.popolo), mer = b('mercanti', v.mercanti) + still(v.mercantiAncora, v.mercanti);
+  return { bevere: pop, macina: pop, commerzio: mer };
 };
 
 /** Riga della cronaca. */

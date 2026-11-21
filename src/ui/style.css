@@ -783,6 +783,8 @@ p.spy.on { border-color: var(--gold); color: var(--gold); }
 .verdict.bassa { color: #2e5fa3; }
 .verdict.equa { color: #3f6f2a; }
 .verdict.iniqua { color: var(--red); }
+.verdict-ancora { font-size: 0.85em; color: #a0601a; font-style: italic; margin-left: 4px; }
+:root[data-theme="c64"] .verdict-ancora { color: #e0a050; font-style: normal; }
 :root[data-theme="c64"] .verdict.equa { color: #8fd45a; }
 :root[data-theme="c64"] .verdict.bassa { color: #8fb8f0; }
 
