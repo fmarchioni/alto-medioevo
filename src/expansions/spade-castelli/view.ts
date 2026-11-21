@@ -14,6 +14,7 @@ import { dispaccioCasata } from '../../ui/prestiti';
 import { piuForte } from '../../ui/stacchi';
 import { isPainted, pick, speechBox, type Speaker } from '../../ui/speaker';
 import { illustrationUrl } from '../../ui/citta/assets';
+import { stemma } from '../../ui/stemmi';
 import type { ExpansionView, ExtActionResult, ExtCard, ExtUi } from '../types';
 import {
   answerPeace, offerPeace, peaceBlock, BOMBARD_KILL, buildCatapults, CATAPULT_COST, CATAPULT_MAX, CATAPULT_UPKEEP, CATAPULTS_PER_RING, catapultsOf, catAwayOf, FALL_SERVI, liftSiege, PEACE_PER_SOLDIER, peacePrice,
@@ -36,6 +37,8 @@ const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const who = (p: Player) => `${esc(p.name)} da ${FEUDI[p.feudo]}`;
 const h = (p: Player) => (p.gender === 1 ? 'Messere' : 'Madonna');
 const plural = (k: number, one: string, many: string) => `${n(k)} ${k === 1 ? one : many}`;
+/** Nelle tabelle di guerra e trattati: lo stemma della città a sinistra del signore. */
+const feudoCell = (p: Player, extra = '') => `<span class="feudo-cell">${stemma(p.feudo, FEUDI[p.feudo])}<span>${who(p)}${extra}</span></span>`;
 
 // ---------------------------------------------------------------- grafica
 
@@ -508,7 +511,7 @@ function guerraPanel(g: Game, st: SpadeState): string {
       : done ? '' : `<button data-act="ext" data-op="war" data-target="${i}" data-goal="bottino" ${s + mercsOf(g, st, me) < WAR_MIN ? 'disabled' : ''}>Per le risorse</button>
         <button data-act="ext" data-op="war" data-target="${i}" data-goal="distruzione" ${destroyOff}>Per la distruzione</button>`;
     return `<tr>
-      <th scope="row" data-label="Feudo">${who(d)}</th>
+      <th scope="row" data-label="Feudo">${feudoCell(d)}</th>
       <td data-label="Distanza">${anni === 1 ? 'confinante' : 'lontano'}<br><small>ritorno: ${anni === 1 ? '1 anno' : '2 anni'}</small></td>
       <td data-label="Difesa">${defense}</td>
       <td data-label="Ricchezze">${n(Math.max(0, d.scudi))} scudi<br><small>${n(d.grano)} grano, ${n(d.servi)} servi</small></td>
@@ -579,14 +582,14 @@ function pacePanel(g: Game, st: SpadeState): string {
         : (st.assedi ?? []).some(s => (s.owner === i && s.target === me) || (s.owner === me && s.target === i)) ? 'assedio in corso' : 'nessun trattato';
     const allyOfThem = !ally && allyOf(st, i) !== null ? `<br><small>alleato di ${esc(ps[allyOf(st, i)!].name)}</small>` : '';
     return `<tr>
-      <th scope="row" data-label="Feudo">${who(ps[i])}${allyOfThem}</th>
+      <th scope="row" data-label="Feudo">${feudoCell(ps[i], allyOfThem)}</th>
       <td data-label="Offese">${feudWords(g, i)}</td>
       <td data-label="Stato">${state}</td>
-      <td data-label="" class="war-acts">${block ? '' : `<button data-act="ext" data-op="treaty" data-target="${i}">Proponete la pace</button>`}
-        ${ally ? `<button data-act="ext" data-op="allianceBreak">Rompete l'alleanza</button>` : aBlock ? '' : `<button data-act="ext" data-op="allianceOffer" data-target="${i}">Proponete l'alleanza</button>`}</td>
+      <td data-label="" class="war-acts">${block ? '' : `<button data-act="ext" data-op="treaty" data-target="${i}">Trattato di Pace</button>`}
+        ${ally ? `<button data-act="ext" data-op="allianceBreak">Rompete l'alleanza</button>` : aBlock ? '' : `<button data-act="ext" data-op="allianceOffer" data-target="${i}">Alleanza</button>`}</td>
     </tr>`;
   }).join('');
-  return `<table class="ext-table"><thead><tr><th>Feudo</th><th>Conto delle offese</th><th>Stato</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+  return `<table class="ext-table war-table pace-table"><thead><tr><th>Feudo</th><th>Conto delle offese</th><th>Stato</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     <div class="ext-form">
       <label>Anni di pace <input type="number" name="treaty-years" min="${TRATTATO_MIN}" max="${TRATTATO_MAX}" value="3" inputmode="numeric"></label>
       <label>Dono in scudi <input type="number" name="treaty-gift" min="0" max="${Math.max(0, Math.floor(p.scudi))}" step="50" value="0" inputmode="numeric"></label>

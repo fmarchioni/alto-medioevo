@@ -20,6 +20,7 @@ import { renderChronicle } from './chronicle';
 import { EXPANSIONS, findExpansion } from '../expansions';
 import { VOCAZIONI_ID, type Vocazione } from '../domain/vocazioni';
 import { serviLiberi } from '../domain/citta';
+import { annunciaTurno } from './turno';
 import { dinastiaAside, renderDinastiaEnd, renderObiettivi, renderSuccessione, type Obiettivo } from './dinastia';
 import { nozzeDecision, renderCasata, type CasataUi } from './casata';
 import { esitoRichiestaText, prestitoDecision } from './prestiti';
@@ -114,6 +115,8 @@ interface UiState {
   confirm: DebtConfirm | null;
   /** turno per cui si è già cercato un pignoramento da annunciare */
   seizedKey?: string;
+  /** turno già annunciato con lo stemma ("È il turno di…") */
+  turnoKey?: string;
   /** turno in cui si è già mostrata l'investitura (o la corona) */
   titleKey?: string;
   coronaKey?: string;
@@ -298,6 +301,11 @@ export function mountApp(root: HTMLElement, opts: MountOptions = {}): void {
     const overlay = ui.tutorial ? '' : ui.scenes ? renderScene(ui.scenes) : ui.interlude ? renderInterlude(ui.interlude) : '';
     // una scelta dell'espansione (es. una proposta di pace) si mostra solo sulla pagina del turno, non sotto sipari e cronache
     const onTurn = g && !g.player.bot && !overlay && !ui.realmReview && ui.chronicleYear === null && g.state.phase.kind !== 'fine';
+    // l'annuncio del turno, con lo stemma della città: una volta per turno, quando il signore umano ha davanti la sua pagina
+    if (onTurn && ui.turnoKey !== turnKey(g)) {
+      ui.turnoKey = turnKey(g);
+      annunciaTurno(g.player);
+    }
     // pignoramento di fine anno: la pergamena arriva al signore all'inizio del suo turno seguente, una volta sola
     if (onTurn && g.state.phase.kind === 'commercio' && ui.seizedKey !== turnKey(g)) {
       ui.seizedKey = turnKey(g);
