@@ -974,7 +974,7 @@ function soloDecision(gender: Gender) {
     title: 'Da solo?',
     body: `${m}, siete ${gender === 6 ? 'sicura' : 'sicuro'} di voler giocare da solo? Posso far partecipare altri messeri, se non avete amici! Scegliete il numero di signori per aggiungerne.`,
     options: [
-      { label: 'Gioco da solo', op: '', act: 'soloYes' },
+      { label: 'Gioco da solo', op: '', act: 'soloYes', primary: true },
       { label: 'Aggiungi giocatori', op: '', act: 'soloNo', primary: true },
     ],
   };
